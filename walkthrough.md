@@ -59,28 +59,13 @@ mcp run backend/server.py
 ### Step 6: Export Real Library (Optional)
 This step requires running on a Mac with Apple Music library configured.
 ```bash
-# Build the tool
 cd edge
-swift build
-
-# Create App Wrapper (Required for Permissions)
-mkdir -p edge.app/Contents/MacOS
-cp .build/debug/edge edge.app/Contents/MacOS/edge
-# Create Info.plist (Required)
-# See project for Info.plist content
-
-# Ad-hoc sign (Required for TCC)
-codesign -s - --entitlements entitlements.plist -f edge.app/Contents/MacOS/edge
-
-# Run from the App structure
-# Double-click the app in Finder (open .)
-# OR run via open command:
-open edge.app
+./build_and_run.sh
 
 # Check Output
-cat ~/Documents/my_library.json > ../my_library.json
+# The app will write to `crate/my_library.json` in the project root.
 
 cd ..
 # Ingest the real data
-python backend/ingest_library.py --input my_library.json --project YOUR_PROJECT_ID
+python backend/ingest_library.py --input crate/my_library.json --project YOUR_PROJECT_ID
 ```
