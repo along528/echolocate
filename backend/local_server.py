@@ -74,10 +74,17 @@ def search_library(query: str, limit: int = 10) -> str:
         df['title'].str.contains(query, case=False, na=False) | 
         df['artist_name'].str.contains(query, case=False, na=False)
     )
-    results = df[mask].head(limit)
+    # Results
+    matches = df[mask]
     
-    if results.empty:
+    if matches.empty:
         return "No matches found."
+        
+    # Return random sample if more than limit
+    if len(matches) > limit:
+        results = matches.sample(n=limit)
+    else:
+        results = matches
         
     formatted = []
     for _, row in results.iterrows():
@@ -126,7 +133,12 @@ def get_rotation(category: str) -> str:
     else:
         return "Unknown category. Use Heavy, Gold, or Unplayed."
     
-    results = subset.head(limit)
+    
+    # Shuffle results by sampling
+    if len(subset) > limit:
+        results = subset.sample(n=limit)
+    else:
+        results = subset
     if results.empty:
         return "No tracks found in this category."
 
@@ -190,9 +202,14 @@ def search_albums(query: str) -> str:
     if albums_df.empty: return "Library not loaded or no albums found."
     
     mask = albums_df['album_title'].str.contains(query, case=False, na=False)
-    results = albums_df[mask].head(10)
+    matches = albums_df[mask]
     
-    if results.empty: return "No albums found."
+    if matches.empty: return "No albums found."
+    
+    if len(matches) > 10:
+        results = matches.sample(n=10)
+    else:
+        results = matches
     
     formatted = []
     for _, row in results.iterrows():
