@@ -1,5 +1,3 @@
-This design document is structured for a professional engineering workflow. It outlines a hybrid architecture that leverages your Mac for local library access and Google Cloud for the "heavy lifting" of semantic search and state management.
-
 # **Design Document: Project "Cloud Crate"**
 
 **Sub-title:** WXYC-Inspired Semantic Music Discovery Engine **Author:** Alex Long **Status:** Draft / MVP Definition **Target Platform:** macOS (Edge) / Google Cloud (Backend) / MCP (Interface)
