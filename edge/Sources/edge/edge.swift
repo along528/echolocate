@@ -8,6 +8,8 @@ struct TrackOutput: Codable {
     let play_count: Int
     let last_played_at: String? // ISO8601
     let editorial_summary: String?
+    let album_title: String?
+    let genres: [String]?
 }
 
 @main
@@ -49,7 +51,9 @@ struct EdgeCLI {
                     artist_name: song.artistName,
                     play_count: song.playCount ?? 0,
                     last_played_at: lastPlayed,
-                    editorial_summary: nil // To be filled by backend LLM
+                    editorial_summary: nil, // To be filled by backend LLM
+                    album_title: song.albumTitle,
+                    genres: song.genreNames
                 )
                 output.append(track)
             }

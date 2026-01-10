@@ -1,114 +1,64 @@
-# Cloud Crate Phase 1 Walkthrough
+# Cloud Crate
 
-We have successfully implemented the MVP backend for **Cloud Crate**, focusing on the data pipeline and the MCP server structure.
+Cloud Crate is an AI-powered music library manager that connects your personal music collection (via Apple Music) to Large Language Models (LLMs) using the Model Context Protocol (MCP).
 
-## What We Built
+It allows you to "chat" with your music library—asking for play history, analyzing taste profiles, searching by vibe or genre, and discovering forgotten gems.
 
-### 1. Project Structure
-- **/backend**: Contains all Python logic.
-- **/edge**: Dictionary for future native code.
+## Architecture
 
-### 2. Data Pipeline
-- **`backend/setup_bq.py`**: Initializes the BigQuery dataset and table schema.
-- **`backend/ingest_library.py`**: Reads a JSON export of your library and uploads it to BigQuery.
-- **`backend/generate_embeddings.py`**: Enriches the library data with semantic vectors.
-    - Includes a `--mock` flag to simulate embedding generation without Vertex AI costs.
+The project consists of two main components:
 
-### 3. MCP Server
-- **`backend/server.py`**: Implements the Model Context Protocol server.
-    - **`search_library`**: Semantic search using vector similarity.
-    - **`get_track_context`**: Detailed metadata fetch.
-    - **`get_rotation`**: Logic-based filtering (Heavy, Gold, Unplayed).
+1.  **Edge (macOS / Swift)**: A native tool that interfaces with MusicKit to export your library data securely.
+    - [Read more in edge/README.md](edge/README.md)
 
-## How to Run
+2.  **Backend (Python / MCP)**: A server that ingests the library data and exposes it as tools to AI agents.
+    - [Read more in backend/README.md](backend/README.md)
 
-### Prerequisites
-- Python 3.10+
-- Google Cloud Project with BigQuery and Vertex AI enabled.
-- `gcloud` authenticated.
+## Quick Start
 
-### Step 1: Install Dependencies
-```bash
-pip install -r backend/requirements.txt
-```
+### 1. Export Library
+Run the Swift exporter to generate your library snapshot.
 
-### Step 2: Setup BigQuery
-```bash
-python backend/setup_bq.py --project YOUR_PROJECT_ID
-```
-
-### Step 3: Ingest Data
-```bash
-# Using the provided mock data
-python backend/ingest_library.py --input backend/test_library.json --project YOUR_PROJECT_ID
-```
-
-### Step 4: Generate Embeddings
-```bash
-# Use --mock for testing without Vertex AI
-python backend/generate_embeddings.py --project YOUR_PROJECT_ID --mock
-```
-
-### Step 5: Run MCP Server
-```bash
-# This requires the mcp command line tool or running the python script directly if configured
-# Typically with FastMCP:
-mcp run backend/server.py
-```
-
-### Step 6: Export Real Library (Optional)
-This step requires running on a Mac with Apple Music library configured.
 ```bash
 cd edge
 ./build_and_run.sh
-
-# Check Output
-# The app will write to `crate/my_library.json` in the project root.
-
 cd ..
-# Ingest the real data
-python backend/ingest_library.py --input crate/my_library.json --project YOUR_PROJECT_ID
+```
+This creates `crate/my_library.json`.
+
+### 2. Run Backend Server
+Install dependencies and start the MCP server.
+
+```bash
+# Setup Environment (if not already done)
+python3 -m venv .venv
+source .venv/bin/activate
+pip install -r backend/requirements.txt
+
+# Run Local Server
+python backend/local_server.py
 ```
 
-### Step 7: Run Local Mode (No Cloud Required)
-If you want to use the MCP server with just your local JSON data (no BigQuery/Vertex AI):
+### 3. Connect to AI Client
+Configure your MCP client (e.g., Claude Desktop) to run the server script.
 
-1. **Setup Python Env:**
-   ```bash
-   # Create venv (Python 3.10+ required)
-   python3 -m venv .venv
-   source .venv/bin/activate
-   pip install -r backend/requirements.txt
-   ```
-
-2. **Run Edge Tool (if not already done):**
-   ```bash
-   cd edge
-   ./build_and_run.sh
-   cd ..
-   ```
-
-3. **Start Local Server:**
-   ```bash
-   # This runs the server over stdio. 
-   # Connect this to your MCP client (e.g. Claude Desktop).
-   # Use the absolute path to your python executable if configuring an external app.
-   python backend/local_server.py
-   ```
-
-### Client Configuration (Claude Desktop)
-To use this with Claude Desktop, add the following to your `~/Library/Application Support/Claude/claude_desktop_config.json`:
-
+**Claude Desktop Config (`~/Library/Application Support/Claude/claude_desktop_config.json`):**
 ```json
 {
   "mcpServers": {
     "cloud-crate": {
-      "command": "/Users/alex.long/Projects/cloud-crate/.venv/bin/python3",
+      "command": "/ABSOLUTE/PATH/TO/PROJECT/.venv/bin/python3",
       "args": [
-        "/Users/alex.long/Projects/cloud-crate/backend/local_server.py"
+        "/ABSOLUTE/PATH/TO/PROJECT/backend/local_server.py"
       ]
     }
   }
 }
 ```
 
+## Features
+- **Semantic Search**: Find songs by lyrics or vibe (Cloud mode).
+- **Text Search**: Search artists, albums, and tracks.
+- **Contextual Awareness**: detailed play counts, dates, and genre analysis.
+- **Album aggregation**: View stats and tracks at the album level.
+- **Artist Similarity**: Discover artists with shared genres.

@@ -20,15 +20,49 @@ def load_library():
     df = pd.read_json(DATA_PATH)
     # Ensure date column is datetime objects
     df['last_played_at'] = pd.to_datetime(df['last_played_at'], utc=True, errors='coerce')
+    
+    # Handle missing new columns if reading old file
+    if 'album_title' not in df.columns:
+        df['album_title'] = "Unknown Album"
+    if 'genres' not in df.columns:
+        df['genres'] = [[] for _ in range(len(df))]
+        
     return df
+
+def create_albums_df(df):
+    if df.empty: return pd.DataFrame()
+    
+    # Explode genres? No, we want album level genres.
+    # Group by album and artist
+    grouped = df.groupby(['album_title', 'artist_name'])
+    
+    albums_data = []
+    
+    for (album, artist), group in grouped:
+        # Aggregate genres: flatten list of lists and get unique
+        all_genres = [g for sublist in group['genres'] if isinstance(sublist, list) for g in sublist]
+        unique_genres = sorted(list(set(all_genres)))
+        
+        albums_data.append({
+            'album_title': album,
+            'artist_name': artist,
+            'total_plays': group['play_count'].sum(),
+            'last_played': group['last_played_at'].max(),
+            'genres': unique_genres,
+            'track_ids': group['id'].tolist()
+        })
+        
+    return pd.DataFrame(albums_data)
 
 # Global dataframe (lazy load could be better but this is simple)
 try:
     df = load_library()
-    print(f"Loaded {len(df)} tracks.")
+    albums_df = create_albums_df(df)
+    print(f"Loaded {len(df)} tracks and {len(albums_df)} albums.")
 except Exception as e:
     print(f"Error loading library: {e}")
     df = pd.DataFrame()
+    albums_df = pd.DataFrame()
 
 @mcp.tool()
 def search_library(query: str, limit: int = 10) -> str:
@@ -149,6 +183,128 @@ def filter_by_date_range(start_date: str = None, end_date: str = None, limit: in
     for _, row in results.iterrows():
         date_str = row['last_played_at'].strftime('%Y-%m-%d')
         formatted.append(f"- {row['title']} by {row['artist_name']} (Last Played: {date_str})")
+        
+    return "\n".join(formatted)
+
+@mcp.tool()
+def search_albums(query: str) -> str:
+    """
+    Search for albums by title.
+    Args:
+        query: The search term for album title.
+    """
+    if albums_df.empty: return "Library not loaded or no albums found."
+    
+    mask = albums_df['album_title'].str.contains(query, case=False, na=False)
+    results = albums_df[mask].head(10)
+    
+    if results.empty: return "No albums found."
+    
+    formatted = []
+    for _, row in results.iterrows():
+        genre_str = ", ".join(row['genres'][:3]) # First 3 genres
+        formatted.append(f"- {row['album_title']} by {row['artist_name']} ({genre_str})")
+        
+    return "\n".join(formatted)
+
+@mcp.tool()
+def get_album_context(album_name: str) -> str:
+    """
+    Get detailed context for an album, including statistics and track IDs.
+    Args:
+        album_name: The exact name of the album (or close match).
+    """
+    if albums_df.empty: return "Library not loaded."
+    
+    # Exact match first, then loose
+    match = albums_df[albums_df['album_title'].str.lower() == album_name.lower()]
+    if match.empty:
+        # Try contains
+        match = albums_df[albums_df['album_title'].str.contains(album_name, case=False, na=False)]
+        
+    if match.empty: return "Album not found."
+    
+    row = match.iloc[0]
+    date_str = row['last_played'].strftime('%Y-%m-%d') if pd.notnull(row['last_played']) else "Never"
+    
+    return f"""
+Album: {row['album_title']}
+Artist: {row['artist_name']}
+Genres: {", ".join(row['genres'])}
+Total Plays: {row['total_plays']}
+Most Recent Play: {date_str}
+Track IDs: {", ".join(row['track_ids'])}
+    """
+
+@mcp.tool()
+def search_by_genre(genre: str) -> str:
+    """
+    Find albums and tracks matching a genre.
+    Args:
+        genre: Genre name to search for.
+    """
+    if albums_df.empty: return "Library not loaded."
+    
+    # Search in albums_df for genre in list
+    # Because 'genres' is a list, we can't use .str.contains directly easily without exploding or apply
+    # Let's use apply for simplicity on small dataset
+    mask = albums_df['genres'].apply(lambda x: any(genre.lower() in g.lower() for g in x))
+    results = albums_df[mask].head(10)
+    
+    if results.empty: return "No albums found with this genre."
+    
+    formatted = []
+    for _, row in results.iterrows():
+        formatted.append(f"- {row['album_title']} by {row['artist_name']}")
+        
+    return "\n".join(formatted)
+
+@mcp.tool()
+def find_similar_artists(artist_name: str) -> str:
+    """
+    Find artists with similar genres.
+    Args:
+        artist_name: The artist to find matches for.
+    """
+    if albums_df.empty: return "Library not loaded."
+    
+    # Get target artist genres
+    target_entries = albums_df[albums_df['artist_name'].str.lower() == artist_name.lower()]
+    if target_entries.empty: return "Artist not found."
+    
+    # Collect all genres for this artist across their albums
+    target_genres = set()
+    for _, row in target_entries.iterrows():
+        target_genres.update(row['genres'])
+        
+    if not target_genres: return f"No genres found for {artist_name}."
+    
+    # Find overlap with other artists
+    # We'll compute a score based on intersection size
+    
+    # Group by artist to get all their genres
+    artist_genres = {}
+    for _, row in albums_df.iterrows():
+        a = row['artist_name']
+        if a.lower() == artist_name.lower(): continue
+        if a not in artist_genres: artist_genres[a] = set()
+        artist_genres[a].update(row['genres'])
+        
+    scores = []
+    for artist, genres in artist_genres.items():
+        intersection = target_genres.intersection(genres)
+        if intersection:
+            scores.append((artist, len(intersection), list(intersection)))
+            
+    # Sort by score
+    scores.sort(key=lambda x: x[1], reverse=True)
+    
+    top_matches = scores[:10]
+    if not top_matches: return "No similar artists found."
+    
+    formatted = [f"Generic Similarity Search for {artist_name}:"]
+    for artist, score, overlap in top_matches:
+        formatted.append(f"- {artist} (Overlap: {score} genres: {', '.join(overlap[:3])}...)")
         
     return "\n".join(formatted)
 
