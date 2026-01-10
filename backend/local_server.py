@@ -229,6 +229,69 @@ Track IDs: {", ".join(row['track_ids'])}
     """
 
 @mcp.tool()
+def get_batch_track_context(track_ids: list[str]) -> str:
+    """
+    Get full metadata for multiple tracks by their IDs.
+    Args:
+        track_ids: A list of track IDs
+    """
+    if df.empty: return "Library not loaded."
+    
+    results = []
+    for tid in track_ids:
+        track = df[df['id'] == tid]
+        if track.empty:
+            results.append(f"Track ID {tid}: Not found.")
+            continue
+        
+        row = track.iloc[0]
+        results.append(f"""
+---
+Track ID: {tid}
+Title: {row['title']}
+Artist: {row['artist_name']}
+Play Count: {row['play_count']}
+Last Played: {row['last_played_at']}
+""")
+    
+    return "\n".join(results)
+
+@mcp.tool()
+def get_batch_album_context(album_names: list[str]) -> str:
+    """
+    Get detailed context for multiple albums.
+    Args:
+        album_names: List of album names (exact or close match).
+    """
+    if albums_df.empty: return "Library not loaded."
+    
+    results = []
+    for name in album_names:
+        # Exact match first, then loose
+        match = albums_df[albums_df['album_title'].str.lower() == name.lower()]
+        if match.empty:
+            # Try contains
+            match = albums_df[albums_df['album_title'].str.contains(name, case=False, na=False)]
+            
+        if match.empty:
+            results.append(f"Album '{name}': Not found.")
+            continue
+        
+        row = match.iloc[0]
+        date_str = row['last_played'].strftime('%Y-%m-%d') if pd.notnull(row['last_played']) else "Never"
+        
+        results.append(f"""
+---
+Album: {row['album_title']}
+Artist: {row['artist_name']}
+Total Plays: {row['total_plays']}
+Most Recent Play: {date_str}
+Track IDs: {", ".join(row['track_ids'])}
+""")
+            
+    return "\n".join(results)
+
+@mcp.tool()
 def create_playlist(name: str, track_ids: list[str]) -> str:
     """
     Create a new playlist in Apple Music with the specified tracks.
