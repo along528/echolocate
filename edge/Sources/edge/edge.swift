@@ -55,12 +55,19 @@ struct EdgeCLI {
             encoder.outputFormatting = .prettyPrinted
             let data = try encoder.encode(output)
             
-            if let jsonString = String(data: data, encoding: .utf8) {
-                print(jsonString)
-            }
+            let documentsPath = FileManager.default.urls(for: .documentDirectory, in: .userDomainMask)[0]
+            let fileURL = documentsPath.appendingPathComponent("my_library.json")
+            
+            try data.write(to: fileURL)
+            print("Library exported to: \(fileURL.path)")
+            
+            // Keep window open briefly if visible (hack for Finder)
+            try? await Task.sleep(nanoseconds: 2 * 1_000_000_000)
             
         } catch {
             print("Error fetching library: \(error)")
+            // Keep window open on error
+            try? await Task.sleep(nanoseconds: 5 * 1_000_000_000)
             exit(1)
         }
     }
