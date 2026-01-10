@@ -1,0 +1,26 @@
+[
+  {
+    "id": "1",
+    "title": "Ambient 1: Music for Airports",
+    "artist_name": "Brian Eno",
+    "play_count": 50,
+    "last_played_at": "2023-10-27T10:00:00Z",
+    "editorial_summary": "A foundational ambient work designed to induce calm and space."
+  },
+  {
+    "id": "2",
+    "title": "Selected Ambient Works 85-92",
+    "artist_name": "Aphex Twin",
+    "play_count": 120,
+    "last_played_at": "2023-10-26T22:30:00Z",
+    "editorial_summary": "Atmospheric techno with lush synthesizer textures."
+  },
+  {
+    "id": "3",
+    "title": "Head Hunters",
+    "artist_name": "Herbie Hancock",
+    "play_count": 85,
+    "last_played_at": "2023-10-25T14:15:00Z",
+    "editorial_summary": "Jazz-fusion masterpiece with heavy funk grooves."
+  }
+]

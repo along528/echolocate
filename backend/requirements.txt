@@ -1,0 +1,6 @@
+mcp
+google-cloud-bigquery
+google-cloud-aiplatform
+pandas
+db-dtypes
+pytest
