@@ -27,11 +27,11 @@ struct EdgeCLI {
             // Fetching a limit for MVP sanity, or all if feasible.
             // Paginating through library can be slow, let's try to get a reasonable batch.
             var request = MusicLibraryRequest<Song>()
-            request.limit = 10000
+            request.limit = 100000
             
             // Debug version
              let documentsPath = FileManager.default.urls(for: .documentDirectory, in: .userDomainMask)[0]
-             try? "Version 10000".write(to: URL(fileURLWithPath: "/Users/alex.long/Projects/cloud-crate/crate/edge_version.txt"), atomically: true, encoding: .utf8) 
+             try? "Version 100000".write(to: URL(fileURLWithPath: "/Users/alex.long/Projects/cloud-crate/crate/edge_version.txt"), atomically: true, encoding: .utf8) 
             
             let response = try await request.response()
             let songs = response.items
