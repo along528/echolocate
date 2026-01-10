@@ -23,6 +23,95 @@ struct EdgeCLI {
             exit(1)
         }
         
+        let args = CommandLine.arguments
+        
+        // Mode selection
+        if args.contains("-createPlaylist") {
+            await createPlaylistMode(args: args)
+        } else {
+            await dumpLibraryMode()
+        }
+    }
+    
+    static func createPlaylistMode(args: [String]) async {
+        guard let nameIndex = args.firstIndex(of: "-createPlaylist"),
+              nameIndex + 1 < args.count,
+              let tracksIndex = args.firstIndex(of: "-tracks"),
+              tracksIndex + 1 < args.count else {
+            print("Usage: edge -createPlaylist <name> -tracks <id1,id2,...>")
+            exit(1)
+        }
+        
+        let playlistName = args[nameIndex + 1]
+        let trackIdsString = args[tracksIndex + 1]
+        let trackIds = trackIdsString.split(separator: ",").map { String($0).trimmingCharacters(in: .whitespaces) }
+        
+        print("Creating playlist '\(playlistName)' with \(trackIds.count) tracks...")
+        
+        do {
+            // 1. Create Playlist via API
+            let createURL = URL(string: "https://api.music.apple.com/v1/me/library/playlists")!
+            let createBody: [String: Any] = [
+                "attributes": [
+                    "name": playlistName,
+                    "description": "Created via Cloud Crate"
+                ]
+            ]
+            
+            let createRequestData = try JSONSerialization.data(withJSONObject: createBody)
+            
+            var urlRequest = URLRequest(url: createURL)
+            urlRequest.httpMethod = "POST"
+            urlRequest.httpBody = createRequestData
+            
+            let request = MusicDataRequest(urlRequest: urlRequest)
+            let response = try await request.response()
+            
+            guard let json = try JSONSerialization.jsonObject(with: response.data) as? [String: Any],
+                  let data = json["data"] as? [[String: Any]],
+                  let first = data.first,
+                  let playlistId = first["id"] as? String else {
+                print("Error: Could not parse playlist creation response.")
+                print(String(data: response.data, encoding: .utf8) ?? "")
+                exit(1)
+            }
+            
+            print("Playlist created! ID: \(playlistId)")
+            
+            // 2. Add Tracks
+            let tracksData = trackIds.map { ["id": $0, "type": "library-songs"] }
+            let addBody = ["data": tracksData]
+            let addRequestData = try JSONSerialization.data(withJSONObject: addBody)
+            
+            let addURL = URL(string: "https://api.music.apple.com/v1/me/library/playlists/\(playlistId)/tracks")!
+            var addUrlRequest = URLRequest(url: addURL)
+            addUrlRequest.httpMethod = "POST"
+            addUrlRequest.httpBody = addRequestData
+            
+            let addRequest = MusicDataRequest(urlRequest: addUrlRequest)
+            let addResponse = try await addRequest.response()
+            
+            // Attempt to get status code if possible, or rely on lack of error
+            // MusicDataResponse usually has .urlResponse property which is URLResponse
+            if let httpResponse = addResponse.urlResponse as? HTTPURLResponse {
+                 if (200...299).contains(httpResponse.statusCode) {
+                     print("Successfully added \(tracksData.count) tracks.")
+                 } else {
+                     print("Error adding tracks. Status: \(httpResponse.statusCode)")
+                     print(String(data: addResponse.data, encoding: .utf8) ?? "")
+                 }
+            } else {
+                // Determine success by lack of error or content?
+                print("Tracks added (status code unavailable, but no error thrown).")
+            }
+            
+        } catch {
+            print("Error parsing/executing request: \(error)")
+            exit(1)
+        }
+    }
+    
+    static func dumpLibraryMode() async {
         do {
             // 2. Query Library
             // Fetching a limit for MVP sanity, or all if feasible.

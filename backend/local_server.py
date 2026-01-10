@@ -2,6 +2,7 @@ from mcp.server.fastmcp import FastMCP
 import pandas as pd
 import json
 import os
+import subprocess
 from datetime import datetime
 
 # Initialize FastMCP
@@ -226,6 +227,38 @@ Total Plays: {row['total_plays']}
 Most Recent Play: {date_str}
 Track IDs: {", ".join(row['track_ids'])}
     """
+
+@mcp.tool()
+def create_playlist(name: str, track_ids: list[str]) -> str:
+    """
+    Create a new playlist in Apple Music with the specified tracks.
+    Args:
+        name: The name of the new playlist.
+        track_ids: A list of track IDs to add to the playlist.
+    """
+    if not track_ids:
+        return "Error: No track IDs provided."
+    
+    # Path to the signed edge executable
+    # Assumes local_server.py is in backend/ and edge is in edge/edge.app/...
+    edge_executable = os.path.join(SCRIPT_DIR, "..", "edge", "edge.app", "Contents", "MacOS", "edge")
+    
+    if not os.path.exists(edge_executable):
+        return f"Error: Edge executable not found at {edge_executable}. Please run ./build_and_run.sh in the edge directory first."
+
+    track_ids_str = ",".join(track_ids)
+    
+    cmd = [edge_executable, "-createPlaylist", name, "-tracks", track_ids_str]
+    
+    print(f"Executing: {' '.join(cmd)}")
+    
+    try:
+        result = subprocess.run(cmd, capture_output=True, text=True, check=True)
+        return f"Playlist '{name}' created successfully.\nOutput:\n{result.stdout}"
+    except subprocess.CalledProcessError as e:
+        return f"Error creating playlist.\nReturn Code: {e.returncode}\nStderr: {e.stderr}\nStdout: {e.stdout}"
+    except Exception as e:
+        return f"Unexpected error: {str(e)}"
 
 if __name__ == "__main__":
     mcp.run()
