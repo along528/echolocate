@@ -5,6 +5,8 @@ This directory contains the "Edge" component of Cloud Crate: a native Swift exec
 ## Purpose
 The primary goal of this tool is to securely access your Apple Music library, extract relevant metadata (tracks, albums, artists, play counts), and serialize it into a standard JSON format that the backend can consume.
 
+Note: While the primary mode is library export, the application bundle is also used by the backend to launch authorized AppleScript commands for playlist creation.
+
 ## Structure
 - **Package.swift**: Swift Package Manager configuration.
 - **Sources/edge/edge.swift**: Main application logic.

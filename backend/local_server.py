@@ -236,29 +236,97 @@ def create_playlist(name: str, track_ids: list[str]) -> str:
         name: The name of the new playlist.
         track_ids: A list of track IDs to add to the playlist.
     """
-    if not track_ids:
-        return "Error: No track IDs provided."
+    if df.empty: return "Library not loaded."
+    if not track_ids: return "Error: No track IDs provided."
     
-    # Path to the signed edge executable
-    # Assumes local_server.py is in backend/ and edge is in edge/edge.app/...
-    edge_executable = os.path.join(SCRIPT_DIR, "..", "edge", "edge.app", "Contents", "MacOS", "edge")
+    # 1. Resolve IDs to Metadata
+    tracks_to_add = []
+    missing_ids = []
     
-    if not os.path.exists(edge_executable):
-        return f"Error: Edge executable not found at {edge_executable}. Please run ./build_and_run.sh in the edge directory first."
+    for tid in track_ids:
+        # Check type
+        if tid not in df['id'].values:
+            missing_ids.append(tid)
+            continue
+            
+        row = df[df['id'] == tid].iloc[0]
+        # Escape quotes for AppleScript
+        title = row['title'].replace('"', '\\"')
+        artist = row['artist_name'].replace('"', '\\"')
+        tracks_to_add.append({'title': title, 'artist': artist})
+    
+    if not tracks_to_add:
+        return f"Error: None of the provided track IDs found in loaded library. Missing: {missing_ids}"
+    
+    print(f"Preparing to add {len(tracks_to_add)} tracks to new playlist '{name}'...")
 
-    track_ids_str = ",".join(track_ids)
+    # 2. Build AppleScript
+    # Escape for AppleScript
+    escaped_name = name.replace('"', '\\"')
+    folder_name = "Cloud Crate"
     
-    cmd = [edge_executable, "-createPlaylist", name, "-tracks", track_ids_str]
+    create_pl_script = f'''
+    tell application "Music"
+        -- Ensure folder exists
+        if not (exists folder playlist "{folder_name}") then
+            make new folder playlist with properties {{name:"{folder_name}"}}
+        end if
+        set parentFolder to folder playlist "{folder_name}"
+        
+        -- Create playlist in folder or get existing
+    # ... (inside create_pl_script)
+        if not (exists user playlist "{escaped_name}" of parentFolder) then
+            set targetPlaylist to (make new user playlist at parentFolder with properties {{name:"{escaped_name}"}})
+        else
+            set targetPlaylist to user playlist "{escaped_name}" of parentFolder
+        end if
+        return id of targetPlaylist
+    end tell
+    '''
     
-    print(f"Executing: {' '.join(cmd)}")
-    
+    playlist_id = None
     try:
-        result = subprocess.run(cmd, capture_output=True, text=True, check=True)
-        return f"Playlist '{name}' created successfully.\nOutput:\n{result.stdout}"
+        result = subprocess.run(['osascript', '-e', create_pl_script], check=True, capture_output=True, text=True)
+        playlist_id = result.stdout.strip()
     except subprocess.CalledProcessError as e:
-        return f"Error creating playlist.\nReturn Code: {e.returncode}\nStderr: {e.stderr}\nStdout: {e.stdout}"
-    except Exception as e:
-        return f"Unexpected error: {str(e)}"
+        return f"Error creating playlist: {e.stderr}"
+
+    if not playlist_id:
+        return "Error: Could not retrieve playlist ID."
+
+    # 3. Add Tracks via AppleScript
+    # Batching to avoid huge command lines
+    success_count = 0
+    fail_count = 0
+    batch_size = 50
+    chunks = [tracks_to_add[i:i + batch_size] for i in range(0, len(tracks_to_add), batch_size)]
+    
+    for chunk in chunks:
+        # Use ID to reference playlist directly, avoiding folder complexity
+        script_commands = [
+            'tell application "Music"', 
+            f'set targetPlaylist to playlist id {playlist_id}'
+        ]
+        
+        for t in chunk:
+            # Match by Name and Artist
+            # Note: t['title'] and t['artist'] are already escaped in step 1
+            search_criteria = f'name is "{t["title"]}" and artist is "{t["artist"]}"'
+            cmd = f'try\n duplicate (every track of library playlist 1 whose {search_criteria}) to targetPlaylist\n end try'
+            script_commands.append(cmd)
+            
+        script_commands.append('end tell')
+        
+        full_script = "\n".join(script_commands)
+        
+        try:
+            subprocess.run(['osascript', '-e', full_script], check=True, capture_output=True)
+            success_count += len(chunk) # Approximation
+        except subprocess.CalledProcessError as e:
+            print(f"Error adding batch to playlist: {e.stderr}")
+            fail_count += len(chunk)
+
+    return f"Playlist '{name}' created/updated. Attempted adding {len(tracks_to_add)} tracks."
 
 if __name__ == "__main__":
     mcp.run()

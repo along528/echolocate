@@ -14,6 +14,7 @@ A FastMCP-based server that runs locally and serves data from `../crate/my_libra
 - `get_album_context(album_name)`: Get aggregated statistics (plays, tracks) for an album.
 - `get_rotation(category)`: content filtering (Heavy, Gold, Unplayed).
 - `filter_by_date_range(start_date, end_date)`: Time-based library filtering.
+- `create_playlist(name, track_ids)`: Create a new playlist (nested under "Cloud Crate") with specific tracks.
 
 ### 2. Data Ingestion (Legacy/Cloud Mode)
 - `ingest_library.py`: Uploads JSON library export to Google BigQuery.
