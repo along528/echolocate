@@ -8,17 +8,14 @@ from datetime import datetime
 mcp = FastMCP("Cloud Crate Local")
 
 # Configuration
-# Path relative to backend/ directory assuming running from project root or backend
-# Adjusted to be absolute/robust based on where we run it.
-# Let's assume running from project root.
-DATA_PATH = "crate/my_library.json"
+# Resolve absolute path to the data file based on this script's location
+SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
+# Data is in ../crate/my_library.json relative to backend/ (where this script is)
+DATA_PATH = os.path.join(SCRIPT_DIR, "..", "crate", "my_library.json")
 
 def load_library():
     if not os.path.exists(DATA_PATH):
-        # Fallback for running inside backend/
-        if os.path.exists("../crate/my_library.json"):
-            return pd.read_json("../crate/my_library.json")
-        raise FileNotFoundError(f"Could not find library at {DATA_PATH} or ../{DATA_PATH}")
+        raise FileNotFoundError(f"Could not find library at {DATA_PATH}")
     
     df = pd.read_json(DATA_PATH)
     # Ensure date column is datetime objects

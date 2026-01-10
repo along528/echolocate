@@ -69,3 +69,46 @@ cd ..
 # Ingest the real data
 python backend/ingest_library.py --input crate/my_library.json --project YOUR_PROJECT_ID
 ```
+
+### Step 7: Run Local Mode (No Cloud Required)
+If you want to use the MCP server with just your local JSON data (no BigQuery/Vertex AI):
+
+1. **Setup Python Env:**
+   ```bash
+   # Create venv (Python 3.10+ required)
+   python3 -m venv .venv
+   source .venv/bin/activate
+   pip install -r backend/requirements.txt
+   ```
+
+2. **Run Edge Tool (if not already done):**
+   ```bash
+   cd edge
+   ./build_and_run.sh
+   cd ..
+   ```
+
+3. **Start Local Server:**
+   ```bash
+   # This runs the server over stdio. 
+   # Connect this to your MCP client (e.g. Claude Desktop).
+   # Use the absolute path to your python executable if configuring an external app.
+   python backend/local_server.py
+   ```
+
+### Client Configuration (Claude Desktop)
+To use this with Claude Desktop, add the following to your `~/Library/Application Support/Claude/claude_desktop_config.json`:
+
+```json
+{
+  "mcpServers": {
+    "cloud-crate": {
+      "command": "/Users/alex.long/Projects/cloud-crate/.venv/bin/python3",
+      "args": [
+        "/Users/alex.long/Projects/cloud-crate/backend/local_server.py"
+      ]
+    }
+  }
+}
+```
+
