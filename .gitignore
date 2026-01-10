@@ -12,3 +12,6 @@ backend/*.pyc
 .build/
 *.xcodeproj
 *.xcworkspace
+
+# Virtual Env
+.venv/
