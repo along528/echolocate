@@ -1,0 +1,14 @@
+# System files
+.DS_Store
+
+# Cloud Crate Output
+crate/
+
+# Python
+backend/__pycache__/
+backend/*.pyc
+
+# Swift/Xcode
+.build/
+*.xcodeproj
+*.xcworkspace
