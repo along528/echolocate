@@ -12,7 +12,7 @@ echo "Signing app..."
 codesign -s - --entitlements entitlements.plist -f edge.app/Contents/MacOS/edge
 
 echo "Launching app..."
-open edge.app
+open -W edge.app
 
 echo "Done. Check ../crate/my_library.json for output."
 

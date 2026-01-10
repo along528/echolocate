@@ -9,7 +9,6 @@ struct TrackOutput: Codable {
     let last_played_at: String? // ISO8601
     let editorial_summary: String?
     let album_title: String?
-    let genres: [String]?
 }
 
 @main
@@ -29,7 +28,7 @@ struct EdgeCLI {
             // Fetching a limit for MVP sanity, or all if feasible.
             // Paginating through library can be slow, let's try to get a reasonable batch.
             var request = MusicLibraryRequest<Song>()
-            request.limit = 100000
+            request.limit = 100000000
             
             // Debug version
              let documentsPath = FileManager.default.urls(for: .documentDirectory, in: .userDomainMask)[0]
@@ -45,16 +44,17 @@ struct EdgeCLI {
                 // Formatting date
                 let lastPlayed: String? = song.lastPlayedDate?.ISO8601Format()
                 
-                let track = TrackOutput(
+
+                 let track = TrackOutput(
                     id: song.id.rawValue,
                     title: song.title,
                     artist_name: song.artistName,
                     play_count: song.playCount ?? 0,
                     last_played_at: lastPlayed,
                     editorial_summary: nil, // To be filled by backend LLM
-                    album_title: song.albumTitle,
-                    genres: song.genreNames
+                    album_title: song.albumTitle
                 )
+
                 output.append(track)
             }
             

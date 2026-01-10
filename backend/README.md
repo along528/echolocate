@@ -11,9 +11,7 @@ A FastMCP-based server that runs locally and serves data from `../crate/my_libra
 - `search_library(query)`: Search for tracks by title or artist.
 - `search_albums(query)`: Search for albums by title.
 - `get_track_context(track_id)`: Get detailed metadata for a specific track.
-- `get_album_context(album_name)`: Get aggregated statistics (plays, genres, tracks) for an album.
-- `search_by_genre(genre)`: Find albums matching a specific genre.
-- `find_similar_artists(artist_name)`: Discover artists with similar genre profiles.
+- `get_album_context(album_name)`: Get aggregated statistics (plays, tracks) for an album.
 - `get_rotation(category)`: content filtering (Heavy, Gold, Unplayed).
 - `filter_by_date_range(start_date, end_date)`: Time-based library filtering.
 

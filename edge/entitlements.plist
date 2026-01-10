@@ -6,5 +6,7 @@
     <true/>
     <key>com.apple.security.personal-information.music-library</key>
     <true/>
+    <key>com.apple.security.network.client</key>
+    <true/>
 </dict>
 </plist>

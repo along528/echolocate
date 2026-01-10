@@ -3,7 +3,7 @@
 This directory contains the "Edge" component of Cloud Crate: a native Swift executable that interfaces with Apple's MusicKit to export your local library metadata.
 
 ## Purpose
-The primary goal of this tool is to securely access your Apple Music library, extract relevant metadata (tracks, albums, artists, play counts, genres), and serialize it into a standard JSON format that the backend can consume.
+The primary goal of this tool is to securely access your Apple Music library, extract relevant metadata (tracks, albums, artists, play counts), and serialize it into a standard JSON format that the backend can consume.
 
 ## Structure
 - **Package.swift**: Swift Package Manager configuration.
@@ -46,4 +46,4 @@ The tool writes a JSON file to:
 - `album_title`: Album name
 - `play_count`: Total play count
 - `last_played_at`: ISO 8601 timestamp
-- `genres`: List of associated genres
+

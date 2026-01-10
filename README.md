@@ -59,6 +59,5 @@ Configure your MCP client (e.g., Claude Desktop) to run the server script.
 ## Features
 - **Semantic Search**: Find songs by lyrics or vibe (Cloud mode).
 - **Text Search**: Search artists, albums, and tracks.
-- **Contextual Awareness**: detailed play counts, dates, and genre analysis.
+- **Contextual Awareness**: detailed play counts and dates.
 - **Album aggregation**: View stats and tracks at the album level.
-- **Artist Similarity**: Discover artists with shared genres.
