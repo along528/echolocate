@@ -86,11 +86,20 @@ def search_library(query: str, limit: int = 10) -> str:
     else:
         results = matches
         
+    
     formatted = []
     for _, row in results.iterrows():
-        formatted.append(f"- {row['title']} by {row['artist_name']} (ID: {row['id']})")
+        formatted.append(f"""
+---
+Track ID: {row['id']}
+Title: {row['title']}
+Artist: {row['artist_name']}
+Album: {row['album_title']}
+Play Count: {row['play_count']}
+Last Played: {row['last_played_at']}
+""")
     
-    return "\n".join(formatted)
+    return "".join(formatted)
 
 @mcp.tool()
 def get_track_context(track_id: str) -> str:
@@ -142,8 +151,19 @@ def get_rotation(category: str) -> str:
     if results.empty:
         return "No tracks found in this category."
 
-    formatted = [f"- {row['title']} by {row['artist_name']} ({row['play_count']} plays)" for _, row in results.iterrows()]
-    return "\n".join(formatted)
+    formatted = []
+    for _, row in results.iterrows():
+        formatted.append(f"""
+---
+Track ID: {row['id']}
+Title: {row['title']}
+Artist: {row['artist_name']}
+Album: {row['album_title']}
+Play Count: {row['play_count']}
+Last Played: {row['last_played_at']}
+""")
+
+    return "".join(formatted)
 
 @mcp.tool()
 def filter_by_date_range(start_date: str = None, end_date: str = None, limit: int = 20) -> str:
@@ -188,9 +208,17 @@ def filter_by_date_range(start_date: str = None, end_date: str = None, limit: in
     formatted = []
     for _, row in results.iterrows():
         date_str = row['last_played_at'].strftime('%Y-%m-%d')
-        formatted.append(f"- {row['title']} by {row['artist_name']} (Last Played: {date_str})")
+        formatted.append(f"""
+---
+Track ID: {row['id']}
+Title: {row['title']}
+Artist: {row['artist_name']}
+Album: {row['album_title']}
+Play Count: {row['play_count']}
+Last Played: {date_str}
+""")
         
-    return "\n".join(formatted)
+    return "".join(formatted)
 
 @mcp.tool()
 def search_albums(query: str) -> str:
@@ -213,9 +241,17 @@ def search_albums(query: str) -> str:
     
     formatted = []
     for _, row in results.iterrows():
-        formatted.append(f"- {row['album_title']} by {row['artist_name']}")
+        date_str = row['last_played'].strftime('%Y-%m-%d') if pd.notnull(row['last_played']) else "Never"
+        formatted.append(f"""
+---
+Album: {row['album_title']}
+Artist: {row['artist_name']}
+Total Plays: {row['total_plays']}
+Most Recent Play: {date_str}
+Track IDs: {", ".join(row['track_ids'])}
+""")
         
-    return "\n".join(formatted)
+    return "".join(formatted)
 
 @mcp.tool()
 def get_album_context(album_name: str) -> str:
