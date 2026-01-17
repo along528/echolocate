@@ -41,7 +41,8 @@ The architecture is divided into the **Local Edge** (to interface with Apple's s
 
 * **Protocol:** Model Context Protocol (MCP).  
 * **Tools exposed to LLM:**  
-  * search\_library(query, limit): Semantic vector search.  
+  * search\_library(query, limit): Semantic vector search (Local Library).  
+  * search\_apple\_music(query, limit): Search the global Apple Music Catalog (Artists, Albums, Songs).
   * get\_track\_context(track\_id): Returns full metadata \+ "WXYC-style" summary.  
   * get\_rotation(category): Filters tracks by "Heavy," "Gold," or "Unplayed" logic.
 
@@ -62,8 +63,9 @@ The architecture is divided into the **Local Edge** (to interface with Apple's s
 * **Goal:** Turn chat conversations into actionable music.  
 * **Workflow:**  
   1. Add create\_playlist(name, track\_ids) tool to MCP.  
-  2. Implement a callback mechanism: The Cloud Run server stores a "Pending Playlist" in Firestore.  
-  3. The Local Mac Daemon polls Firestore, receives the instruction, and uses MusicKit to create the actual playlist in your Apple Music account.
+  2. **Native API Bridge**: The Python backend calls the local `edge` (Swift) CLI to perform write operations.
+  3. **MusicKit Integration**: `edge` uses Apple's native MusicKit framework (or Web API) to create playlists and add tracks silently.
+  4. **Catalog Support**: Seamlessly mixes Library tracks (UUIDs) and Catalog tracks (Store IDs).
 
 ### **Phase 3: Deep Enrichment**
 
@@ -71,7 +73,10 @@ The architecture is divided into the **Local Edge** (to interface with Apple's s
 * **Workflow:**  
   1. **Discogs Integration:** Fetch record label and "Style" tags for every album.  
   2. **Last.fm Integration:** Pull "Global Listener Tags" to understand track popularity vs. niche appeal.  
+  1. **Discogs Integration:** Fetch record label and "Style" tags for every album.
+  2. **Last.fm Integration:** Pull "Global Listener Tags" to understand track popularity vs. niche appeal.
   3. **Cross-Library Segues:** If a song in the library doesn't have a good match, suggest a "Related Catalog" track to be added to the library.
+  4. **Catalog Expansion:** Seamlessly mix "My Library" and "Apple Music" results in search.
 
 ## **5\. Data Schema (BigQuery)**
 
