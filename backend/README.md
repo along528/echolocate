@@ -14,7 +14,11 @@ A FastMCP-based server that runs locally and serves data from `../crate/my_libra
 - `get_album_context(album_name)`: Get aggregated statistics (plays, tracks) for an album.
 - `get_rotation(category)`: content filtering (Heavy, Gold, Unplayed).
 - `filter_by_date_range(start_date, end_date)`: Time-based library filtering.
-- `create_playlist(name, track_ids)`: Create a new playlist (nested under "Cloud Crate") with specific tracks.
+- `create_playlist(name, track_ids, confirm=False)`: 2-step process to create playlists.
+    1. Call with `confirm=False` (default) to get a preview.
+    2. Ask user for confirmation.
+    3. Call with `confirm=True` to execute creation in Apple Music.
+
 
 ### 2. Data Ingestion (Legacy/Cloud Mode)
 - `ingest_library.py`: Uploads JSON library export to Google BigQuery.
@@ -40,4 +44,7 @@ verification scripts are available to test features without a client.
 ```bash
 # Run album feature verification
 .venv/bin/python backend/verify_albums.py
+
+# Run playlist creation verification
+.venv/bin/python backend/verify_playlist_creation.py
 ```

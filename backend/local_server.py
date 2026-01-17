@@ -345,12 +345,20 @@ Track IDs: {", ".join(row['track_ids'])}
     return "\n".join(results)
 
 @mcp.tool()
-def create_playlist(name: str, track_ids: list[str]) -> str:
+def create_playlist(name: str, track_ids: list[str], confirm: bool = False) -> str:
     """
     Create a new playlist in Apple Music with the specified tracks.
+    
+    IMPORTANT: You MUST first call this tool with confirm=False (default) to generate a preview 
+    of the playlist. Present this preview to the user and ask for confirmation.
+    
+    Only after the user explicitly agrees should you call this tool again with confirm=True 
+    to actually create the playlist.
+
     Args:
         name: The name of the new playlist.
         track_ids: A list of track IDs to add to the playlist.
+        confirm: set to True only after user approval. Defaults to False (preview only).
     """
     if df.empty: return "Library not loaded."
     if not track_ids: return "Error: No track IDs provided."
@@ -369,10 +377,22 @@ def create_playlist(name: str, track_ids: list[str]) -> str:
         # Escape quotes for AppleScript
         title = row['title'].replace('"', '\\"')
         artist = row['artist_name'].replace('"', '\\"')
-        tracks_to_add.append({'title': title, 'artist': artist})
+        tracks_to_add.append({'title': title, 'artist': artist, 'orig_title': row['title'], 'orig_artist': row['artist_name']})
     
     if not tracks_to_add:
         return f"Error: None of the provided track IDs found in loaded library. Missing: {missing_ids}"
+        
+    # PREVIEW MODE
+    if not confirm:
+        preview_lines = [f"I will create a playlist named '{name}' with the following {len(tracks_to_add)} tracks:"]
+        for t in tracks_to_add[:20]: # Show first 20 in preview to avoid huge output
+            preview_lines.append(f"- {t['orig_title']} by {t['orig_artist']}")
+        
+        if len(tracks_to_add) > 20:
+            preview_lines.append(f"... and {len(tracks_to_add) - 20} more.")
+            
+        preview_lines.append("\nPlease ask the user if they would like to proceed. If yes, call create_playlist again with confirm=True.")
+        return "\n".join(preview_lines)
     
     print(f"Preparing to add {len(tracks_to_add)} tracks to new playlist '{name}'...")
 

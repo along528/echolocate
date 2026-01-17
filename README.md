@@ -29,6 +29,10 @@ This creates `crate/my_library.json`.
 ### 2. Run Backend Server
 Install dependencies and start the MCP server.
 
+> [!IMPORTANT]
+> You MUST use the `.venv` virtual environment for all python commands to ensure dependencies are found.
+
+
 ```bash
 # Setup Environment (if not already done)
 python3 -m venv .venv
