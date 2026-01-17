@@ -58,6 +58,46 @@ except Exception as e:
     df = pd.DataFrame()
     albums_df = pd.DataFrame()
 
+EDGE_BINARY_PATH = os.path.join(SCRIPT_DIR, "..", "edge", "edge.app", "Contents", "MacOS", "edge")
+# Fallback to using swift run if binary looks missing (or handle in invoke)
+TEMP_DIR = os.path.join(SCRIPT_DIR, "temp")
+os.makedirs(TEMP_DIR, exist_ok=True)
+
+def invoke_edge(command, args, input_json=None):
+    """
+    Invoke the edge CLI.
+    """
+    # Build command
+    # Use binary if exists, else swift run
+    if os.path.exists(EDGE_BINARY_PATH):
+        cmd = [EDGE_BINARY_PATH, command] + args
+    else:
+        # Fallback to swift run
+        # Note: This is slower
+        cmd = ["swift", "run", "--package-path", os.path.join(SCRIPT_DIR, "..", "edge"), "edge", command] + args
+        
+    print(f"Executing: {' '.join(cmd)}")
+    
+    # Handle input file
+    input_file_path = None
+    if input_json:
+        import uuid
+        input_file_path = os.path.join(TEMP_DIR, f"{uuid.uuid4()}.json")
+        with open(input_file_path, 'w') as f:
+            json.dump(input_json, f)
+        cmd.extend(["--input-file", input_file_path])
+        
+    try:
+        result = subprocess.run(cmd, check=True, capture_output=True, text=True)
+        return result.stdout
+    except subprocess.CalledProcessError as e:
+        print(f"Edge CLI Error: {e.stderr}")
+        raise e
+    finally:
+        if input_file_path and os.path.exists(input_file_path):
+            os.remove(input_file_path)
+
+
 @mcp.tool()
 def search_library(query: str, limit: int = 10) -> str:
     """
@@ -91,7 +131,7 @@ def search_library(query: str, limit: int = 10) -> str:
     for _, row in results.iterrows():
         formatted.append(f"""
 ---
-Track ID: {row['id']}
+Track ID: library:{row['id']}
 Title: {row['title']}
 Artist: {row['artist_name']}
 Album: {row['album_title']}
@@ -345,124 +385,129 @@ Track IDs: {", ".join(row['track_ids'])}
     return "\n".join(results)
 
 @mcp.tool()
+def search_apple_music(query: str, limit: int = 5) -> str:
+    """
+    Search the global Apple Music Catalog for songs.
+    Use this to find music not in the user's library.
+    Args:
+        query: Search term (e.g. "Despacito", "Taylor Swift")
+        limit: Max results (default 5)
+    """
+    try:
+        output_json = invoke_edge("search-catalog", ["--query", query, "--limit", str(limit)])
+        results = json.loads(output_json)
+        
+        if not results:
+            return "No results found in Apple Music Catalog."
+            
+        formatted = []
+        for item in results:
+            formatted.append(f"""
+---
+Track ID: catalog:{item['id']}
+Title: {item['title']}
+Artist: {item['artist']}
+Album: {item.get('album', 'Unknown')}
+""")
+        return "".join(formatted)
+            
+    except Exception as e:
+        return f"Error searching Apple Music: {e}"
+
+
+@mcp.tool()
 def create_playlist(name: str, track_ids: list[str], confirm: bool = False) -> str:
     """
     Create a new playlist in Apple Music with the specified tracks.
+    Supports both Library tracks (ID starts with 'library:') and Catalog tracks (ID starts with 'catalog:').
+    Catalog tracks will be automatically added to the library if needed.
     
-    IMPORTANT: You MUST first call this tool with confirm=False (default) to generate a preview 
-    of the playlist. Present this preview to the user and ask for confirmation.
-    
-    Only after the user explicitly agrees should you call this tool again with confirm=True 
-    to actually create the playlist.
+    IMPORTANT: You MUST first call this tool with confirm=False (default) to generate a preview.
+    Then call again with confirm=True.
 
     Args:
         name: The name of the new playlist.
-        track_ids: A list of track IDs to add to the playlist.
+        track_ids: A list of track IDs (e.g. ["library:123", "catalog:456"]).
         confirm: set to True only after user approval. Defaults to False (preview only).
     """
-    if df.empty: return "Library not loaded."
     if not track_ids: return "Error: No track IDs provided."
     
-    # 1. Resolve IDs to Metadata
-    tracks_to_add = []
-    missing_ids = []
+    # 1. Parse IDs to Type/ID and resolve Metadata
+    # Handle mixed raw IDs (legacy) and prefixed IDs
+    parsed_tracks = []
     
     for tid in track_ids:
-        # Check type
-        if tid not in df['id'].values:
-            missing_ids.append(tid)
-            continue
-            
-        row = df[df['id'] == tid].iloc[0]
-        # Escape quotes for AppleScript
-        title = row['title'].replace('"', '\\"')
-        artist = row['artist_name'].replace('"', '\\"')
-        tracks_to_add.append({'title': title, 'artist': artist, 'orig_title': row['title'], 'orig_artist': row['artist_name']})
-    
-    if not tracks_to_add:
-        return f"Error: None of the provided track IDs found in loaded library. Missing: {missing_ids}"
+        track_type = "library" # Default
+        clean_id = tid
         
+        if tid.startswith("library:"):
+            clean_id = tid.split(":", 1)[1]
+            track_type = "library"
+        elif tid.startswith("catalog:"):
+            clean_id = tid.split(":", 1)[1]
+            track_type = "catalog"
+        else:
+            # Fallback for raw IDs
+            if not df.empty and tid in df['id'].values:
+                track_type = "library"
+            else:
+                track_type = "catalog"
+        
+        # Resolve Metadata (Title/Artist)
+        title = "Unknown"
+        artist = "Unknown"
+        
+        if track_type == "library" and not df.empty:
+            row = df[df['id'] == clean_id]
+            if not row.empty:
+                title = row.iloc[0]['title']
+                artist = row.iloc[0]['artist_name']
+        
+        parsed_tracks.append({
+            "id": clean_id, 
+            "type": track_type,
+            "title": title,
+            "artist": artist
+        })
+
+    # Resolve details for preview (optional but good UI)
+    preview_details = []
+    for t in parsed_tracks:
+        if t['type'] == 'library':
+             preview_details.append(f"{t['title']} by {t['artist']} (Library)")
+        else:
+            preview_details.append(f"Catalog ID {t['id']} (Catalog - Auto-add limited)")
+            
     # PREVIEW MODE
     if not confirm:
-        preview_lines = [f"I will create a playlist named '{name}' with the following {len(tracks_to_add)} tracks:"]
-        for t in tracks_to_add[:20]: # Show first 20 in preview to avoid huge output
-            preview_lines.append(f"- {t['orig_title']} by {t['orig_artist']}")
+        preview_lines = [f"I will create a playlist named '{name}' with {len(parsed_tracks)} tracks:"]
+        for line in preview_details[:20]:
+            preview_lines.append(f"- {line}")
         
-        if len(tracks_to_add) > 20:
-            preview_lines.append(f"... and {len(tracks_to_add) - 20} more.")
+        if len(preview_details) > 20:
+            preview_lines.append(f"... and {len(preview_details) - 20} more.")
             
         preview_lines.append("\nPlease ask the user if they would like to proceed. If yes, call create_playlist again with confirm=True.")
         return "\n".join(preview_lines)
     
-    print(f"Preparing to add {len(tracks_to_add)} tracks to new playlist '{name}'...")
-
-    # 2. Build AppleScript
-    # Escape for AppleScript
-    escaped_name = name.replace('"', '\\"')
-    folder_name = "Cloud Crate"
+    # 2. Invoke Native Bridge
+    payload = {
+        "name": name,
+        "description": "Created via Cloud Crate",
+        "tracks": parsed_tracks
+    }
     
-    create_pl_script = f'''
-    tell application "Music"
-        -- Ensure folder exists
-        if not (exists folder playlist "{folder_name}") then
-            make new folder playlist with properties {{name:"{folder_name}"}}
-        end if
-        set parentFolder to folder playlist "{folder_name}"
-        
-        -- Create playlist in folder or get existing
-    # ... (inside create_pl_script)
-        if not (exists user playlist "{escaped_name}" of parentFolder) then
-            set targetPlaylist to (make new user playlist at parentFolder with properties {{name:"{escaped_name}"}})
-        else
-            set targetPlaylist to user playlist "{escaped_name}" of parentFolder
-        end if
-        return id of targetPlaylist
-    end tell
-    '''
-    
-    playlist_id = None
     try:
-        result = subprocess.run(['osascript', '-e', create_pl_script], check=True, capture_output=True, text=True)
-        playlist_id = result.stdout.strip()
-    except subprocess.CalledProcessError as e:
-        return f"Error creating playlist: {e.stderr}"
-
-    if not playlist_id:
-        return "Error: Could not retrieve playlist ID."
-
-    # 3. Add Tracks via AppleScript
-    # Batching to avoid huge command lines
-    success_count = 0
-    fail_count = 0
-    batch_size = 50
-    chunks = [tracks_to_add[i:i + batch_size] for i in range(0, len(tracks_to_add), batch_size)]
-    
-    for chunk in chunks:
-        # Use ID to reference playlist directly, avoiding folder complexity
-        script_commands = [
-            'tell application "Music"', 
-            f'set targetPlaylist to playlist id {playlist_id}'
-        ]
+        output_json = invoke_edge("create-playlist", [], input_json=payload)
+        # Parse result
+        # Expected: {"status": "success", "playlistId": "...", "addedToLibraryCount": "..."} 
+        # (Note: edge code printed raw JSON string)
+        res = json.loads(output_json)
         
-        for t in chunk:
-            # Match by Name and Artist
-            # Note: t['title'] and t['artist'] are already escaped in step 1
-            search_criteria = f'name is "{t["title"]}" and artist is "{t["artist"]}"'
-            cmd = f'try\n duplicate (every track of library playlist 1 whose {search_criteria}) to targetPlaylist\n end try'
-            script_commands.append(cmd)
-            
-        script_commands.append('end tell')
+        return f"Playlist '{name}' created successfully.\nPlaylist ID: {res.get('playlistId')}\nNew tracks added to library: {res.get('addedToLibraryCount', '0')}"
         
-        full_script = "\n".join(script_commands)
-        
-        try:
-            subprocess.run(['osascript', '-e', full_script], check=True, capture_output=True)
-            success_count += len(chunk) # Approximation
-        except subprocess.CalledProcessError as e:
-            print(f"Error adding batch to playlist: {e.stderr}")
-            fail_count += len(chunk)
-
-    return f"Playlist '{name}' created/updated. Attempted adding {len(tracks_to_add)} tracks."
+    except Exception as e:
+        return f"Error creating playlist: {e}"
 
 if __name__ == "__main__":
     mcp.run()

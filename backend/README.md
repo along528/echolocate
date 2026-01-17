@@ -14,9 +14,10 @@ A FastMCP-based server that runs locally and serves data from `../crate/my_libra
 - `get_album_context(album_name)`: Get aggregated statistics (plays, tracks) for an album.
 - `get_rotation(category)`: content filtering (Heavy, Gold, Unplayed).
 - `filter_by_date_range(start_date, end_date)`: Time-based library filtering.
+- `search_apple_music(query)`: Search the global Apple Music Catalog for songs.
 - `create_playlist(name, track_ids, confirm=False)`: 2-step process to create playlists.
-    - Uses the **Native Native Playlist Bridge** (calling the `edge` Swift CLI) to create playlists directly in Apple Music without UI automation.
-    - Supports both Local Library IDs and Global Catalog IDs.
+    - Uses the **Native Native Playlist Bridge** (calling the `edge` Swift CLI via MusicKit API) to create playlists directly in Apple Music.
+    - Supports both Local Library IDs (`library:ID`) and Global Catalog IDs (`catalog:ID`).
 
 
 ### 2. Data Ingestion (Legacy/Cloud Mode)
