@@ -1,5 +1,22 @@
 .DS_Store
-/.build
-/Packages
-/edge.app
+# Build Artifacts
+.build/
+.build-xcode/
+.build-xcode-test/
+DerivedData/
+
+# App Bundle
+edge.app/
+
+# Xcode Project User Data
+*.xcodeproj/project.xcworkspace
+*.xcodeproj/xcuserdata
+*.xcworkspace/xcuserdata
+
+# Signing and Provisioning (Optional: keep if you want to share, but usually ignored)
+*.provisionprofile
+
+# Debug/Temporary files
+*_decoded.plist
+embedded_decoded.plist
 crate/

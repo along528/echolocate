@@ -22,26 +22,34 @@ The primary goal of this tool is to provide a native bridge to Apple Music (Musi
 - Swift installed (via Xcode).
 
 **Building and Running:**
-You can use the helper script from the `edge` directory:
+You should use the helper script from the `edge` directory. This script handles building using `xcodebuild` (required for proper signing) and packaging the application.
 
 ```bash
-./build_and_run.sh
+./build.sh
 ```
 
-Or run manually with swift:
+The output application will be located at `edge/edge.app`.
 
-```bash
-swift run edge --help
-```
+### Editing in Xcode
+To edit the project in Xcode (with full IDE support):
+1. Open Xcode.
+2. Select "Open Other..." (or File > Open).
+3. Navigate to and select the `edge/Package.swift` file (or the `edge` folder).
+4. Xcode will open it as a Swift Package.
+
+**To configure Signing:**
+1. Click on the root `edge` package icon in the Project Navigator.
+2. Select the `edge` executable target in the main view.
+3. Switch to the `Signing & Capabilities` tab.
+4. Ensure your Team and Signing Certificate are selected.
 
 ### Commands
 
 #### 1. Export Library
 Exports your local library metadata to JSON.
 ```bash
-swift run edge export-library
+./edge.app/Contents/MacOS/edge export-library
 ```
-*Note: This is no longer the default command.*
 
 #### 2. Search Catalog
 Search for songs in the Apple Music Global Catalog.
