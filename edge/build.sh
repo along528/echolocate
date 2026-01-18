@@ -10,6 +10,6 @@ cp .build/debug/edge edge.app/Contents/MacOS/edge
 cp Info.plist edge.app/Contents/Info.plist
 
 echo "Signing app..."
-codesign -s - --entitlements entitlements.plist -f edge.app/Contents/MacOS/edge
+codesign -s "Apple Development: along528@bu.edu (HSVR2RH68L)" --entitlements entitlements.plist -f edge.app/Contents/MacOS/edge
 
 echo "Build complete."

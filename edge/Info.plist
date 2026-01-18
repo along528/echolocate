@@ -3,7 +3,7 @@
 <plist version="1.0">
 <dict>
     <key>CFBundleIdentifier</key>
-    <string>com.cloudcrate.edge</string>
+    <string>com.along528.cloudcrate</string>
     <key>CFBundleName</key>
     <string>edge</string>
     <key>CFBundleExecutable</key>
