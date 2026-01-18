@@ -525,6 +525,73 @@ Album: {item.get('album', 'Unknown')}
     except Exception as e:
          return f"Error fetching album tracks: {e}"
 
+@mcp.tool()
+def search_record_label(name: str, limit: int = 5) -> str:
+    """
+    Search for a record label.
+    Args:
+        name: Name of the record label (e.g. "Def Jam")
+        limit: Max results
+    """
+    try:
+        output_json = invoke_edge("search-catalog", ["--query", name, "--limit", str(limit), "--types", "labels"])
+        results = json.loads(output_json)
+        
+        if not results:
+            return "No labels found."
+            
+        formatted = []
+        for item in results:
+            formatted.append(f"""
+---
+Label ID: catalog:{item['id']}
+Name: {item['title']}
+""")
+        return "".join(formatted)
+            
+    except Exception as e:
+        return f"Error searching record labels: {e}"
+
+@mcp.tool()
+def get_record_label_releases(label_name: str, sort: str = 'latest', limit: int = 20) -> str:
+    """
+    Get releases (albums) associated with a record label.
+    Args:
+        label_name: Name of the record label
+        sort: 'latest' or 'top' (default 'latest')
+        limit: Max albums to return
+    """
+    try:
+        # 1. Search for Label
+        search_output = invoke_edge("search-catalog", ["--query", label_name, "--limit", "1", "--types", "labels"])
+        search_results = json.loads(search_output)
+        
+        if not search_results:
+            return f"Label '{label_name}' not found."
+            
+        label = search_results[0]
+        label_id = label['id']
+        
+        # 2. Get Releases
+        resource_type = "record-label-top" if sort == 'top' else "record-label-latest"
+        
+        resource_output = invoke_edge("get-catalog-resource", ["--id", label_id, "--type", resource_type, "--limit", str(limit)])
+        albums = json.loads(resource_output)
+        
+        formatted = [f"{sort.capitalize()} releases for {label['title']}:"]
+        for item in albums:
+             formatted.append(f"""
+---
+Album ID: catalog:{item['id']}
+Title: {item['title']}
+Artist: {item['artist']}
+""")
+            
+        return "".join(formatted)
+
+    except Exception as e:
+        return f"Error fetching label releases: {e}"
+
 
 @mcp.tool()
 def create_playlist(name: str, track_ids: list[str], confirm: bool = False) -> str:

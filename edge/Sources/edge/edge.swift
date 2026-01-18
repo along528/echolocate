@@ -107,6 +107,7 @@ struct SearchCatalog: AsyncParsableCommand {
         if typeStrings.contains("songs") { searchTypes.append(Song.self) }
         if typeStrings.contains("artists") { searchTypes.append(Artist.self) }
         if typeStrings.contains("albums") { searchTypes.append(Album.self) }
+        if typeStrings.contains("labels") { searchTypes.append(RecordLabel.self) }
         
         if searchTypes.isEmpty { searchTypes = [Song.self] }
 
@@ -145,6 +146,17 @@ struct SearchCatalog: AsyncParsableCommand {
                     title: album.title,
                     artist: album.artistName,
                     album: album.title
+                ))
+            }
+        }
+        
+        if searchTypes.contains(where: { $0 == RecordLabel.self }) {
+            for label in response.recordLabels {
+                results.append(SearchResult(
+                    id: label.id.rawValue,
+                    title: label.name,
+                    artist: "Record Label", // Placeholder
+                    album: nil
                 ))
             }
         }
@@ -226,6 +238,38 @@ struct GetCatalogResource: AsyncParsableCommand {
                     }
                 }
             }
+        } else if type == "record-label-latest" {
+             var request = MusicCatalogResourceRequest<RecordLabel>(matching: \.id, equalTo: MusicItemID(id))
+             request.properties = [.latestReleases]
+             request.limit = limit
+             let response = try await request.response()
+             
+             if let label = response.items.first, let albums = label.latestReleases {
+                 for album in albums {
+                      results.append(SearchResult(
+                         id: album.id.rawValue,
+                         title: album.title,
+                         artist: album.artistName,
+                         album: album.title
+                     ))
+                 }
+             }
+        } else if type == "record-label-top" {
+             var request = MusicCatalogResourceRequest<RecordLabel>(matching: \.id, equalTo: MusicItemID(id))
+             request.properties = [.topReleases]
+             request.limit = limit
+             let response = try await request.response()
+             
+             if let label = response.items.first, let albums = label.topReleases {
+                 for album in albums {
+                      results.append(SearchResult(
+                         id: album.id.rawValue,
+                         title: album.title,
+                         artist: album.artistName,
+                         album: album.title
+                     ))
+                 }
+             }
         } else if type == "song" {
              var request = MusicCatalogResourceRequest<Song>(matching: \.id, equalTo: MusicItemID(id))
              let response = try await request.response()

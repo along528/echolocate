@@ -77,6 +77,12 @@ Fetch details for a specific catalog resource.
 
 # Get Album Tracks
 ./edge.app/Contents/MacOS/edge get-catalog-resource --id <ALBUM_ID> --type album
+
+# Get Record Label Latest Releases
+./edge.app/Contents/MacOS/edge get-catalog-resource --id <LABEL_ID> --type record-label-latest
+
+# Get Record Label Top Releases
+./edge.app/Contents/MacOS/edge get-catalog-resource --id <LABEL_ID> --type record-label-top
 ```
 
 #### 4. Create Playlist
