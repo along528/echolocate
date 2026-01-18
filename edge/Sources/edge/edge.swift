@@ -334,7 +334,10 @@ struct CreatePlaylist: AsyncParsableCommand {
                let firstItem = dataArray.first,
                let id = firstItem["id"] as? String {
                 
-                let output = ["status": "success", "playlistId": id, "addedToLibraryCount": "0"]
+                // Count catalog tracks from input
+                let catalogCount = input.tracks.filter { $0.type == "catalog" || (!$0.type.isEmpty && $0.type != "library" && !$0.id.starts(with: "i.")) }.count
+                
+                let output = ["status": "success", "playlistId": id, "addedToLibraryCount": "\(catalogCount)"]
                 let outputJson = try JSONEncoder().encode(output)
                 print(String(data: outputJson, encoding: .utf8)!)
                 
