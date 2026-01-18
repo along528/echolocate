@@ -54,13 +54,13 @@ Exports your local library metadata to JSON.
 #### 2. Search Catalog
 Search for songs in the Apple Music Global Catalog.
 ```bash
-swift run edge search-catalog --query "Taylor Swift" --limit 5
+./edge.app/Contents/MacOS/edge search-catalog --query "Taylor Swift" --limit 5
 ```
 
 #### 3. Create Playlist
 Creates a playlist from a JSON definition file.
 ```bash
-swift run edge create-playlist --input-file input.json
+./edge.app/Contents/MacOS/edge create-playlist --input-file input.json
 ```
 
 **Example `input.json`:**

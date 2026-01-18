@@ -21,7 +21,7 @@ Run the Swift exporter to generate your library snapshot.
 
 ```bash
 cd edge
-./build_and_run.sh
+./build.sh
 cd ..
 ```
 This creates `crate/my_library.json`.

@@ -96,7 +96,14 @@ The architecture is divided into the **Local Edge** (to interface with Apple's s
 * **Token Management:** Apple Music User Tokens stored in macOS Keychain, never in the cloud DB.  
 * **Access Control:** The MCP server will be protected via an API Key or IAP (Identity-Aware Proxy) to ensure only you can query your library.
 
-## **7\. Next Steps**
+## **8. Known Gaps & Constraints**
+
+*   **Entitlements & Distribution:** The `edge` CLI currently operates in a non-sandboxed environment relying on local TCC permissions (via `com.apple.security.get-task-allow`).
+    *   **Gap:** It lacks the `com.apple.developer.music-kit` entitlement required for App Store distribution because that requires a restricted Provisioning Profile.
+    *   **Impact:** The tool cannot be distributed via the Mac App Store and relies on stable local Developer Identity signing to maintain TCC permission persistence.
+    *   **TODO:** Investigate acquiring a valid Distribution Profile with MusicKit entitlements if wider distribution is eventually required.
+
+## **9. Next Steps**
 
 1. **Initialize Git Repo:** Set up a monorepo with /edge (Kotlin/Swift) and /backend (Python).  
 2. **GCP Setup:** Enable BigQuery and Vertex AI APIs.  
