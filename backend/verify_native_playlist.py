@@ -17,8 +17,8 @@ def test_native_playlist():
     # 1. Library Track (assuming one exists)
     lib_id = "i.QXkvxtpV370" # From verify_playlist_creation.py
     
-    # 2. Catalog Track (Dummy ID)
-    cat_id = "12345678"
+    # 2. Catalog Track (Anti-Hero by Taylor Swift)
+    cat_id = "1649434293"
     
     track_ids = [f"library:{lib_id}", f"catalog:{cat_id}"]
     playlist_name = "Native Verification Playlist"

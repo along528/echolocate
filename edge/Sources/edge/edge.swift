@@ -140,6 +140,11 @@ struct CreatePlaylist: AsyncParsableCommand {
         
         printToStderr("Creating playlist '\(input.name)' via Apple Music API (MusicKit)...")
         
+        // 0. Ensure "Cloud Crate" Folder Exists
+        let folderId = try await getOrCreateFolder(name: "Cloud Crate")
+        printToStderr("Using Folder ID: \(folderId)")
+
+        
         // 1. Prepare Track Relationship Data
         var tracksData: [[String: String]] = []
         for track in input.tracks {
@@ -159,9 +164,18 @@ struct CreatePlaylist: AsyncParsableCommand {
             "description": input.description ?? "Created via Cloud Crate"
         ]
         
+        
         let relationships: [String: Any] = [
             "tracks": [
                 "data": tracksData
+            ],
+            "parent": [
+                "data": [
+                    [
+                        "id": folderId,
+                        "type": "library-playlist-folders"
+                    ]
+                ]
             ]
         ]
         
@@ -205,12 +219,60 @@ struct CreatePlaylist: AsyncParsableCommand {
             
         } catch {
             printToStderr("Error creating playlist: \(error)")
-            // Decode error response if possible
             if let musicError = error as? MusicDataRequest.Error {
                  printToStderr("Status Code: \(musicError.status)")
             }
             throw ExitCode(1)
         }
+    }
+    
+    // MARK: - Folder Management
+    func getOrCreateFolder(name: String) async throws -> String {
+        // 1. Search for existing folder
+        // Only way is to fetch all folders and filter? Or is there a search?
+        // Let's fetch top-level folders.
+        let url = URL(string: "https://api.music.apple.com/v1/me/library/playlist-folders")!
+        let request = MusicDataRequest(urlRequest: URLRequest(url: url))
+        let response = try await request.response()
+        
+        if let json = try JSONSerialization.jsonObject(with: response.data) as? [String: Any],
+           let data = json["data"] as? [[String: Any]] {
+            
+            for item in data {
+                 if let attributes = item["attributes"] as? [String: Any],
+                    let folderName = attributes["name"] as? String,
+                    folderName == name,
+                    let id = item["id"] as? String {
+                     return id
+                 }
+            }
+        }
+        
+        // 2. Create if not found
+        printToStderr("Folder '\(name)' not found. Creating...")
+        let createUrl = URL(string: "https://api.music.apple.com/v1/me/library/playlist-folders")!
+        var urlRequest = URLRequest(url: createUrl)
+        urlRequest.httpMethod = "POST"
+        
+        let payload: [String: Any] = [
+            "attributes": [
+                "name": name,
+                "description": "Folder for Cloud Crate playlists"
+            ]
+        ]
+        urlRequest.httpBody = try JSONSerialization.data(withJSONObject: payload)
+        
+        let createRequest = MusicDataRequest(urlRequest: urlRequest)
+        let createResponse = try await createRequest.response()
+        
+        if let json = try JSONSerialization.jsonObject(with: createResponse.data) as? [String: Any],
+           let data = json["data"] as? [[String: Any]],
+           let first = data.first,
+           let id = first["id"] as? String {
+            return id
+        }
+        
+        throw NSError(domain: "EdgeCLI", code: 1, userInfo: [NSLocalizedDescriptionKey: "Failed to create folder."])
     }
 }
 // Remove runAppleScript helper if no longer used, or keep for potential fallbacks? 
