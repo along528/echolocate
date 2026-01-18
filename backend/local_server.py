@@ -394,7 +394,7 @@ def search_apple_music(query: str, limit: int = 5) -> str:
         limit: Max results (default 5)
     """
     try:
-        output_json = invoke_edge("search-catalog", ["--query", query, "--limit", str(limit)])
+        output_json = invoke_edge("search-catalog", ["--query", query, "--limit", str(limit), "--types", "songs"])
         results = json.loads(output_json)
         
         if not results:
@@ -413,6 +413,117 @@ Album: {item.get('album', 'Unknown')}
             
     except Exception as e:
         return f"Error searching Apple Music: {e}"
+
+@mcp.tool()
+def search_artist_top_songs(artist_name: str, limit: int = 5) -> str:
+    """
+    Search for an artist in Apple Music Catalog and get their top songs.
+    Args:
+        artist_name: Name of the artist (e.g. "The Beatles")
+        limit: Number of top songs to return.
+    """
+    try:
+        # 1. Search for Artist
+        search_output = invoke_edge("search-catalog", ["--query", artist_name, "--limit", "1", "--types", "artists"])
+        search_results = json.loads(search_output)
+        
+        if not search_results:
+            return f"Artist '{artist_name}' not found in catalog."
+            
+        artist = search_results[0]
+        artist_id = artist['id']
+        
+        # 2. Get Top Songs
+        resource_output = invoke_edge("get-catalog-resource", ["--id", artist_id, "--type", "artist", "--limit", str(limit)])
+        songs = json.loads(resource_output)
+        
+        formatted = [f"Top songs for {artist['title']}:"]
+        for item in songs:
+             formatted.append(f"""
+---
+Track ID: catalog:{item['id']}
+Title: {item['title']}
+Artist: {item['artist']}
+Album: {item.get('album', 'Unknown')}
+""")
+        return "".join(formatted)
+
+    except Exception as e:
+         return f"Error fetching artist top songs: {e}"
+
+@mcp.tool()
+def search_artist_top_albums(artist_name: str, limit: int = 5) -> str:
+    """
+    Search for an artist in Apple Music Catalog and get their top albums.
+    Args:
+        artist_name: Name of the artist
+        limit: Number of albums to return.
+    """
+    try:
+        # 1. Search for Artist
+        search_output = invoke_edge("search-catalog", ["--query", artist_name, "--limit", "1", "--types", "artists"])
+        search_results = json.loads(search_output)
+        
+        if not search_results:
+            return f"Artist '{artist_name}' not found in catalog."
+            
+        artist = search_results[0]
+        artist_id = artist['id']
+        
+        # 2. Get Top Albums
+        resource_output = invoke_edge("get-catalog-resource", ["--id", artist_id, "--type", "artist-albums", "--limit", str(limit)])
+        albums = json.loads(resource_output)
+        
+        formatted = [f"Top albums for {artist['title']}:"]
+        for item in albums:
+             formatted.append(f"""
+---
+Album ID: catalog:{item['id']}
+Title: {item['title']}
+Artist: {item['artist']}
+""")
+        return "".join(formatted)
+
+    except Exception as e:
+         return f"Error fetching artist top albums: {e}"
+
+@mcp.tool()
+def search_album_tracks(album_name: str, artist_name: str = "") -> str:
+    """
+    Search for an album in Apple Music Catalog and get its tracks.
+    Args:
+        album_name: Name of the album
+        artist_name: Optional artist name to refine search
+    """
+    try:
+        query = f"{album_name} {artist_name}".strip()
+        # 1. Search for Album
+        search_output = invoke_edge("search-catalog", ["--query", query, "--limit", "1", "--types", "albums"])
+        search_results = json.loads(search_output)
+        
+        if not search_results:
+            return f"Album '{album_name}' not found in catalog."
+            
+        album = search_results[0]
+        album_id = album['id']
+        
+        # 2. Get Tracks
+        resource_output = invoke_edge("get-catalog-resource", ["--id", album_id, "--type", "album"])
+        tracks = json.loads(resource_output)
+        
+        formatted = [f"Tracks for album '{album['title']}' by {album['artist']}:"]
+        for item in tracks:
+             formatted.append(f"""
+---
+Track ID: catalog:{item['id']}
+Title: {item['title']}
+Artist: {item['artist']}
+Album: {item.get('album', 'Unknown')}
+""")
+        return "".join(formatted)
+
+    except Exception as e:
+         return f"Error fetching album tracks: {e}"
 
 
 @mcp.tool()

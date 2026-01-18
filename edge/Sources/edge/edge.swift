@@ -38,7 +38,7 @@ struct TrackInput: Codable {
 struct EdgeCLI: AsyncParsableCommand {
     static let configuration = CommandConfiguration(
         abstract: "Cloud Crate Edge Interface",
-        subcommands: [ExportLibrary.self, CreatePlaylist.self, SearchCatalog.self]
+        subcommands: [ExportLibrary.self, CreatePlaylist.self, SearchCatalog.self, GetCatalogResource.self]
         // No default subcommand to avoid expensive export on accidental run
     )
 }
@@ -90,6 +90,9 @@ struct SearchCatalog: AsyncParsableCommand {
     
     @Option(name: .long, help: "Max results")
     var limit: Int = 5
+    
+    @Option(name: .long, help: "Types to search (songs, artists, albums)")
+    var types: String = "songs"
 
     func run() async throws {
         let status = await MusicAuthorization.request()
@@ -97,20 +100,144 @@ struct SearchCatalog: AsyncParsableCommand {
             printToStderr("Error: MusicKit authorization failed.")
             throw ExitCode(1)
         }
+        
+        var searchTypes: [MusicCatalogSearchable.Type] = []
+        let typeStrings = types.split(separator: ",").map { $0.trimmingCharacters(in: .whitespaces) }
+        
+        if typeStrings.contains("songs") { searchTypes.append(Song.self) }
+        if typeStrings.contains("artists") { searchTypes.append(Artist.self) }
+        if typeStrings.contains("albums") { searchTypes.append(Album.self) }
+        
+        if searchTypes.isEmpty { searchTypes = [Song.self] }
 
-        var request = MusicCatalogSearchRequest(term: query, types: [Song.self])
+        var request = MusicCatalogSearchRequest(term: query, types: searchTypes)
         request.limit = limit
         let response = try await request.response()
         
         var results: [SearchResult] = []
-        let songs = response.songs
-        for song in songs {
-            results.append(SearchResult(
-                id: song.id.rawValue, 
-                title: song.title, 
-                artist: song.artistName, 
-                album: song.albumTitle
-            ))
+        
+        if searchTypes.contains(where: { $0 == Song.self }) {
+            for song in response.songs {
+                results.append(SearchResult(
+                    id: song.id.rawValue, 
+                    title: song.title, 
+                    artist: song.artistName, 
+                    album: song.albumTitle
+                ))
+            }
+        }
+        
+        if searchTypes.contains(where: { $0 == Artist.self }) {
+            for artist in response.artists {
+                results.append(SearchResult(
+                    id: artist.id.rawValue,
+                    title: artist.name,
+                    artist: artist.name,
+                    album: nil
+                ))
+            }
+        }
+        
+        if searchTypes.contains(where: { $0 == Album.self }) {
+            for album in response.albums {
+                results.append(SearchResult(
+                    id: album.id.rawValue,
+                    title: album.title,
+                    artist: album.artistName,
+                    album: album.title
+                ))
+            }
+        }
+        
+        let encoder = JSONEncoder()
+        encoder.outputFormatting = .prettyPrinted
+        let data = try encoder.encode(results)
+        print(String(data: data, encoding: .utf8)!)
+    }
+}
+
+struct GetCatalogResource: AsyncParsableCommand {
+    static let configuration = CommandConfiguration(abstract: "Get details for a catalog resource (artist/album)")
+    
+    @Option(name: .long, help: "Resource ID")
+    var id: String
+    
+    @Option(name: .long, help: "Resource Type (artist, album, song)")
+    var type: String
+    
+    @Option(name: .long, help: "Limit for tracks/songs")
+    var limit: Int = 5
+    
+    func run() async throws {
+        let status = await MusicAuthorization.request()
+        guard status == .authorized else {
+            printToStderr("Error: MusicKit authorization failed.")
+            throw ExitCode(1)
+        }
+        
+        var results: [SearchResult] = []
+        
+        if type == "artist" {
+            var request = MusicCatalogResourceRequest<Artist>(matching: \.id, equalTo: MusicItemID(id))
+            request.properties = [.topSongs]
+            request.limit = limit
+            let response = try await request.response()
+            
+            if let artist = response.items.first, let topSongs = artist.topSongs {
+                for song in topSongs {
+                    results.append(SearchResult(
+                        id: song.id.rawValue,
+                        title: song.title,
+                        artist: song.artistName,
+                        album: song.albumTitle
+                    ))
+                }
+            }
+        } else if type == "artist-albums" {
+             var request = MusicCatalogResourceRequest<Artist>(matching: \.id, equalTo: MusicItemID(id))
+             request.properties = [.albums]
+             request.limit = limit
+             let response = try await request.response()
+             
+             if let artist = response.items.first, let albums = artist.albums {
+                 for album in albums {
+                      results.append(SearchResult(
+                         id: album.id.rawValue,
+                         title: album.title,
+                         artist: album.artistName,
+                         album: album.title
+                     ))
+                 }
+             }
+        } else if type == "album" {
+            var request = MusicCatalogResourceRequest<Album>(matching: \.id, equalTo: MusicItemID(id))
+            request.properties = [.tracks]
+            let response = try await request.response()
+            
+            if let album = response.items.first, let tracks = album.tracks {
+                for track in tracks {
+                    if case let .song(song) = track {
+                         results.append(SearchResult(
+                            id: song.id.rawValue,
+                            title: song.title,
+                            artist: song.artistName,
+                            album: song.albumTitle
+                        ))
+                    }
+                }
+            }
+        } else if type == "song" {
+             var request = MusicCatalogResourceRequest<Song>(matching: \.id, equalTo: MusicItemID(id))
+             let response = try await request.response()
+             
+             if let song = response.items.first {
+                 results.append(SearchResult(
+                    id: song.id.rawValue,
+                    title: song.title,
+                    artist: song.artistName,
+                    album: song.albumTitle
+                ))
+             }
         }
         
         let encoder = JSONEncoder()

@@ -52,12 +52,34 @@ Exports your local library metadata to JSON.
 ```
 
 #### 2. Search Catalog
-Search for songs in the Apple Music Global Catalog.
+Search for resources in the Apple Music Global Catalog.
 ```bash
+# Search for songs (default)
 ./edge.app/Contents/MacOS/edge search-catalog --query "Taylor Swift" --limit 5
+
+# Search for artists
+./edge.app/Contents/MacOS/edge search-catalog --query "Taylor Swift" --types artists --limit 1
+
+# Search for albums
+./edge.app/Contents/MacOS/edge search-catalog --query "1989" --types albums
 ```
 
-#### 3. Create Playlist
+#### 3. Get Catalog Resource
+Fetch details for a specific catalog resource.
+- **Artists**: Returns top songs.
+- **Albums**: Returns tracks.
+```bash
+# Get Artist Top Songs
+./edge.app/Contents/MacOS/edge get-catalog-resource --id <ARTIST_ID> --type artist
+
+# Get Artist Top Albums
+./edge.app/Contents/MacOS/edge get-catalog-resource --id <ARTIST_ID> --type artist-albums
+
+# Get Album Tracks
+./edge.app/Contents/MacOS/edge get-catalog-resource --id <ALBUM_ID> --type album
+```
+
+#### 4. Create Playlist
 Creates a playlist from a JSON definition file.
 ```bash
 ./edge.app/Contents/MacOS/edge create-playlist --input-file input.json

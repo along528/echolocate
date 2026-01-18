@@ -62,7 +62,7 @@ Configure your MCP client (e.g., Claude Desktop) to run the server script.
 
 ## Features
 - **Semantic Search**: Find songs by lyrics or vibe (Cloud mode).
-- **Text Search**: Search artists, albums, and tracks.
+- **Text Search**: Search library and Apple Music Catalog for artists, albums, and tracks.
 - **Contextual Awareness**: detailed play counts and dates.
 - **Album aggregation**: View stats and tracks at the album level.
 - **Playlist Management**: Create new playlists from your library directly in Apple Music via Native APIs.
