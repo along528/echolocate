@@ -18,6 +18,17 @@ struct SearchResult: Codable {
     let title: String
     let artist: String
     let album: String?
+    let recordLabelName: String?
+    let recordLabelId: String?
+    
+    init(id: String, title: String, artist: String, album: String?, recordLabelName: String? = nil, recordLabelId: String? = nil) {
+        self.id = id
+        self.title = title
+        self.artist = artist
+        self.album = album
+        self.recordLabelName = recordLabelName
+        self.recordLabelId = recordLabelId
+    }
 }
 
 struct PlaylistInput: Codable {
@@ -274,6 +285,71 @@ struct GetCatalogResource: AsyncParsableCommand {
                     }
                 }
             }
+        } else if type == "album-details" {
+            // 1. Fetch Basic Album Info (Title, Artist)
+            var albumRequest = MusicCatalogResourceRequest<Album>(matching: \.id, equalTo: MusicItemID(id))
+            var title = "Unknown"
+            var artist_name = "Unknown"
+            var album_title = "Unknown"
+            
+            do {
+                let albumResponse = try await albumRequest.response()
+                if let album = albumResponse.items.first {
+                    title = album.title
+                    artist_name = album.artistName
+                    album_title = album.title
+                }
+            } catch {
+                printToStderr("Debug: Failed to fetch album basic info: \(error)")
+            }
+
+            // 2. Fetch 'record-labels' Relationship via ?include
+            var labelName: String? = nil
+            var labelId: String? = nil
+            
+            do {
+                let storefront = try await MusicDataRequest.currentCountryCode
+                let url = URL(string: "https://api.music.apple.com/v1/catalog/\(storefront)/albums/\(id)?include=record-labels")!
+                let dataRequest = MusicDataRequest(urlRequest: URLRequest(url: url))
+                let dataResponse = try await dataRequest.response()
+                
+                if let json = try JSONSerialization.jsonObject(with: dataResponse.data) as? [String: Any] {
+                    if let data = json["data"] as? [[String: Any]],
+                       let albumData = data.first {
+                        
+                        // Check attributes for 'recordLabel' string (fallback or primary name)
+                        if let attributes = albumData["attributes"] as? [String: Any] {
+                            if let nameFromAttr = attributes["recordLabel"] as? String {
+                                labelName = nameFromAttr
+                            }
+                        }
+                        
+                        // Try to get relationship for ID and canonical name
+                        if let relationships = albumData["relationships"] as? [String: Any],
+                           let labelsRel = relationships["record-labels"] as? [String: Any],
+                           let labelsData = labelsRel["data"] as? [[String: Any]],
+                           let firstLabel = labelsData.first,
+                           let lAttributes = firstLabel["attributes"] as? [String: Any] {
+                            
+                            labelName = lAttributes["name"] as? String
+                            labelId = firstLabel["id"] as? String
+                        }
+                    }
+                }
+            } catch {
+                 // Ignore errors for record label fetch to return partial results
+                 // printToStderr("Debug: Failed to fetch record-labels: \(error)")
+            }
+            
+            // 3. Return Combined Result
+            results.append(SearchResult(
+                id: id,
+                title: title,
+                artist: artist_name,
+                album: album_title,
+                recordLabelName: labelName,
+                recordLabelId: labelId
+            ))
         } else if type == "record-label-latest" {
              var request = MusicCatalogResourceRequest<RecordLabel>(matching: \.id, equalTo: MusicItemID(id))
              request.properties = [.latestReleases]

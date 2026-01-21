@@ -507,11 +507,25 @@ def search_album_tracks(album_name: str, artist_name: str = "") -> str:
         album = search_results[0]
         album_id = album['id']
         
+        # 1.5 Get Album Details for Record Label
+        label_info = ""
+        try:
+            details_out = invoke_edge("get-catalog-resource", ["--id", album_id, "--type", "album-details"])
+            details = json.loads(details_out)
+            if details:
+                d = details[0]
+                if d.get('recordLabelName'):
+                    label_info = f"\nRecord Label: {d['recordLabelName']}"
+                    if d.get('recordLabelId'):
+                        label_info += f" (ID: catalog:{d['recordLabelId']})"
+        except Exception as e:
+            print(f"Warning: Failed to fetch album details: {e}")
+
         # 2. Get Tracks
         resource_output = invoke_edge("get-catalog-resource", ["--id", album_id, "--type", "album"])
         tracks = json.loads(resource_output)
         
-        formatted = [f"Tracks for album '{album['title']}' by {album['artist']}:"]
+        formatted = [f"Tracks for album '{album['title']}' by {album['artist']}:{label_info}"]
         for item in tracks:
              formatted.append(f"""
 ---
@@ -524,6 +538,40 @@ Album: {item.get('album', 'Unknown')}
 
     except Exception as e:
          return f"Error fetching album tracks: {e}"
+
+@mcp.tool()
+def get_album_details(album_id: str) -> str:
+    """
+    Get detailed information about an album, including Record Label.
+    Args:
+        album_id: The catalog ID of the album.
+    """
+    try:
+        # Handle prefix
+        if album_id.startswith("catalog:"):
+            album_id = album_id.split(":", 1)[1]
+            
+        output = invoke_edge("get-catalog-resource", ["--id", album_id, "--type", "album-details"])
+        results = json.loads(output)
+        
+        if not results:
+            return "Album details not found."
+            
+        album = results[0]
+        label_info = ""
+        if album.get('recordLabelName'):
+             label_info = f"\nRecord Label: {album['recordLabelName']}"
+             if album.get('recordLabelId'):
+                 label_info += f" (ID: catalog:{album['recordLabelId']})"
+        
+        return f"""
+---
+Album ID: catalog:{album['id']}
+Title: {album['title']}
+Artist: {album['artist']}{label_info}
+"""
+    except Exception as e:
+        return f"Error fetching album details: {e}"
 
 @mcp.tool()
 def search_record_label(name: str, limit: int = 5) -> str:
