@@ -38,7 +38,7 @@ struct TrackInput: Codable {
 struct EdgeCLI: AsyncParsableCommand {
     static let configuration = CommandConfiguration(
         abstract: "Cloud Crate Edge Interface",
-        subcommands: [ExportLibrary.self, CreatePlaylist.self, SearchCatalog.self, GetCatalogResource.self]
+        subcommands: [ExportLibrary.self, CreatePlaylist.self, SearchCatalog.self, GetCatalogResource.self, GetCatalogCharts.self]
         // No default subcommand to avoid expensive export on accidental run
     )
 }
@@ -109,55 +109,91 @@ struct SearchCatalog: AsyncParsableCommand {
         if typeStrings.contains("albums") { searchTypes.append(Album.self) }
         if typeStrings.contains("labels") { searchTypes.append(RecordLabel.self) }
         
-        if searchTypes.isEmpty { searchTypes = [Song.self] }
+        if searchTypes.isEmpty && !typeStrings.contains("genres") { searchTypes = [Song.self] }
 
-        var request = MusicCatalogSearchRequest(term: query, types: searchTypes)
-        request.limit = limit
-        let response = try await request.response()
-        
         var results: [SearchResult] = []
-        
-        if searchTypes.contains(where: { $0 == Song.self }) {
-            for song in response.songs {
-                results.append(SearchResult(
-                    id: song.id.rawValue, 
-                    title: song.title, 
-                    artist: song.artistName, 
-                    album: song.albumTitle
-                ))
+
+        // Standard MusicKit Search
+        if !searchTypes.isEmpty {
+            var request = MusicCatalogSearchRequest(term: query, types: searchTypes)
+            request.limit = limit
+            let response = try await request.response()
+            
+            if searchTypes.contains(where: { $0 == Song.self }) {
+                for song in response.songs {
+                    results.append(SearchResult(
+                        id: song.id.rawValue, 
+                        title: song.title, 
+                        artist: song.artistName, 
+                        album: song.albumTitle
+                    ))
+                }
+            }
+            
+            if searchTypes.contains(where: { $0 == Artist.self }) {
+                for artist in response.artists {
+                    results.append(SearchResult(
+                        id: artist.id.rawValue,
+                        title: artist.name,
+                        artist: artist.name,
+                        album: nil
+                    ))
+                }
+            }
+            
+            if searchTypes.contains(where: { $0 == Album.self }) {
+                for album in response.albums {
+                    results.append(SearchResult(
+                        id: album.id.rawValue,
+                        title: album.title,
+                        artist: album.artistName,
+                        album: album.title
+                    ))
+                }
+            }
+            
+            if searchTypes.contains(where: { $0 == RecordLabel.self }) {
+                for label in response.recordLabels {
+                    results.append(SearchResult(
+                        id: label.id.rawValue,
+                        title: label.name,
+                        artist: "Record Label", 
+                        album: nil
+                    ))
+                }
             }
         }
         
-        if searchTypes.contains(where: { $0 == Artist.self }) {
-            for artist in response.artists {
-                results.append(SearchResult(
-                    id: artist.id.rawValue,
-                    title: artist.name,
-                    artist: artist.name,
-                    album: nil
-                ))
-            }
-        }
-        
-        if searchTypes.contains(where: { $0 == Album.self }) {
-            for album in response.albums {
-                results.append(SearchResult(
-                    id: album.id.rawValue,
-                    title: album.title,
-                    artist: album.artistName,
-                    album: album.title
-                ))
-            }
-        }
-        
-        if searchTypes.contains(where: { $0 == RecordLabel.self }) {
-            for label in response.recordLabels {
-                results.append(SearchResult(
-                    id: label.id.rawValue,
-                    title: label.name,
-                    artist: "Record Label", // Placeholder
-                    album: nil
-                ))
+        // Manual Genre Search: Fetch all genres and filter locally
+        if typeStrings.contains("genres") {
+            let storefront = try await MusicDataRequest.currentCountryCode
+            let url = URL(string: "https://api.music.apple.com/v1/catalog/\(storefront)/genres")!
+            let dataRequest = MusicDataRequest(urlRequest: URLRequest(url: url))
+            let dataResponse = try await dataRequest.response()
+            
+            if let json = try JSONSerialization.jsonObject(with: dataResponse.data) as? [String: Any],
+               let dataArray = json["data"] as? [[String: Any]] {
+                
+                let lowerQuery = query.lowercased()
+                
+                // Helper to process genres recursively (if simple flattening is needed)
+                // For now, just top level to avoid complexity
+                for item in dataArray {
+                    if let id = item["id"] as? String,
+                       let attributes = item["attributes"] as? [String: Any],
+                       let name = attributes["name"] as? String {
+                        
+                        // Simple substring match
+                        if name.lowercased().contains(lowerQuery) {
+                            results.append(SearchResult(
+                                id: id,
+                                title: name,
+                                artist: "Genre",
+                                album: nil
+                            ))
+                        }
+                    }
+                }
             }
         }
         
@@ -282,6 +318,140 @@ struct GetCatalogResource: AsyncParsableCommand {
                     album: song.albumTitle
                 ))
              }
+        } else if type == "song-genres" {
+             var request = MusicCatalogResourceRequest<Song>(matching: \.id, equalTo: MusicItemID(id))
+             request.properties = [.genres]
+             let response = try await request.response()
+             
+             if let song = response.items.first, let genres = song.genres {
+                 for genre in genres {
+                     results.append(SearchResult(
+                        id: genre.id.rawValue,
+                        title: genre.name,
+                        artist: "Genre",
+                        album: nil
+                    ))
+                 }
+             }
+        } else if type == "album-genres" {
+             var request = MusicCatalogResourceRequest<Album>(matching: \.id, equalTo: MusicItemID(id))
+             request.properties = [.genres]
+             let response = try await request.response()
+             
+             if let album = response.items.first, let genres = album.genres {
+                 for genre in genres {
+                     results.append(SearchResult(
+                        id: genre.id.rawValue,
+                        title: genre.name,
+                        artist: "Genre",
+                        album: nil
+                    ))
+                 }
+             }
+        } else if type == "artist-genres" {
+             var request = MusicCatalogResourceRequest<Artist>(matching: \.id, equalTo: MusicItemID(id))
+             request.properties = [.genres]
+             let response = try await request.response()
+             
+             if let artist = response.items.first, let genres = artist.genres {
+                 for genre in genres {
+                     results.append(SearchResult(
+                        id: genre.id.rawValue,
+                        title: genre.name,
+                        artist: "Genre",
+                        album: nil
+                    ))
+                 }
+             }
+        } else if type == "similar-artists" {
+             var request = MusicCatalogResourceRequest<Artist>(matching: \.id, equalTo: MusicItemID(id))
+             request.properties = [.similarArtists]
+             request.limit = limit
+             let response = try await request.response()
+             
+             if let artist = response.items.first, let similar = artist.similarArtists {
+                 for sim in similar {
+                     results.append(SearchResult(
+                        id: sim.id.rawValue,
+                        title: sim.name,
+                        artist: sim.name,
+                        album: nil
+                    ))
+                 }
+             }
+        }
+        
+        let encoder = JSONEncoder()
+        encoder.outputFormatting = .prettyPrinted
+        let data = try encoder.encode(results)
+        print(String(data: data, encoding: .utf8)!)
+    }
+}
+
+struct GetCatalogCharts: AsyncParsableCommand {
+    static let configuration = CommandConfiguration(abstract: "Get catalog charts for a genre")
+    
+    @Option(name: .long, help: "Genre ID (optional)")
+    var genre: String?
+    
+    @Option(name: .long, help: "Limit")
+    var limit: Int = 5
+    
+    @Option(name: .long, help: "Types (songs, albums, playlists)")
+    var types: String = "songs"
+
+    func run() async throws {
+        let status = await MusicAuthorization.request()
+        guard status == .authorized else {
+            printToStderr("Error: MusicKit authorization failed.")
+            throw ExitCode(1)
+        }
+        
+        var chartTypes: [MusicCatalogChartRequestable.Type] = []
+        if types.contains("songs") { chartTypes.append(Song.self) }
+        if types.contains("albums") { chartTypes.append(Album.self) }
+        if types.contains("playlists") { chartTypes.append(Playlist.self) }
+        if chartTypes.isEmpty { chartTypes = [Song.self] }
+        
+        // Fetch genre object if provided
+        var genreObj: Genre? = nil
+        if let genreId = genre {
+            let request = MusicCatalogResourceRequest<Genre>(matching: \.id, equalTo: MusicItemID(genreId))
+            let response = try await request.response()
+            genreObj = response.items.first
+        }
+        
+        var chartRequest = MusicCatalogChartsRequest(genre: genreObj, types: chartTypes)
+        chartRequest.limit = limit
+        
+        let response = try await chartRequest.response()
+        
+        var results: [SearchResult] = []
+        
+        if chartTypes.contains(where: { $0 == Song.self }) {
+            for chart in response.songCharts {
+                for song in chart.items {
+                    results.append(SearchResult(
+                        id: song.id.rawValue,
+                        title: song.title,
+                        artist: song.artistName,
+                        album: song.albumTitle
+                    ))
+                }
+            }
+        }
+        
+        if chartTypes.contains(where: { $0 == Album.self }) {
+             for chart in response.albumCharts {
+                for album in chart.items {
+                    results.append(SearchResult(
+                        id: album.id.rawValue,
+                        title: album.title,
+                        artist: album.artistName,
+                        album: album.title
+                    ))
+                }
+            }
         }
         
         let encoder = JSONEncoder()

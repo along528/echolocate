@@ -437,7 +437,7 @@ def search_artist_top_songs(artist_name: str, limit: int = 5) -> str:
         resource_output = invoke_edge("get-catalog-resource", ["--id", artist_id, "--type", "artist", "--limit", str(limit)])
         songs = json.loads(resource_output)
         
-        formatted = [f"Top songs for {artist['title']}:"]
+        formatted = [f"Top songs for {artist['title']} (ID: {artist_id}):"]
         for item in songs:
              formatted.append(f"""
 ---
@@ -591,6 +591,127 @@ Artist: {item['artist']}
 
     except Exception as e:
         return f"Error fetching label releases: {e}"
+
+
+@mcp.tool()
+def get_genres(resource_id: str, resource_type: str) -> str:
+    """
+    Get genres associated with a song, album, or artist.
+    Args:
+        resource_id: The catalog ID of the resource (e.g. "12345")
+        resource_type: "song", "album", or "artist"
+    """
+    valid_types = {
+        "song": "song-genres",
+        "album": "album-genres", 
+        "artist": "artist-genres"
+    }
+    
+    if resource_type not in valid_types:
+        return "Invalid resource_type. Must be 'song', 'album', or 'artist'."
+        
+    edge_type = valid_types[resource_type]
+    
+    try:
+        # Check for prefix
+        if resource_id.startswith("catalog:"):
+            clean_id = resource_id.split(":", 1)[1]
+        else:
+            clean_id = resource_id
+            
+        resource_output = invoke_edge("get-catalog-resource", ["--id", clean_id, "--type", edge_type])
+        genres = json.loads(resource_output)
+        
+        if not genres:
+            return "No genres found."
+            
+        formatted = []
+        for item in genres:
+            formatted.append(f"""
+---
+Genre ID: catalog:{item['id']}
+Name: {item['title']}
+""")
+        return "".join(formatted)
+
+    except Exception as e:
+        return f"Error fetching genres: {e}"
+
+
+    except Exception as e:
+        return f"Error fetching genres: {e}"
+
+
+@mcp.tool()
+def explore_genre(name: str, limit: int = 5) -> str:
+    """
+    Explore a music genre. Finds top songs for the genre.
+    Args:
+        name: Name of the genre (e.g. "Alternative", "Pop", "Jazz")
+        limit: Number of top songs to return
+    """
+    try:
+        # 1. Search for Genre
+        search_output = invoke_edge("search-catalog", ["--query", name, "--limit", "1", "--types", "genres"])
+        search_results = json.loads(search_output)
+        
+        if not search_results:
+            return f"Genre '{name}' not found."
+            
+        genre = search_results[0]
+        genre_id = genre['id']
+        
+        # 2. Get Top Charts for Genre
+        charts_output = invoke_edge("get-catalog-charts", ["--genre", genre_id, "--limit", str(limit), "--types", "songs"])
+        charts_results = json.loads(charts_output)
+        
+        formatted = [f"Top Songs for {genre['title']}:"]
+        for item in charts_results:
+             formatted.append(f"""
+---
+Track ID: catalog:{item['id']}
+Title: {item['title']}
+Artist: {item['artist']}
+Album: {item.get('album', 'Unknown')}
+""")
+        return "".join(formatted)
+
+    except Exception as e:
+        return f"Error exploring genre: {e}"
+
+
+@mcp.tool()
+def get_related_artists(artist_id: str, limit: int = 5) -> str:
+    """
+    Get similar artists for a given artist.
+    Args:
+        artist_id: The catalog ID of the artist
+        limit: Max related artists to return
+    """
+    try:
+        # Check for prefix
+        if artist_id.startswith("catalog:"):
+            clean_id = artist_id.split(":", 1)[1]
+        else:
+            clean_id = artist_id
+            
+        resource_output = invoke_edge("get-catalog-resource", ["--id", clean_id, "--type", "similar-artists", "--limit", str(limit)])
+        artists = json.loads(resource_output)
+        
+        if not artists:
+            return "No related artists found."
+            
+        formatted = [f"Artists similar to ID {clean_id}:"]
+        for item in artists:
+            formatted.append(f"""
+---
+Artist ID: catalog:{item['id']}
+Name: {item['title']}
+""")
+        return "".join(formatted)
+        
+    except Exception as e:
+        return f"Error fetching related artists: {e}"
 
 
 @mcp.tool()
