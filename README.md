@@ -66,3 +66,26 @@ Configure your MCP client (e.g., Claude Desktop) to run the server script.
 - **Contextual Awareness**: detailed play counts and dates.
 - **Album aggregation**: View stats and tracks at the album level.
 - **Playlist Management**: Create new playlists from your library directly in Apple Music via Native APIs.
+
+## Remote MCP Server (Cloud Run)
+
+A hello world MCP server is deployed on Google Cloud Run for remote access.
+
+| Endpoint | URL |
+|----------|-----|
+| **Health Check** | https://mcp-helloworld-403961692263.us-central1.run.app/ |
+| **MCP SSE** | https://mcp-helloworld-403961692263.us-central1.run.app/sse |
+
+**Claude Desktop Config (remote)**:
+```json
+{
+  "mcpServers": {
+    "cloud-run-hello": {
+      "url": "https://mcp-helloworld-403961692263.us-central1.run.app/sse"
+    }
+  }
+}
+```
+
+See [REMOTE_MCP.md](REMOTE_MCP.md) for full details.
+

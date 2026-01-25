@@ -53,3 +53,14 @@ verification scripts are available to test features without a client.
 # Run playlist creation verification
 .venv/bin/python backend/verify_playlist_creation.py
 ```
+
+## Remote MCP Server (Cloud Run)
+
+A separate remote MCP server is available for cloud-based access. See [../REMOTE_MCP.md](../REMOTE_MCP.md).
+
+| Endpoint | URL |
+|----------|-----|
+| **SSE** | https://mcp-helloworld-403961692263.us-central1.run.app/sse |
+
+The remote server uses SSE transport instead of stdio, and is deployed from `../remote_server/`.
+
