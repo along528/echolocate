@@ -16,9 +16,9 @@ This document describes the remote MCP server deployed on Google Cloud Run.
 
 ```
 ┌─────────────────────┐         HTTPS/SSE          ┌──────────────────────┐
-│   MCP Client        │ ──────────────────────────▶│   Cloud Run          │
 │   (Claude Desktop)  │                            │   MCP Server         │
-└─────────────────────┘                            │   (FastAPI + FastMCP)│
+│                     │                            │   (Starlette/Python) │
+└─────────────────────┘                            │   (Streamable HTTP)  │
                                                    └──────────────────────┘
 ```
 
@@ -69,17 +69,18 @@ gcloud run deploy mcp-helloworld --source . --region us-central1 --port 8080
 
 | File | Purpose |
 |------|---------|
-| [main.py](remote_server/main.py) | FastAPI + FastMCP server with SSE |
+| [main.py](remote_server/main.py) | Starlette + Streamable HTTP Manager |
 | [Dockerfile](remote_server/Dockerfile) | Container configuration |
 | [requirements.txt](remote_server/requirements.txt) | Python dependencies |
 
 ## Implementation Notes
 
 The server uses:
-- **FastAPI** as the ASGI framework
-- **FastMCP** with `mcp.sse_app()` mounted at `/sse`
+- **Starlette** as the ASGI framework (lightweight, robust)
+- **StreamableHTTPSessionManager** manually configured to handle protocol negotiation
+- **Security**: Host header validation disabled (`enable_dns_rebinding_protection=False`) for Cloud Run compatibility
+- **Routing**: Mounted at root `/` to handle paths like `/sse` and `/messages` without redirection issues
 - **uvicorn** to run the server
-- Must bind to `0.0.0.0` and use `PORT` env var for Cloud Run
 
 ## Future Migration Path
 
