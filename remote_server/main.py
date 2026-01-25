@@ -1,4 +1,5 @@
 import os
+import random
 import uvicorn
 import contextlib
 import anyio
@@ -50,6 +51,14 @@ async def list_tools():
                 },
                 "required": ["message"]
             }
+        ),
+        Tool(
+            name="get_star_trek_joke",
+            description="Get a fun Star Trek: The Next Generation joke.",
+            inputSchema={
+                "type": "object",
+                "properties": {},
+            }
         )
     ]
 
@@ -62,6 +71,20 @@ async def call_tool(name: str, arguments: dict):
         result = str(arguments['a'] + arguments['b'])
     elif name == "echo":
         result = f"You said: {arguments['message']}"
+    elif name == "get_star_trek_joke":
+        jokes = [
+            "Why did Worf change his hair color? It was a good day to dye.",
+            "How many ears does Captain Picard have? Three. A left ear, a right ear, and a final front ear.",
+            "What does Captain Picard say when he wants to fix a hole in his pants? Make it sew!",
+            "Why did the Borg cross the road? Because it was futile to resist.",
+            "What do you call a Starfleet officer who can't play music? Riker without his trombone.",
+            "Why are Klingons so good at cleaning? Because they fight for honor AND grime.",
+            "What did Data say when he met the plugin? You complete me.",
+            "Why did Geordi La Forge throw away his clock? Because he wanted to see time fly.",
+            "What is a Romulan's favorite type of frog? A Kermit the Frog... wait, no. A Cloak-roak.",
+            "Why don't Ferengi make good sailors? They always sell the sails."
+        ]
+        result = random.choice(jokes)
     else:
         result = f"Unknown tool: {name}"
     return [TextContent(type="text", text=result)]
