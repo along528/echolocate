@@ -96,6 +96,46 @@ The architecture is divided into the **Local Edge** (to interface with Apple's s
 * **Token Management:** Apple Music User Tokens stored in macOS Keychain, never in the cloud DB.  
 * **Access Control:** The MCP server will be protected via an API Key or IAP (Identity-Aware Proxy) to ensure only you can query your library.
 
+## **7. Remote Server Architecture (Cloud Run)**
+
+The MCP server can be deployed as a remote service on Google Cloud Run, enabling access from any MCP-compatible client without requiring local execution.
+
+### **7.1 Transport Layer**
+
+| Mode | Transport | Use Case |
+| :---- | :---- | :---- |
+| Local | `stdio` | Development, local testing with Claude Desktop |
+| Remote | `SSE` / `Streamable HTTP` | Production Cloud Run deployment |
+
+* **SSE (Server-Sent Events):** The MCP client connects via HTTP to the `/sse` endpoint. The server streams responses back using the SSE protocol.
+* **Streamable HTTP:** The newer MCP standard that encapsulates SSE. Provides better compatibility and session management.
+
+### **7.2 Deployment Topology**
+
+```
+┌─────────────────────┐                     ┌──────────────────────┐
+│   MCP Client        │     HTTPS/SSE       │   Google Cloud Run   │
+│   (Claude Desktop,  │ ──────────────────▶ │   MCP Server         │
+│    Cline, etc.)     │                     │   (Python + FastMCP) │
+└─────────────────────┘                     └──────────┬───────────┘
+                                                       │
+                                                       ▼
+                                            ┌──────────────────────┐
+                                            │   GCP Services       │
+                                            │   - BigQuery         │
+                                            │   - Vertex AI        │
+                                            └──────────────────────┘
+```
+
+### **7.3 Hybrid Architecture for Write Operations**
+
+Since Apple Music playlist creation requires local MusicKit access, a hybrid approach is needed:
+
+* **Read Operations (Remote):** `search_library`, `get_track_context`, semantic search
+* **Write Operations (Local):** `create_playlist` must invoke the local `edge` CLI
+
+Future iterations may use a local "bridge" agent that receives commands from the remote MCP server.
+
 ## **8. Known Gaps & Constraints**
 
 *   **Entitlements & Distribution:** The `edge` CLI currently operates in a non-sandboxed environment relying on local TCC permissions (via `com.apple.security.get-task-allow`).
