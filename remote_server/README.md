@@ -50,4 +50,40 @@ We explicitly manage the `manager.run()` context within the Starlette `lifespan`
 
 ## Deployment
 
-Deployment is handled via `gcloud run`. See the root [REMOTE_MCP.md](../REMOTE_MCP.md) for full deployment instructions.
+### 1. Prerequisites (One-time)
+
+```bash
+# Set project and enable APIs
+gcloud config set project cloud-crate-485418
+gcloud services enable run.googleapis.com artifactregistry.googleapis.com cloudbuild.googleapis.com secretmanager.googleapis.com
+```
+
+### 2. Configure Secrets
+
+Create the necessary secrets in Google Secret Manager:
+
+```bash
+# Generate random secrets for Auth and JWT
+echo -n `openssl rand -hex 32` | gcloud secrets create MCP_AUTH_SECRET --data-file=-
+echo -n `openssl rand -hex 32` | gcloud secrets create MCP_JWT_SECRET --data-file=-
+
+# Set your Client ID (must match what you enter in Claude.ai)
+echo -n "cloud-crate-mcp" | gcloud secrets create MCP_CLIENT_ID --data-file=-
+
+# Grant the Cloud Run service account access to secrets
+gcloud projects add-iam-policy-binding cloud-crate-485418 \
+     --member=serviceAccount:PROJECT-NUMBER-compute@developer.gserviceaccount.com \
+     --role=roles/secretmanager.secretAccessor
+```
+
+### 3. Deploy
+
+```bash
+gcloud run deploy mcp-helloworld \
+  --source . \
+  --region us-central1 \
+  --port 8080 \
+  --set-env-vars GOOGLE_CLOUD_PROJECT=cloud-crate-485418
+```
+
+For more details, see the root [REMOTE_MCP.md](../REMOTE_MCP.md).
