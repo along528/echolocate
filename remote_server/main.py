@@ -19,11 +19,42 @@ from mcp.server import Server
 from mcp.server.streamable_http_manager import StreamableHTTPSessionManager
 from mcp.server.transport_security import TransportSecuritySettings
 
-# --- Configuration ---
-MCP_AUTH_SECRET = os.getenv("MCP_AUTH_SECRET")
-MCP_JWT_SECRET = os.getenv("MCP_JWT_SECRET")
-MCP_CLIENT_ID = os.getenv("MCP_CLIENT_ID")
-MCP_CLIENT_SECRET = os.getenv("MCP_CLIENT_SECRET")
+# --- Secret Configuration ---
+
+def get_secret(secret_name, default=None):
+    """
+    Attempts to fetch a secret from Google Secret Manager.
+    Falls back to environment variable if:
+    1. GOOGLE_CLOUD_PROJECT is not set (local dev).
+    2. Secret Manager API call fails (permissions/disabled).
+    """
+    # 1. Check Env Var first (to allow overriding in dev or if simple env vars used)
+    env_val = os.getenv(secret_name)
+    if env_val:
+        return env_val
+
+    # 2. Try Secret Manager
+    project_id = os.getenv("GOOGLE_CLOUD_PROJECT")
+    if project_id:
+        try:
+            from google.cloud import secretmanager
+            client = secretmanager.SecretManagerServiceClient()
+            name = f"projects/{project_id}/secrets/{secret_name}/versions/latest"
+            response = client.access_secret_version(request={"name": name})
+            return response.payload.data.decode("UTF-8")
+        except Exception as e:
+            # print(f"Warning: Could not fetch secret {secret_name} from GSM: {e}")
+            # Fallthrough to default
+            pass
+
+    return default
+
+# Load Secrets
+# Names here match the Env Var names AND the Secret Manager secret names
+MCP_AUTH_SECRET = get_secret("MCP_AUTH_SECRET")
+MCP_JWT_SECRET = get_secret("MCP_JWT_SECRET")
+MCP_CLIENT_ID = get_secret("MCP_CLIENT_ID")
+MCP_CLIENT_SECRET = get_secret("MCP_CLIENT_SECRET")
 
 if not all([MCP_AUTH_SECRET, MCP_JWT_SECRET]):
     print("WARNING: MCP_AUTH_SECRET and MCP_JWT_SECRET must be set for authentication to work.")

@@ -30,14 +30,34 @@ This server acts as a minimal OAuth 2.1 Provider to support Claude Mobile Connec
 
 ### Configuration Variables
 
-You must set these environment variables on Cloud Run:
+You can set these as **Environment Variables** (for local dev) or create them in **Google Secret Manager** (recommended for production).
 
-| Variable | Description |
-|----------|-------------|
+| Variable / Secret Name | Description |
+|------------------------|-------------|
 | `MCP_AUTH_SECRET` | The password required on the `/authorize` login page. |
 | `MCP_JWT_SECRET` | A secure random string used to sign Access Tokens. |
 | `MCP_CLIENT_ID` | (Optional) If set, validates the `client_id` from Claude. |
 | `MCP_CLIENT_SECRET` | (Optional) If set, validates the `client_secret` from Claude. |
+
+### Using Google Secret Manager
+
+1. **Enable API**: `gcloud services enable secretmanager.googleapis.com`
+2. **Create Secrets**:
+   > **Tip**: Generate strong secrets: `openssl rand -hex 32`
+   
+   ```bash
+   echo -n `openssl rand -hex 32` | gcloud secrets create MCP_AUTH_SECRET --data-file=-
+   echo -n `openssl rand -hex 32` | gcloud secrets create MCP_JWT_SECRET --data-file=-
+   echo -n "cloud-crate" | gcloud secrets create MCP_CLIENT_ID --data-file=-
+   ```
+3. **Grant Access**:
+   The Cloud Run service account must have `roles/secretmanager.secretAccessor`.
+   ```bash
+   # Find your Service Account (usually default compute)
+   gcloud projects add-iam-policy-binding PROJECT_ID \
+     --member=serviceAccount:PROJECT_NUMBER-compute@developer.gserviceaccount.com \
+     --role=roles/secretmanager.secretAccessor
+   ```
 
 ### Endpoints
 
@@ -61,8 +81,8 @@ To use this server on mobile, add it as a **Custom Connector** in [Claude.ai Set
 2. **Auth Type**: OAuth 2.1
 3. **Authorization URL**: `https://<YOUR-CLOUD-RUN-URL>/authorize`
 4. **Token URL**: `https://<YOUR-CLOUD-RUN-URL>/token`
-5. **Client ID**: `cloud-crate` (or matching your env var)
-6. **Client Secret**: `ignored` (or matching your env var)
+5. **Client ID**: `cloud-crate` (or matching your secret)
+6. **Client Secret**: `ignored` (or matching your secret)
 
 ### Claude Desktop
 
@@ -77,7 +97,7 @@ You can also use it in `claude_desktop_config.json`, but currently Desktop confi
 gcloud config set project cloud-crate-485418
 
 # Enable APIs
-gcloud services enable run.googleapis.com artifactregistry.googleapis.com cloudbuild.googleapis.com
+gcloud services enable run.googleapis.com artifactregistry.googleapis.com cloudbuild.googleapis.com secretmanager.googleapis.com
 ```
 
 ### Deploy/Update
@@ -88,14 +108,15 @@ gcloud run deploy mcp-helloworld \
   --source . \
   --region us-central1 \
   --port 8080 \
-  --set-env-vars MCP_AUTH_SECRET=changeme,MCP_JWT_SECRET=changeme
+  --set-env-vars GOOGLE_CLOUD_PROJECT=cloud-crate-485418
 ```
+*Note: We set `GOOGLE_CLOUD_PROJECT` explicitly just to be safe, though Cloud Run usually provides it. We NO LONGER pass secrets as env vars.*
 
 ## Files
 
 | File | Purpose |
 |------|---------|
-| [main.py](remote_server/main.py) | Starlette + Streamable HTTP Manager + OAuth Provider |
+| [main.py](remote_server/main.py) | Starlette + Streamable HTTP Manager + OAuth Provider + Secret Manager |
 | [Dockerfile](remote_server/Dockerfile) | Container configuration |
 | [requirements.txt](remote_server/requirements.txt) | Python dependencies |
 
@@ -106,6 +127,7 @@ The server uses:
 - **StreamableHTTPSessionManager** manually configured to handle protocol negotiation
 - **Security**: Host header validation disabled (`enable_dns_rebinding_protection=False`) for Cloud Run compatibility
 - **Authentication**: Custom OAuth 2.1 implementation using `python-jose` for JWTs.
+- **Secrets**: Auto-fetches from Google Secret Manager if available, falls back to Env Vars.
 - **Routing**: Mounted at root `/` to handle paths like `/sse` and `/messages` without redirection issues
 - **uvicorn** to run the server
 
@@ -113,10 +135,11 @@ The server uses:
 
 1. ✅ **Phase 1**: Hello world MCP on Cloud Run
 2. ✅ **Phase 2**: Authentication (OAuth 2.1) for Mobile Support
-3. **Phase 3**: Migrate read-only tools (`search_library`, etc.)
-4. **Phase 4**: BigQuery integration for library data
-5. **Phase 5**: Vertex AI embeddings for semantic search
-6. **Phase 6**: Hybrid local/remote for write operations
+3. ✅ **Phase 3**: Google Secret Manager Integration
+4. **Phase 4**: Migrate read-only tools (`search_library`, etc.)
+5. **Phase 5**: BigQuery integration for library data
+6. **Phase 6**: Vertex AI embeddings for semantic search
+7. **Phase 7**: Hybrid local/remote for write operations
 
 > [!NOTE]
 > Write operations like `create_playlist` require local MusicKit access and will remain on the local `edge` CLI.
