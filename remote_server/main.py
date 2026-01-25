@@ -1,11 +1,14 @@
 import os
 import uvicorn
+import contextlib
+import anyio
 from starlette.applications import Starlette
 from starlette.routing import Route, Mount
 from starlette.responses import JSONResponse
 
 from mcp.server import Server
-from mcp.server.sse import SseServerTransport, TransportSecuritySettings
+from mcp.server.streamable_http_manager import StreamableHTTPSessionManager
+from mcp.server.transport_security import TransportSecuritySettings
 
 # Create MCP server with tools
 server = Server("Hello World MCP")
@@ -63,46 +66,44 @@ async def call_tool(name: str, arguments: dict):
         result = f"Unknown tool: {name}"
     return [TextContent(type="text", text=result)]
 
-# Create SSE transport with security settings that disable DNS rebinding protection
-# Cloud Run handles security at the load balancer level
+# Create security settings to disable host validation
+# This is CRITICAL for Cloud Run where the host header varies
 security_settings = TransportSecuritySettings(
-    enable_dns_rebinding_protection=False  # Disable host validation for Cloud Run
+    enable_dns_rebinding_protection=False
 )
 
-sse_transport = SseServerTransport(
-    "/messages/",  # Path for POST messages
-    security_settings=security_settings
+# Create the Streamable HTTP Session Manager manually
+# This allows us to pass the custom security settings
+manager = StreamableHTTPSessionManager(
+    server,
+    security_settings=security_settings,
 )
 
-# SSE endpoint handler as ASGI app
-async def handle_sse(scope, receive, send):
-    """Handle SSE connection as raw ASGI - no response wrapper needed"""
-    from starlette.requests import Request
-    request = Request(scope, receive, send)
-    async with sse_transport.connect_sse(
-        scope, receive, send
-    ) as streams:
-        await server.run(
-            streams[0],  # read stream
-            streams[1],  # write stream
-            server.create_initialization_options()
-        )
+# Define lifespan context to manage the session manager's lifecycle
+@contextlib.asynccontextmanager
+async def lifespan(app):
+    # Retrieve the async generator from manager.run()
+    async with manager.run():
+        yield
 
 # Health check endpoint
 async def health(request):
     return JSONResponse({"status": "healthy", "service": "Hello World MCP"})
 
-# Create Starlette app with routes
-# Use Mount for the ASGI apps (SSE and messages) so they handle their own responses
+# Create Starlette app
 app = Starlette(
     routes=[
+        # Explicit routes first (so they aren't caught by the catch-all)
         Route("/", health),
         Route("/health", health),
-        # Mount SSE endpoint as raw ASGI
-        Mount("/sse", app=handle_sse),
-        # Mount messages endpoint as raw ASGI
-        Mount("/messages/", app=sse_transport.handle_post_message),
-    ]
+        
+        # Mount the session manager at root ("/") as a catch-all.
+        # StreamableHTTPSessionManager treats requests path-agnostically (inspects headers/body),
+        # so this handles "/sse", "/messages", or any other path the client uses.
+        # This avoids 307 redirects caused by explicit path mounting.
+        Mount("/", app=manager.handle_request),
+    ],
+    lifespan=lifespan
 )
 
 if __name__ == "__main__":
