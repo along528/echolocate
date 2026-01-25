@@ -2,3 +2,6 @@ mcp>=1.0.0
 uvicorn
 starlette
 fastapi
+python-jose[cryptography]
+python-multipart
+jinja2
