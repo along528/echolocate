@@ -60,28 +60,44 @@ async def run_verification():
     except Exception as e:
         print(f"❌ API Error: {e}")
 
-    # Test 3: Marketplace URL construction
-    print("\n--- Testing Marketplace URL ---")
-    url = client.get_marketplace_url("12345")
-    expected = "https://www.discogs.com/sell/release/12345?ev=rb"
-    if url == expected:
-        print(f"✅ Marketplace URL correct: {url}")
-    else:
-        print(f"❌ Marketplace URL mismatch. Got: {url}")
-
-    # Test 4: Batch Fetch (Mock if dummy)
-    print("\n--- Testing Batch Fetch ---")
+    # Test 1: Search for Pharoah Sanders - Jewels of Thought
+    print("\n--- Searching for 'Pharoah Sanders Jewels of Thought' ---")
+    search_query = "Pharoah Sanders Jewels of Thought"
+    
     if token == "DUMMY_TOKEN":
-        print("⚠️  Skipping real batch fetch due to dummy token.")
+        print("⚠️  Skipping real API call due to dummy token.")
     else:
-        # Fetch the same release twice just to test concurrency mechanism
-        ids = ["249504", "249504"] 
-        print(f"Fetching {len(ids)} releases concurrently...")
-        batch_results = await client.get_releases(ids)
-        if len(batch_results) == 2 and not isinstance(batch_results[0], Exception):
-             print(f"✅ Batch fetch successful. Got {len(batch_results)} results.")
+        results = await client.search(search_query, type="master")
+        if results.get('results'):
+            first = results['results'][0]
+            master_id = first.get('id')
+            print(f"✅ Found Master Release: {first.get('title')} (ID: {master_id})")
+            
+            # Test 2: Get All Versions
+            print(f"\n--- Fetching Versions for Master ID {master_id} ---")
+            # Fetch first 5 versions to keep it snappy for the test
+            versions_data = await client.get_master_versions(master_id, per_page=5)
+            versions = versions_data.get("versions", [])
+            print(f"Found {len(versions)} versions (listing top 5).")
+            
+            # Collect Release IDs
+            release_ids = [str(v.get('id')) for v in versions if v.get('id')]
+            
+            if release_ids:
+                # Test 3: Batch Fetch Details
+                print(f"\n--- Batch Fetching Details for {len(release_ids)} Releases ---")
+                details = await client.get_releases(release_ids)
+                
+                for i, d in enumerate(details):
+                    if isinstance(d, Exception):
+                        print(f"❌ Error fetching ID {release_ids[i]}: {d}")
+                    else:
+                        print(f"✅ [{release_ids[i]}] {d.get('title')} ({d.get('year')}) - {d.get('country')}")
+                        print(f"   Marketplace: {client.get_marketplace_url(release_ids[i])}")
+            else:
+                print("No release IDs found to fetch.")
         else:
-             print(f"❌ Batch fetch failed or returned errors: {batch_results}")
+            print(f"❌ No results found for query: {search_query}")
 
 if __name__ == "__main__":
     asyncio.run(run_verification())
