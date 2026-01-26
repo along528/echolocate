@@ -275,8 +275,21 @@ async def login_submit(request: Request):
     response = RedirectResponse(next_url, status_code=303)
     response.set_cookie("access_token", token, httponly=True, secure=True)
     return response
+    response = RedirectResponse(next_url, status_code=303)
+    response.set_cookie("access_token", token, httponly=True, secure=True)
+    return response
 
-# --- Apple Music Auth Endpoints ---
+async def client_log(request: Request):
+    """
+    Receives logs from the client-side JS for debugging.
+    """
+    try:
+        data = await request.json()
+        print(f"CLIENT LOG: {data}")
+    except Exception as e:
+        print(f"Error receiving client log: {e}")
+    return JSONResponse({"status": "ok"})
+
 
 async def apple_login_page(request: Request):
     """
@@ -304,6 +317,19 @@ async def apple_login_page(request: Request):
         <p id="status"></p>
         
         <script>
+            async function logError(msg, details) {
+                console.error(msg, details);
+                try {
+                    await fetch('/client-log', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ error: msg, details: details ? String(details) : '' })
+                    });
+                } catch (e) {
+                    console.error("Failed to send log", e);
+                }
+            }
+
             document.addEventListener('musickitloaded', async function() {
                 console.log("MusicKit loaded");
                 try {
@@ -322,7 +348,8 @@ async def apple_login_page(request: Request):
                         document.getElementById('status').innerText = "Authorizing... please check for popups.";
                         try {
                             const res = await music.authorize();
-                            console.log("Authorize response:", res);
+                            await logError("Authorize success", res); // Log success too for debugging
+                            
                             const userToken = music.musicUserToken;
                             console.log("User Token:", userToken);
                             
@@ -344,17 +371,18 @@ async def apple_login_page(request: Request):
                                 alert("Success! You are logged in.");
                             } else {
                                 const errText = await fetchRes.text();
+                                await logError("Error saving token", errText);
                                 document.getElementById('status').innerText = "Error saving token: " + errText;
                                 alert("Error saving token: " + errText);
                             }
                         } catch (err) {
-                            console.error("Auth error:", err);
+                            await logError("Auth error during interaction", err);
                             document.getElementById('status').innerText = "Authorization failed: " + err;
                             alert("Authorization failed: " + err);
                         }
                     });
                 } catch (err) {
-                    console.error("Config error", err);
+                    await logError("Config error", err);
                     document.getElementById('status').innerText = "Config Error: " + err;
                     alert("Config error: " + err);
                 }
@@ -440,7 +468,7 @@ class AuthMiddleware(BaseHTTPMiddleware):
                  # This prevents "406 Not Acceptable" if the client expects JSON or follows the redirect to HTML
                  accept = request.headers.get("accept", "")
                  is_xhr = request.headers.get("x-requested-with") == "XMLHttpRequest"
-                 if request.url.path.endswith("/callback") or "application/json" in accept or is_xhr:
+                 if request.url.path.endswith("/callback") or request.url.path.endswith("/client-log") or "application/json" in accept or is_xhr:
                      return JSONResponse({"error": "Unauthorized"}, status_code=401)
                      
                  return RedirectResponse(f"/login?next={request.url.path}")
@@ -457,7 +485,7 @@ class AuthMiddleware(BaseHTTPMiddleware):
             if request.url.path.startswith("/apple-auth"):
                  accept = request.headers.get("accept", "")
                  is_xhr = request.headers.get("x-requested-with") == "XMLHttpRequest"
-                 if request.url.path.endswith("/callback") or "application/json" in accept or is_xhr:
+                 if request.url.path.endswith("/callback") or request.url.path.endswith("/client-log") or "application/json" in accept or is_xhr:
                      return JSONResponse({"error": "Unauthorized"}, status_code=401)
                      
                  return RedirectResponse(f"/login?next={request.url.path}")
@@ -692,7 +720,9 @@ app = Starlette(
         
         # Apple Music Auth
         Route("/apple-auth", apple_login_page, methods=["GET"]),
+        Route("/apple-auth", apple_login_page, methods=["GET"]),
         Route("/apple-auth/callback", apple_callback, methods=["POST"]),
+        Route("/client-log", client_log, methods=["POST"]),
         
         # Admin Login
         Route("/login", login_page, methods=["GET"]),
