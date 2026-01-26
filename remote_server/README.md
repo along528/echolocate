@@ -70,10 +70,16 @@ echo -n `openssl rand -hex 32` | gcloud secrets create MCP_JWT_SECRET --data-fil
 # Set your Client ID (must match what you enter in Claude.ai)
 echo -n "cloud-crate-mcp" | gcloud secrets create MCP_CLIENT_ID --data-file=-
 
-# Grant the Cloud Run service account access to secrets
+# Grant the Cloud Run service account access to secrets (Read & Write)
+# - secretAccessor: Read secrets
+# - secretVersionAdder: Add new versions (for User Token updates)
 gcloud projects add-iam-policy-binding cloud-crate-485418 \
      --member=serviceAccount:PROJECT-NUMBER-compute@developer.gserviceaccount.com \
      --role=roles/secretmanager.secretAccessor
+
+gcloud projects add-iam-policy-binding cloud-crate-485418 \
+     --member=serviceAccount:PROJECT-NUMBER-compute@developer.gserviceaccount.com \
+     --role=roles/secretmanager.secretVersionAdder
 
 # Apple Music Secrets (Required for Music Tools)
 # 1. Get these from Apple Developer Portal -> Certificates, Identifiers & Profiles -> Keys

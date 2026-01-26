@@ -65,6 +65,11 @@ You can set these as **Environment Variables** (for local dev) or create them in
    gcloud projects add-iam-policy-binding PROJECT_ID \
      --member=serviceAccount:PROJECT_NUMBER-compute@developer.gserviceaccount.com \
      --role=roles/secretmanager.secretAccessor
+
+   # Allow server to update User Token
+   gcloud projects add-iam-policy-binding PROJECT_ID \
+     --member=serviceAccount:PROJECT_NUMBER-compute@developer.gserviceaccount.com \
+     --role=roles/secretmanager.secretVersionAdder
    ```
 
 ### Endpoints
