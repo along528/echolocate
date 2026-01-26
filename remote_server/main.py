@@ -601,7 +601,8 @@ async def list_tools():
                 "type": "object",
                 "properties": {
                     "query": {"type": "string", "description": "Search term (album name, artist, etc.)"},
-                    "limit": {"type": "integer", "description": "Max results (default 5)"}
+                    "limit": {"type": "integer", "description": "Max results (default 5)"},
+                    "format": {"type": "string", "description": "Filter by format (default 'Vinyl')"}
                 },
                 "required": ["query"]
             }
@@ -614,7 +615,8 @@ async def list_tools():
                 "properties": {
                     "master_id": {"type": "string", "description": "Master Release ID"},
                     "page": {"type": "integer", "description": "Page number (default 1)"},
-                    "limit": {"type": "integer", "description": "Results per page (default 10)"}
+                    "limit": {"type": "integer", "description": "Results per page (default 10)"},
+                    "format": {"type": "string", "description": "Filter by format (default 'Vinyl')"}
                 },
                 "required": ["master_id"]
             }
@@ -735,8 +737,9 @@ Duration: {attrs.get('durationInMillis')} ms
         
         query = arguments.get("query")
         limit = arguments.get("limit", 5)
+        fmt = arguments.get("format", "Vinyl")
         try:
-            data = await discogs_client.search(query, type="master", limit=limit)
+            data = await discogs_client.search(query, type="master", limit=limit, format=fmt)
             results = data.get("results", [])
             if not results:
                 result = "No results found."
@@ -762,9 +765,10 @@ Thumb: {item.get('thumb', '')}
         master_id = arguments.get("master_id")
         page = arguments.get("page", 1)
         limit = arguments.get("limit", 10) # default to 10 for readability
+        fmt = arguments.get("format", "Vinyl")
         
         try:
-            data = await discogs_client.get_master_versions(master_id, page=page, per_page=limit)
+            data = await discogs_client.get_master_versions(master_id, page=page, per_page=limit, format=fmt)
             versions = data.get("versions", [])
             pagination = data.get("pagination", {})
             

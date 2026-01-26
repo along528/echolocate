@@ -26,7 +26,7 @@ class DiscogsClient:
             response.raise_for_status()
             return response.json()
 
-    async def search(self, query: str, type: str = "master", limit: int = 5) -> Dict[str, Any]:
+    async def search(self, query: str, type: str = "master", format: Optional[str] = None, limit: int = 5) -> Dict[str, Any]:
         """
         Search for releases. Defaults to searching for 'master' releases.
         """
@@ -36,9 +36,12 @@ class DiscogsClient:
             "type": type,
             "limit": limit
         }
+        if format:
+            params["format"] = format
+            
         return await self._get(url, params=params)
 
-    async def get_master_versions(self, master_id: str, page: int = 1, per_page: int = 30) -> Dict[str, Any]:
+    async def get_master_versions(self, master_id: str, page: int = 1, per_page: int = 30, format: Optional[str] = None) -> Dict[str, Any]:
         """
         Get all versions of a master release.
         """
@@ -47,6 +50,9 @@ class DiscogsClient:
             "page": page,
             "per_page": per_page
         }
+        if format:
+            params["format"] = format
+            
         return await self._get(url, params=params)
 
     async def get_release(self, release_id: str) -> Dict[str, Any]:
