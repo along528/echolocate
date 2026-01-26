@@ -23,17 +23,19 @@ import httpx
 
 # --- Secret Configuration ---
 
-def get_secret(secret_name, default=None):
+def get_secret(secret_name, default=None, force_gsm=False):
     """
     Attempts to fetch a secret from Google Secret Manager.
     Falls back to environment variable if:
     1. GOOGLE_CLOUD_PROJECT is not set (local dev).
     2. Secret Manager API call fails (permissions/disabled).
+    3. force_gsm is False and Env Var is present.
     """
-    # 1. Check Env Var first (to allow overriding in dev or if simple env vars used)
-    env_val = os.getenv(secret_name)
-    if env_val:
-        return env_val
+    # 1. Check Env Var first (unless forced to ignore)
+    if not force_gsm:
+        env_val = os.getenv(secret_name)
+        if env_val:
+            return env_val
 
     # 2. Try Secret Manager
     project_id = os.getenv("GOOGLE_CLOUD_PROJECT")
@@ -46,7 +48,7 @@ def get_secret(secret_name, default=None):
             return response.payload.data.decode("UTF-8")
         except Exception as e:
             # print(f"Warning: Could not fetch secret {secret_name} from GSM: {e}")
-            # Fallthrough to default
+            # If forced, we return default (or None) if GSM fails.
             pass
 
     return default
@@ -66,7 +68,9 @@ APPLE_PRIVATE_KEY = get_secret("APPLE_PRIVATE_KEY")
 # Store the User Token in memory for this simple implementation
 # In production, this should be stored in a database linked to the authenticated user
 # or in a session cookie. For now, we'll just store the last one logged in since this is single-user.
-APPLE_MUSIC_USER_TOKEN = get_secret("APPLE_MUSIC_USER_TOKEN") # Optional prompt pre-fill
+# We FORCE GSM check here because Cloud Run injects the *image build* (or revision) time env var,
+# which might be stale if the secret was updated in GSM after deployment.
+APPLE_MUSIC_USER_TOKEN = get_secret("APPLE_MUSIC_USER_TOKEN", force_gsm=True)
 
 apple_client = None
 if APPLE_TEAM_ID and APPLE_KEY_ID and APPLE_PRIVATE_KEY:
@@ -271,8 +275,21 @@ async def login_submit(request: Request):
     response = RedirectResponse(next_url, status_code=303)
     response.set_cookie("access_token", token, httponly=True, secure=True)
     return response
+    response = RedirectResponse(next_url, status_code=303)
+    response.set_cookie("access_token", token, httponly=True, secure=True)
+    return response
 
-# --- Apple Music Auth Endpoints ---
+async def client_log(request: Request):
+    """
+    Receives logs from the client-side JS for debugging.
+    """
+    try:
+        data = await request.json()
+        print(f"CLIENT LOG: {data}")
+    except Exception as e:
+        print(f"Error receiving client log: {e}")
+    return JSONResponse({"status": "ok"})
+
 
 async def apple_login_page(request: Request):
     """
@@ -300,6 +317,19 @@ async def apple_login_page(request: Request):
         <p id="status"></p>
         
         <script>
+            async function logError(msg, details) {
+                console.error(msg, details);
+                try {
+                    await fetch('/client-log', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ error: msg, details: details ? String(details) : '' })
+                    });
+                } catch (e) {
+                    console.error("Failed to send log", e);
+                }
+            }
+
             document.addEventListener('musickitloaded', async function() {
                 console.log("MusicKit loaded");
                 try {
@@ -318,7 +348,8 @@ async def apple_login_page(request: Request):
                         document.getElementById('status').innerText = "Authorizing... please check for popups.";
                         try {
                             const res = await music.authorize();
-                            console.log("Authorize response:", res);
+                            await logError("Authorize success", res); // Log success too for debugging
+                            
                             const userToken = music.musicUserToken;
                             console.log("User Token:", userToken);
                             
@@ -340,17 +371,18 @@ async def apple_login_page(request: Request):
                                 alert("Success! You are logged in.");
                             } else {
                                 const errText = await fetchRes.text();
+                                await logError("Error saving token", errText);
                                 document.getElementById('status').innerText = "Error saving token: " + errText;
                                 alert("Error saving token: " + errText);
                             }
                         } catch (err) {
-                            console.error("Auth error:", err);
+                            await logError("Auth error during interaction", err);
                             document.getElementById('status').innerText = "Authorization failed: " + err;
                             alert("Authorization failed: " + err);
                         }
                     });
                 } catch (err) {
-                    console.error("Config error", err);
+                    await logError("Config error", err);
                     document.getElementById('status').innerText = "Config Error: " + err;
                     alert("Config error: " + err);
                 }
@@ -384,9 +416,23 @@ async def apple_callback(request: Request):
                 from google.cloud import secretmanager
                 client = secretmanager.SecretManagerServiceClient()
                 parent = f"projects/{project_id}"
-                # Create secret if not exists? Assuming it exists since we tried to load it
-                # Add new version
+                # Create secret if not exists?
                 parent_secret = f"{parent}/secrets/APPLE_MUSIC_USER_TOKEN"
+                
+                # Check if secret exists, if not create it
+                try:
+                    client.get_secret(request={"name": parent_secret})
+                except Exception:
+                    print(f"Secret {parent_secret} not found. Creating it...")
+                    client.create_secret(
+                        request={
+                            "parent": parent,
+                            "secret_id": "APPLE_MUSIC_USER_TOKEN",
+                            "secret": {"replication": {"automatic": {}}},
+                        }
+                    )
+
+                # Add new version
                 payload = token.encode("UTF-8")
                 client.add_secret_version(request={"parent": parent_secret, "payload": {"data": payload}})
                 print("Updated APPLE_MUSIC_USER_TOKEN in Secret Manager.")
@@ -418,6 +464,13 @@ class AuthMiddleware(BaseHTTPMiddleware):
         if not token:
              # Redirect browser requests to login
              if request.url.path.startswith("/apple-auth"):
+                 # If it's the callback POST or an API call (AJAX), return 401 instead of redirecting HTML
+                 # This prevents "406 Not Acceptable" if the client expects JSON or follows the redirect to HTML
+                 accept = request.headers.get("accept", "")
+                 is_xhr = request.headers.get("x-requested-with") == "XMLHttpRequest"
+                 if request.url.path.endswith("/callback") or request.url.path.endswith("/client-log") or "application/json" in accept or is_xhr:
+                     return JSONResponse({"error": "Unauthorized"}, status_code=401)
+                     
                  return RedirectResponse(f"/login?next={request.url.path}")
                  
              return JSONResponse({"error": "Unauthorized"}, status_code=401)
@@ -430,6 +483,11 @@ class AuthMiddleware(BaseHTTPMiddleware):
             request.state.user = payload
         except Exception as e:
             if request.url.path.startswith("/apple-auth"):
+                 accept = request.headers.get("accept", "")
+                 is_xhr = request.headers.get("x-requested-with") == "XMLHttpRequest"
+                 if request.url.path.endswith("/callback") or request.url.path.endswith("/client-log") or "application/json" in accept or is_xhr:
+                     return JSONResponse({"error": "Unauthorized"}, status_code=401)
+                     
                  return RedirectResponse(f"/login?next={request.url.path}")
             return JSONResponse({"error": "Invalid Token"}, status_code=401)
 
@@ -662,7 +720,9 @@ app = Starlette(
         
         # Apple Music Auth
         Route("/apple-auth", apple_login_page, methods=["GET"]),
+        Route("/apple-auth", apple_login_page, methods=["GET"]),
         Route("/apple-auth/callback", apple_callback, methods=["POST"]),
+        Route("/client-log", client_log, methods=["POST"]),
         
         # Admin Login
         Route("/login", login_page, methods=["GET"]),
