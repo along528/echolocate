@@ -74,6 +74,12 @@ echo -n "cloud-crate-mcp" | gcloud secrets create MCP_CLIENT_ID --data-file=-
 gcloud projects add-iam-policy-binding cloud-crate-485418 \
      --member=serviceAccount:PROJECT-NUMBER-compute@developer.gserviceaccount.com \
      --role=roles/secretmanager.secretAccessor
+
+# Apple Music Secrets (Required for Music Tools)
+# 1. Get these from Apple Developer Portal -> Certificates, Identifiers & Profiles -> Keys
+echo -n "YOUR_TEAM_ID" | gcloud secrets create APPLE_TEAM_ID --data-file=-
+echo -n "YOUR_KEY_ID" | gcloud secrets create APPLE_KEY_ID --data-file=-
+gcloud secrets create APPLE_PRIVATE_KEY --data-file=path/to/AuthKey_XXXXXX.p8
 ```
 
 ### 3. Deploy

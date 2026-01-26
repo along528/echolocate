@@ -18,6 +18,8 @@ from jose import jwt, JWSError
 from mcp.server import Server
 from mcp.server.streamable_http_manager import StreamableHTTPSessionManager
 from mcp.server.transport_security import TransportSecuritySettings
+from apple_music import AppleMusicClient
+import httpx
 
 # --- Secret Configuration ---
 
@@ -55,6 +57,26 @@ MCP_AUTH_SECRET = get_secret("MCP_AUTH_SECRET")
 MCP_JWT_SECRET = get_secret("MCP_JWT_SECRET")
 MCP_CLIENT_ID = get_secret("MCP_CLIENT_ID")
 MCP_CLIENT_SECRET = get_secret("MCP_CLIENT_SECRET")
+
+# Apple Music Secrets
+APPLE_TEAM_ID = get_secret("APPLE_TEAM_ID")
+APPLE_KEY_ID = get_secret("APPLE_KEY_ID")
+APPLE_PRIVATE_KEY = get_secret("APPLE_PRIVATE_KEY")
+
+# Store the User Token in memory for this simple implementation
+# In production, this should be stored in a database linked to the authenticated user
+# or in a session cookie. For now, we'll just store the last one logged in since this is single-user.
+APPLE_MUSIC_USER_TOKEN = get_secret("APPLE_MUSIC_USER_TOKEN") # Optional prompt pre-fill
+
+apple_client = None
+if APPLE_TEAM_ID and APPLE_KEY_ID and APPLE_PRIVATE_KEY:
+    try:
+        apple_client = AppleMusicClient(APPLE_TEAM_ID, APPLE_KEY_ID, APPLE_PRIVATE_KEY)
+        print("Apple Music Client initialized.")
+    except Exception as e:
+        print(f"Failed to initialize Apple Music Client: {e}")
+else:
+    print("Warning: Apple Music credentials not found. Music tools will be disabled.")
 
 if not all([MCP_AUTH_SECRET, MCP_JWT_SECRET]):
     print("WARNING: MCP_AUTH_SECRET and MCP_JWT_SECRET must be set for authentication to work.")
@@ -197,28 +219,218 @@ async def token_endpoint(request: Request):
         "scope": "mcp"
     })
 
+# --- Admin Auth (Cookie-based) ---
+
+async def login_page(request: Request):
+    """
+    Renders login page for browser access (e.g. Apple Auth).
+    """
+    next_url = request.query_params.get("next", "/apple-auth")
+    html = f"""
+    <!DOCTYPE html>
+    <html>
+    <head>
+        <title>Server Login</title>
+        <style>
+            body {{ font-family: system-ui; display: flex; justify-content: center; align-items: center; height: 100vh; background: #111; color: #eee; }}
+            form {{ display: flex; flex-direction: column; gap: 1rem; width: 300px; }}
+            input {{ padding: 10px; border-radius: 4px; border: 1px solid #333; background: #222; color: #fff; }}
+            button {{ padding: 10px; background: #007aff; color: white; border: none; border-radius: 4px; cursor: pointer; }}
+        </style>
+    </head>
+    <body>
+        <form method="POST" action="/login">
+            <h2>Admin Login</h2>
+            <input type="hidden" name="next" value="{next_url}">
+            <input type="password" name="password" placeholder="Server Password" required autofocus>
+            <button type="submit">Log In</button>
+        </form>
+    </body>
+    </html>
+    """
+    return HTMLResponse(html)
+
+async def login_submit(request: Request):
+    form = await request.form()
+    password = form.get("password")
+    next_url = form.get("next", "/apple-auth")
+    
+    if password != MCP_AUTH_SECRET:
+         return HTMLResponse("Invalid Password", status_code=401)
+         
+    # Issue Cookie Token
+    now = time.time()
+    payload = {
+        "sub": "admin",
+        "iat": now,
+        "exp": now + (60 * 60 * 24), # 24 hours
+        "type": "access"
+    }
+    token = jwt.encode(payload, MCP_JWT_SECRET, algorithm=ALGORITHM)
+    
+    response = RedirectResponse(next_url, status_code=303)
+    response.set_cookie("access_token", token, httponly=True, secure=True)
+    return response
+
+# --- Apple Music Auth Endpoints ---
+
+async def apple_login_page(request: Request):
+    """
+    Renders the Apple Music login page using MusicKit JS.
+    """
+    if not apple_client:
+        return HTMLResponse("Apple Music Client not configured.", status_code=500)
+        
+    dev_token = apple_client.get_developer_token()
+    
+    html = """
+    <!DOCTYPE html>
+    <html>
+    <head>
+        <title>Link Apple Music</title>
+        <script src="https://js-cdn.music.apple.com/musickit/v3/musickit.js"></script>
+        <style>
+            body { font-family: system-ui; display: flex; flex-direction: column; align-items: center; justify-content: center; height: 100vh; background: #000; color: #fff; }
+            button { padding: 15px 30px; font-size: 18px; border-radius: 8px; border: none; background: #fa243c; color: white; cursor: pointer; }
+        </style>
+    </head>
+    <body>
+        <h1>Link Apple Music</h1>
+        <button id="login-btn">Log In with Apple Music</button>
+        <p id="status"></p>
+        
+        <script>
+            document.addEventListener('musickitloaded', async function() {
+                console.log("MusicKit loaded");
+                try {
+                    const music = await MusicKit.configure({
+                        developerToken: '{{dev_token}}',
+                        app: {
+                            name: 'Cloud Crate',
+                            build: '1.0.0'
+                        }
+                    });
+                    console.log("MusicKit configured");
+                    document.getElementById('status').innerText = "Ready to authorize.";
+                    
+                    document.getElementById('login-btn').addEventListener('click', async () => {
+                        console.log("Login button clicked");
+                        document.getElementById('status').innerText = "Authorizing... please check for popups.";
+                        try {
+                            const res = await music.authorize();
+                            console.log("Authorize response:", res);
+                            const userToken = music.musicUserToken;
+                            console.log("User Token:", userToken);
+                            
+                            if (!userToken) {
+                                throw new Error("No user token returned");
+                            }
+
+                            document.getElementById('status').innerText = "Authorized! Saving token...";
+                            
+                            // Send token to backend
+                            const fetchRes = await fetch('/apple-auth/callback', {
+                                method: 'POST',
+                                headers: { 'Content-Type': 'application/json' },
+                                body: JSON.stringify({ token: userToken })
+                            });
+                            
+                            if (fetchRes.ok) {
+                                document.getElementById('status').innerText = "Success! You can close this window.";
+                                alert("Success! You are logged in.");
+                            } else {
+                                const errText = await fetchRes.text();
+                                document.getElementById('status').innerText = "Error saving token: " + errText;
+                                alert("Error saving token: " + errText);
+                            }
+                        } catch (err) {
+                            console.error("Auth error:", err);
+                            document.getElementById('status').innerText = "Authorization failed: " + err;
+                            alert("Authorization failed: " + err);
+                        }
+                    });
+                } catch (err) {
+                    console.error("Config error", err);
+                    document.getElementById('status').innerText = "Config Error: " + err;
+                    alert("Config error: " + err);
+                }
+            });
+        </script>
+    </body>
+    </html>
+    """
+    # Replace the f-string formatting for dev_token since we used {{ for js
+    html = html.replace('{{dev_token}}', dev_token)
+    return HTMLResponse(html)
+
+async def apple_callback(request: Request):
+    """
+    Receives the User Token from the frontend.
+    """
+    global APPLE_MUSIC_USER_TOKEN
+    data = await request.json()
+    token = data.get("token")
+    if token:
+        APPLE_MUSIC_USER_TOKEN = token
+        # In a real app, save this to permanent storage (Secret Manager)
+        # Here we just print it or store in memory for the session
+        print(f"Received Apple Music User Token: {token[:10]}...")
+        
+        # Optional: Attempt to persist to GSM if running in Cloud
+        # This is a bit "magical" but helpful for single-user setup
+        project_id = os.getenv("GOOGLE_CLOUD_PROJECT")
+        if project_id:
+             try:
+                from google.cloud import secretmanager
+                client = secretmanager.SecretManagerServiceClient()
+                parent = f"projects/{project_id}"
+                # Create secret if not exists? Assuming it exists since we tried to load it
+                # Add new version
+                parent_secret = f"{parent}/secrets/APPLE_MUSIC_USER_TOKEN"
+                payload = token.encode("UTF-8")
+                client.add_secret_version(request={"parent": parent_secret, "payload": {"data": payload}})
+                print("Updated APPLE_MUSIC_USER_TOKEN in Secret Manager.")
+             except Exception as e:
+                 print(f"Could not update secret in GSM: {e}")
+        
+        return JSONResponse({"status": "success"})
+    return JSONResponse({"error": "missing_token"}, status_code=400)
+
 # --- Middleware ---
 
 class AuthMiddleware(BaseHTTPMiddleware):
     async def dispatch(self, request: Request, call_next):
         # Public endpoints
-        if request.url.path in ["/", "/health", "/authorize", "/token"]:
+        if request.url.path in ["/", "/health", "/authorize", "/token", "/login"]:
             return await call_next(request)
         
-        # Check Authorization Header
+        # 1. Check Header (MCP Client)
         auth_header = request.headers.get("Authorization")
-        if not auth_header or not auth_header.startswith("Bearer "):
-             return JSONResponse({"error": "Unauthorized"}, status_code=401)
+        token = None
         
-        token = auth_header.split(" ")[1]
+        if auth_header and auth_header.startswith("Bearer "):
+             token = auth_header.split(" ")[1]
+             
+        # 2. Check Cookie (Browser Admin)
+        if not token:
+            token = request.cookies.get("access_token")
+        
+        if not token:
+             # Redirect browser requests to login
+             if request.url.path.startswith("/apple-auth"):
+                 return RedirectResponse(f"/login?next={request.url.path}")
+                 
+             return JSONResponse({"error": "Unauthorized"}, status_code=401)
         
         try:
             # Verify JWT
             payload = jwt.decode(token, MCP_JWT_SECRET, algorithms=[ALGORITHM])
-            if payload.get("type") != "access":
-                 raise ValueError("Invalid token type")
+            # if payload.get("type") != "access":
+            #      raise ValueError("Invalid token type")
             request.state.user = payload
         except Exception as e:
+            if request.url.path.startswith("/apple-auth"):
+                 return RedirectResponse(f"/login?next={request.url.path}")
             return JSONResponse({"error": "Invalid Token"}, status_code=401)
 
         return await call_next(request)
@@ -273,6 +485,42 @@ async def list_tools():
                 "type": "object",
                 "properties": {},
             }
+        ),
+        Tool(
+            name="search_apple_music",
+            description="Search for songs in the Apple Music Catalog.",
+            inputSchema={
+                "type": "object",
+                "properties": {
+                    "query": {"type": "string", "description": "Search term"},
+                    "limit": {"type": "integer", "description": "Max results (default 5)"}
+                },
+                "required": ["query"]
+            }
+        ),
+        Tool(
+            name="create_playlist",
+            description="Create a new playlist in Apple Music.",
+            inputSchema={
+                "type": "object",
+                "properties": {
+                    "name": {"type": "string", "description": "Playlist name"},
+                    "description": {"type": "string", "description": "Playlist description"},
+                    "track_ids": {"type": "array", "items": {"type": "string"}, "description": "List of track IDs"}
+                },
+                "required": ["name", "track_ids"]
+            }
+        ),
+        Tool(
+            name="get_track_context",
+            description="Get details for a catalog track.",
+            inputSchema={
+                "type": "object",
+                "properties": {
+                    "track_id": {"type": "string", "description": "Catalog Track ID"}
+                },
+                "required": ["track_id"]
+            }
         )
     ]
 
@@ -299,6 +547,80 @@ async def call_tool(name: str, arguments: dict):
             "Why don't Ferengi make good sailors? They always sell the sails."
         ]
         result = random.choice(jokes)
+    elif name == "search_apple_music":
+        if not apple_client:
+            return [TextContent(type="text", text="Apple Music is not configured on this server.")]
+        
+        query = arguments.get("query")
+        limit = arguments.get("limit", 5)
+        try:
+            # Search
+            data = await apple_client.search(query, limit=limit)
+            results = data.get("results", {}).get("songs", {}).get("data", [])
+            
+            if not results:
+                result = "No results found."
+            else:
+                formatted = []
+                for item in results:
+                    attrs = item.get("attributes", {})
+                    formatted.append(f"""
+---
+Track ID: catalog:{item['id']}
+Title: {attrs.get('name')}
+Artist: {attrs.get('artistName')}
+Album: {attrs.get('albumName')}
+""")
+                result = "".join(formatted)
+        except Exception as e:
+            result = f"Error searching Apple Music: {e}"
+
+    elif name == "create_playlist":
+        if not apple_client:
+             return [TextContent(type="text", text="Apple Music is not configured on this server.")]
+        if not APPLE_MUSIC_USER_TOKEN:
+             return [TextContent(type="text", text="User is not logged in to Apple Music. Please visit /apple-auth to log in.")]
+             
+        playlist_name = arguments.get("name")
+        description = arguments.get("description", "Created via Cloud Crate Remote")
+        track_ids = arguments.get("track_ids", [])
+        
+        try:
+            data = await apple_client.create_playlist(playlist_name, description, track_ids, APPLE_MUSIC_USER_TOKEN)
+            # Inspect result
+            # API returns the created resource
+            if data and "data" in data and len(data["data"]) > 0:
+                new_id = data["data"][0]["id"]
+                result = f"Successfully created playlist '{playlist_name}' (ID: {new_id})."
+            else:
+                result = "Playlist created but no ID returned?"
+        except Exception as e:
+            result = f"Error creating playlist: {e}"
+
+    elif name == "get_track_context":
+        if not apple_client:
+             return [TextContent(type="text", text="Apple Music is not configured on this server.")]
+             
+        track_id = arguments.get("track_id")
+        if track_id.startswith("catalog:"):
+            track_id = track_id.split(":", 1)[1]
+            
+        try:
+            data = await apple_client.get_resource(track_id, "songs")
+            if data and "data" in data and len(data["data"]) > 0:
+                attrs = data["data"][0]["attributes"]
+                result = f"""
+Title: {attrs.get('name')}
+Artist: {attrs.get('artistName')}
+Album: {attrs.get('albumName')}
+Release Date: {attrs.get('releaseDate')}
+Duration: {attrs.get('durationInMillis')} ms
+"""
+            else:
+                result = "Track not found."
+        except Exception as e:
+            result = f"Error fetching track: {e}"
+
     else:
         result = f"Unknown tool: {name}"
     return [TextContent(type="text", text=result)]
@@ -337,6 +659,14 @@ app = Starlette(
         # Explicit routes first (so they aren't caught by the catch-all)
         Route("/", health),
         Route("/health", health),
+        
+        # Apple Music Auth
+        Route("/apple-auth", apple_login_page, methods=["GET"]),
+        Route("/apple-auth/callback", apple_callback, methods=["POST"]),
+        
+        # Admin Login
+        Route("/login", login_page, methods=["GET"]),
+        Route("/login", login_submit, methods=["POST"]),
         
         # Mount the session manager at root ("/") as a catch-all.
         Mount("/", app=manager.handle_request),

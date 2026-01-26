@@ -7,6 +7,8 @@ crate/
 # Python
 backend/__pycache__/
 backend/*.pyc
+remote_server/__pycache__/
+remote_server/*.pyc
 
 # Swift/Xcode
 .build/
