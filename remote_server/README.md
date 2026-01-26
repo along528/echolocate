@@ -86,7 +86,12 @@ gcloud projects add-iam-policy-binding cloud-crate-485418 \
 echo -n "YOUR_TEAM_ID" | gcloud secrets create APPLE_TEAM_ID --data-file=-
 echo -n "YOUR_KEY_ID" | gcloud secrets create APPLE_KEY_ID --data-file=-
 gcloud secrets create APPLE_PRIVATE_KEY --data-file=path/to/AuthKey_XXXXXX.p8
+
+# Discogs Token (Required for Discogs Tools)
+# 1. Get from https://www.discogs.com/settings/developers
+echo -n "YOUR_DISCOGS_TOKEN" | gcloud secrets create DISCOGS_TOKEN --data-file=-
 ```
+
 
 ### 3. Deploy
 

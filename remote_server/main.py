@@ -19,6 +19,7 @@ from mcp.server import Server
 from mcp.server.streamable_http_manager import StreamableHTTPSessionManager
 from mcp.server.transport_security import TransportSecuritySettings
 from apple_music import AppleMusicClient
+from discogs import DiscogsClient
 import httpx
 
 # --- Secret Configuration ---
@@ -65,6 +66,9 @@ APPLE_TEAM_ID = get_secret("APPLE_TEAM_ID")
 APPLE_KEY_ID = get_secret("APPLE_KEY_ID")
 APPLE_PRIVATE_KEY = get_secret("APPLE_PRIVATE_KEY")
 
+# Discogs Secrets
+DISCOGS_TOKEN = get_secret("DISCOGS_TOKEN")
+
 # Store the User Token in memory for this simple implementation
 # In production, this should be stored in a database linked to the authenticated user
 # or in a session cookie. For now, we'll just store the last one logged in since this is single-user.
@@ -81,6 +85,16 @@ if APPLE_TEAM_ID and APPLE_KEY_ID and APPLE_PRIVATE_KEY:
         print(f"Failed to initialize Apple Music Client: {e}")
 else:
     print("Warning: Apple Music credentials not found. Music tools will be disabled.")
+
+discogs_client = None
+if DISCOGS_TOKEN:
+    try:
+        discogs_client = DiscogsClient(DISCOGS_TOKEN)
+        print("Discogs Client initialized.")
+    except Exception as e:
+        print(f"Failed to initialize Discogs Client: {e}")
+else:
+    print("Warning: DISCOGS_TOKEN not found. Discogs tools will be disabled.")
 
 if not all([MCP_AUTH_SECRET, MCP_JWT_SECRET]):
     print("WARNING: MCP_AUTH_SECRET and MCP_JWT_SECRET must be set for authentication to work.")
@@ -579,6 +593,42 @@ async def list_tools():
                 },
                 "required": ["track_id"]
             }
+        ),
+        Tool(
+            name="search_discogs",
+            description="Search for albums (master releases) on Discogs.",
+            inputSchema={
+                "type": "object",
+                "properties": {
+                    "query": {"type": "string", "description": "Search term (album name, artist, etc.)"},
+                    "limit": {"type": "integer", "description": "Max results (default 5)"}
+                },
+                "required": ["query"]
+            }
+        ),
+        Tool(
+            name="get_discogs_versions",
+            description="Get all versions of a master release from Discogs.",
+            inputSchema={
+                "type": "object",
+                "properties": {
+                    "master_id": {"type": "string", "description": "Master Release ID"},
+                    "page": {"type": "integer", "description": "Page number (default 1)"},
+                    "limit": {"type": "integer", "description": "Results per page (default 10)"}
+                },
+                "required": ["master_id"]
+            }
+        ),
+        Tool(
+            name="get_discogs_release",
+            description="Get details of a specific Discogs release.",
+            inputSchema={
+                "type": "object",
+                "properties": {
+                    "release_id": {"type": "string", "description": "Release ID"}
+                },
+                "required": ["release_id"]
+            }
         )
     ]
 
@@ -678,6 +728,89 @@ Duration: {attrs.get('durationInMillis')} ms
                 result = "Track not found."
         except Exception as e:
             result = f"Error fetching track: {e}"
+
+    elif name == "search_discogs":
+        if not discogs_client:
+            return [TextContent(type="text", text="Discogs is not configured on this server.")]
+        
+        query = arguments.get("query")
+        limit = arguments.get("limit", 5)
+        try:
+            data = await discogs_client.search(query, type="master", limit=limit)
+            results = data.get("results", [])
+            if not results:
+                result = "No results found."
+            else:
+                formatted = []
+                for item in results:
+                    formatted.append(f"""
+---
+Master ID: {item.get('id')}
+Title: {item.get('title')}
+Year: {item.get('year', 'Unknown')}
+Format: {', '.join(item.get('format', []))}
+Thumb: {item.get('thumb', '')}
+""")
+                result = "".join(formatted)
+        except Exception as e:
+             result = f"Error searching Discogs: {e}"
+
+    elif name == "get_discogs_versions":
+        if not discogs_client:
+             return [TextContent(type="text", text="Discogs is not configured on this server.")]
+        
+        master_id = arguments.get("master_id")
+        page = arguments.get("page", 1)
+        limit = arguments.get("limit", 10) # default to 10 for readability
+        
+        try:
+            data = await discogs_client.get_master_versions(master_id, page=page, per_page=limit)
+            versions = data.get("versions", [])
+            pagination = data.get("pagination", {})
+            
+            if not versions:
+                 result = "No versions found."
+            else:
+                 formatted = [f"Found {pagination.get('items', 0)} versions (Page {page}/{pagination.get('pages', 0)}):"]
+                 for v in versions:
+                     # Construct marketplace URL
+                     mkt_url = discogs_client.get_marketplace_url(v.get('id'))
+                     formatted.append(f"""
+---
+Release ID: {v.get('id')}
+Title: {v.get('title')}
+Format: {v.get('format', 'Unknown')}
+Label: {v.get('label', 'Unknown')}
+Country: {v.get('country', 'Unknown')}
+Year: {v.get('released', 'Unknown')}
+Marketplace: {mkt_url}
+""")
+                 result = "".join(formatted)
+        except Exception as e:
+             result = f"Error fetching versions: {e}"
+
+    elif name == "get_discogs_release":
+        if not discogs_client:
+             return [TextContent(type="text", text="Discogs is not configured on this server.")]
+        
+        release_id = arguments.get("release_id")
+        try:
+            data = await discogs_client.get_release(release_id)
+            # Basic basic details
+            result = f"""
+Title: {data.get('title')}
+Artists: {', '.join([a.get('name') for a in data.get('artists', [])])}
+Year: {data.get('year')}
+Country: {data.get('country')}
+Notes: {data.get('notes', 'None')}
+Marketplace URL: {discogs_client.get_marketplace_url(release_id)}
+Tracklist:
+"""
+            for track in data.get('tracklist', []):
+                 result += f"- {track.get('position')}: {track.get('title')} ({track.get('duration')})\n"
+                 
+        except Exception as e:
+             result = f"Error fetching release: {e}"
 
     else:
         result = f"Unknown tool: {name}"
