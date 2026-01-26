@@ -98,7 +98,7 @@ class DiscogsClient:
         """
         Get user's wantlist.
         """
-        url = f"{self.BASE_URL}/users/{username}/wantlist"
+        url = f"{self.BASE_URL}/users/{username}/wants"
         params = {
             "page": page,
             "per_page": per_page

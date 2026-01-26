@@ -144,19 +144,41 @@ async def run_verification():
             print(f"✅ Authenticated as: {username}")
             
             if username:
-                print(f"Fetching wantlist for {username}...")
-                # data = await client.get_wantlist(username, per_page=5)
-                # Try specific endpoint for debugging
-                url = f"https://api.discogs.com/users/{username}/wants"
-                data = await client._get(url, params={"per_page": 5})
+                print(f"Fetching full wantlist for {username}...")
+                all_wants = []
+                page = 1
+                while True:
+                    print(f"Fetching page {page}...")
+                    data = await client.get_wantlist(username, page=page, per_page=100)
+                    wants = data.get("wants", [])
+                    if not wants:
+                        break
+                    
+                    all_wants.extend(wants)
+                    pagination = data.get("pagination", {})
+                    
+                    if page >= pagination.get("pages", 1):
+                        break
+                    page += 1
                 
-                wants = data.get("wants", [])
-                print(f"Found {len(wants)} items (showing top 5):")
-                for w in wants:
-                    info = w.get("basic_information", {})
-                    rid = str(info.get("id"))
-                    print(f"✅ [{rid}] {info.get('title')} ({info.get('year')})")
-                    print(f"   {client.get_marketplace_url(rid)}")
+                print(f"✅ Found {len(all_wants)} total items in wantlist.")
+                
+                # Show first 5 and last 5 to confirm range
+                if all_wants:
+                    print(f"--- First 5 items ---")
+                    for w in all_wants[:5]:
+                        info = w.get("basic_information", {})
+                        rid = str(info.get("id"))
+                        print(f"[{rid}] {info.get('title')} ({info.get('year')})")
+                        print(f"   {client.get_marketplace_url(rid)}")
+                        
+                    if len(all_wants) > 5:
+                        print(f"...\n--- Last 5 items ---")
+                        for w in all_wants[-5:]:
+                            info = w.get("basic_information", {})
+                            rid = str(info.get("id"))
+                            print(f"[{rid}] {info.get('title')} ({info.get('year')})")
+                            print(f"   {client.get_marketplace_url(rid)}")
         except Exception as e:
             print(f"❌ Error fetching wantlist: {e}")
 
