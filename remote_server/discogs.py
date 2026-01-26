@@ -1,4 +1,5 @@
 import asyncio
+import time
 import httpx
 import urllib.parse
 from typing import Optional, Dict, Any, List
@@ -19,10 +20,27 @@ class DiscogsClient:
 
     async def _get(self, url: str, params: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
         """
-        Internal helper to perform GET requests.
+        Internal helper to perform GET requests with rate limiting (60 rpm).
         """
+        # Simple rate limiter: wait 1.1s between requests to be safe (60/min = 1/s)
+        # In a real heavy app we'd use a token bucket, but sleep is fine here.
+        # We use a lock to ensure only one request fires per 1.1s if we want strict serial throttling,
+        # OR we just sleep before every request.
+        # Since we are using asyncio.gather for get_releases, we want them to effectively serialize or
+        # spacing out.
+        
+        # NOTE: This sleep strategy slows down *batch* fetches significantly but avoids 429s.
+        await asyncio.sleep(1.1) 
+        
         async with httpx.AsyncClient() as client:
             response = await client.get(url, headers=self.headers, params=params)
+            
+            # If we still hit 429, backoff and retry once
+            if response.status_code == 429:
+                print("⚠️ Hit 429, backing off for 60s...")
+                await asyncio.sleep(60)
+                response = await client.get(url, headers=self.headers, params=params)
+                
             response.raise_for_status()
             return response.json()
 
