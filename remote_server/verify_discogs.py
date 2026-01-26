@@ -2,10 +2,39 @@ import asyncio
 import os
 from discogs import DiscogsClient
 
+async def get_secret_from_gsm(secret_name):
+    # Try fetching from Google Secret Manager
+    project_id = os.getenv("GOOGLE_CLOUD_PROJECT")
+    # Try to guess project ID from gcloud if not set
+    if not project_id:
+        try:
+             import subprocess
+             result = subprocess.run(["gcloud", "config", "get-value", "project"], capture_output=True, text=True)
+             if result.returncode == 0:
+                 project_id = result.stdout.strip()
+        except Exception:
+            pass
+            
+    if project_id:
+        try:
+            from google.cloud import secretmanager
+            client = secretmanager.SecretManagerServiceClient()
+            name = f"projects/{project_id}/secrets/{secret_name}/versions/latest"
+            response = client.access_secret_version(request={"name": name})
+            return response.payload.data.decode("UTF-8")
+        except Exception as e:
+            print(f"Could not fetch {secret_name} from GSM: {e}")
+            return None
+    return None
+
 async def run_verification():
     token = os.getenv("DISCOGS_TOKEN")
     if not token:
-        print("❌ DISCOGS_TOKEN not found. Using a dummy token for loose verification...")
+        print("Token not in env, trying Google Secret Manager...")
+        token = await get_secret_from_gsm("DISCOGS_TOKEN")
+        
+    if not token:
+        print("❌ DISCOGS_TOKEN not found in Env or GSM. Using a dummy token for loose verification...")
         token = "DUMMY_TOKEN"
     
     client = DiscogsClient(token)
