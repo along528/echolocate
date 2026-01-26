@@ -1,3 +1,4 @@
+import asyncio
 import httpx
 import urllib.parse
 from typing import Optional, Dict, Any, List
@@ -54,6 +55,13 @@ class DiscogsClient:
         """
         url = f"{self.BASE_URL}/releases/{release_id}"
         return await self._get(url)
+
+    async def get_releases(self, release_ids: List[str]) -> List[Dict[str, Any]]:
+        """
+        Get details for multiple releases concurrently.
+        """
+        tasks = [self.get_release(rid) for rid in release_ids]
+        return await asyncio.gather(*tasks, return_exceptions=True)
 
     def get_marketplace_url(self, release_id: str) -> str:
         """

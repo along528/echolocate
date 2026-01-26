@@ -40,5 +40,19 @@ async def run_verification():
     else:
         print(f"❌ Marketplace URL mismatch. Got: {url}")
 
+    # Test 4: Batch Fetch (Mock if dummy)
+    print("\n--- Testing Batch Fetch ---")
+    if token == "DUMMY_TOKEN":
+        print("⚠️  Skipping real batch fetch due to dummy token.")
+    else:
+        # Fetch the same release twice just to test concurrency mechanism
+        ids = ["249504", "249504"] 
+        print(f"Fetching {len(ids)} releases concurrently...")
+        batch_results = await client.get_releases(ids)
+        if len(batch_results) == 2 and not isinstance(batch_results[0], Exception):
+             print(f"✅ Batch fetch successful. Got {len(batch_results)} results.")
+        else:
+             print(f"❌ Batch fetch failed or returned errors: {batch_results}")
+
 if __name__ == "__main__":
     asyncio.run(run_verification())

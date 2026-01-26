@@ -621,13 +621,13 @@ async def list_tools():
         ),
         Tool(
             name="get_discogs_release",
-            description="Get details of a specific Discogs release.",
+            description="Get details of specific Discogs release(s).",
             inputSchema={
                 "type": "object",
                 "properties": {
-                    "release_id": {"type": "string", "description": "Release ID"}
-                },
-                "required": ["release_id"]
+                    "release_id": {"type": "string", "description": "Single Release ID (optional)"},
+                    "release_ids": {"type": "array", "items": {"type": "string"}, "description": "List of Release IDs (optional, supports batch)"}
+                }
             }
         )
     ]
@@ -794,23 +794,49 @@ Marketplace: {mkt_url}
              return [TextContent(type="text", text="Discogs is not configured on this server.")]
         
         release_id = arguments.get("release_id")
+        release_ids = arguments.get("release_ids")
+        
+        # Normalize to list
+        target_ids = []
+        if release_ids:
+            target_ids.extend(release_ids)
+        if release_id and release_id not in target_ids:
+            target_ids.append(release_id)
+            
+        if not target_ids:
+             return [TextContent(type="text", text="Please provide 'release_id' or 'release_ids'.")]
+
         try:
-            data = await discogs_client.get_release(release_id)
-            # Basic basic details
-            result = f"""
+            # Batch fetch
+            responses = await discogs_client.get_releases(target_ids)
+            
+            final_output = []
+            
+            for i, data in enumerate(responses):
+                rid = target_ids[i]
+                
+                if isinstance(data, Exception):
+                    final_output.append(f"❌ Error fetching ID {rid}: {data}")
+                    continue
+                    
+                # Basic basic details
+                final_output.append(f"""
+---
+Release ID: {rid}
 Title: {data.get('title')}
 Artists: {', '.join([a.get('name') for a in data.get('artists', [])])}
 Year: {data.get('year')}
 Country: {data.get('country')}
 Notes: {data.get('notes', 'None')}
-Marketplace URL: {discogs_client.get_marketplace_url(release_id)}
-Tracklist:
-"""
-            for track in data.get('tracklist', []):
-                 result += f"- {track.get('position')}: {track.get('title')} ({track.get('duration')})\n"
+Marketplace URL: {discogs_client.get_marketplace_url(rid)}
+Tracklist:""")
+                for track in data.get('tracklist', []):
+                     final_output.append(f"- {track.get('position')}: {track.get('title')} ({track.get('duration')})")
+                     
+            result = "\n".join(final_output)
                  
         except Exception as e:
-             result = f"Error fetching release: {e}"
+             result = f"Error fetching releases: {e}"
 
     else:
         result = f"Unknown tool: {name}"
