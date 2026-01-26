@@ -219,6 +219,59 @@ async def token_endpoint(request: Request):
         "scope": "mcp"
     })
 
+# --- Admin Auth (Cookie-based) ---
+
+async def login_page(request: Request):
+    """
+    Renders login page for browser access (e.g. Apple Auth).
+    """
+    next_url = request.query_params.get("next", "/apple-auth")
+    html = f"""
+    <!DOCTYPE html>
+    <html>
+    <head>
+        <title>Server Login</title>
+        <style>
+            body {{ font-family: system-ui; display: flex; justify-content: center; align-items: center; height: 100vh; background: #111; color: #eee; }}
+            form {{ display: flex; flex-direction: column; gap: 1rem; width: 300px; }}
+            input {{ padding: 10px; border-radius: 4px; border: 1px solid #333; background: #222; color: #fff; }}
+            button {{ padding: 10px; background: #007aff; color: white; border: none; border-radius: 4px; cursor: pointer; }}
+        </style>
+    </head>
+    <body>
+        <form method="POST" action="/login">
+            <h2>Admin Login</h2>
+            <input type="hidden" name="next" value="{next_url}">
+            <input type="password" name="password" placeholder="Server Password" required autofocus>
+            <button type="submit">Log In</button>
+        </form>
+    </body>
+    </html>
+    """
+    return HTMLResponse(html)
+
+async def login_submit(request: Request):
+    form = await request.form()
+    password = form.get("password")
+    next_url = form.get("next", "/apple-auth")
+    
+    if password != MCP_AUTH_SECRET:
+         return HTMLResponse("Invalid Password", status_code=401)
+         
+    # Issue Cookie Token
+    now = time.time()
+    payload = {
+        "sub": "admin",
+        "iat": now,
+        "exp": now + (60 * 60 * 24), # 24 hours
+        "type": "access"
+    }
+    token = jwt.encode(payload, MCP_JWT_SECRET, algorithm=ALGORITHM)
+    
+    response = RedirectResponse(next_url, status_code=303)
+    response.set_cookie("access_token", token, httponly=True, secure=True)
+    return response
+
 # --- Apple Music Auth Endpoints ---
 
 async def apple_login_page(request: Request):
@@ -230,15 +283,15 @@ async def apple_login_page(request: Request):
         
     dev_token = apple_client.get_developer_token()
     
-    html = f"""
+    html = """
     <!DOCTYPE html>
     <html>
     <head>
         <title>Link Apple Music</title>
         <script src="https://js-cdn.music.apple.com/musickit/v3/musickit.js"></script>
         <style>
-            body {{ font-family: system-ui; display: flex; flex-direction: column; align-items: center; justify-content: center; height: 100vh; background: #000; color: #fff; }}
-            button {{ padding: 15px 30px; font-size: 18px; border-radius: 8px; border: none; background: #fa243c; color: white; cursor: pointer; }}
+            body { font-family: system-ui; display: flex; flex-direction: column; align-items: center; justify-content: center; height: 100vh; background: #000; color: #fff; }
+            button { padding: 15px 30px; font-size: 18px; border-radius: 8px; border: none; background: #fa243c; color: white; cursor: pointer; }
         </style>
     </head>
     <body>
@@ -247,47 +300,67 @@ async def apple_login_page(request: Request):
         <p id="status"></p>
         
         <script>
-            document.addEventListener('musickitloaded', async function() {{
-                try {{
-                    const music = await MusicKit.configure({{
-                        developerToken: '{dev_token}',
-                        app: {{
+            document.addEventListener('musickitloaded', async function() {
+                console.log("MusicKit loaded");
+                try {
+                    const music = await MusicKit.configure({
+                        developerToken: '{{dev_token}}',
+                        app: {
                             name: 'Cloud Crate',
                             build: '1.0.0'
-                        }}
-                    }});
+                        }
+                    });
+                    console.log("MusicKit configured");
+                    document.getElementById('status').innerText = "Ready to authorize.";
                     
-                    document.getElementById('login-btn').addEventListener('click', async () => {{
-                        try {{
-                            await music.authorize();
+                    document.getElementById('login-btn').addEventListener('click', async () => {
+                        console.log("Login button clicked");
+                        document.getElementById('status').innerText = "Authorizing... please check for popups.";
+                        try {
+                            const res = await music.authorize();
+                            console.log("Authorize response:", res);
                             const userToken = music.musicUserToken;
+                            console.log("User Token:", userToken);
+                            
+                            if (!userToken) {
+                                throw new Error("No user token returned");
+                            }
+
                             document.getElementById('status').innerText = "Authorized! Saving token...";
                             
                             // Send token to backend
-                            const res = await fetch('/apple-auth/callback', {{
+                            const fetchRes = await fetch('/apple-auth/callback', {
                                 method: 'POST',
-                                headers: {{ 'Content-Type': 'application/json' }},
-                                body: JSON.stringify({{ token: userToken }})
-                            }});
+                                headers: { 'Content-Type': 'application/json' },
+                                body: JSON.stringify({ token: userToken })
+                            });
                             
-                            if (res.ok) {{
+                            if (fetchRes.ok) {
                                 document.getElementById('status').innerText = "Success! You can close this window.";
-                            }} else {{
-                                document.getElementById('status').innerText = "Error saving token.";
-                            }}
-                        }} catch (err) {{
-                            console.error(err);
-                            document.getElementById('status').innerText = "Authorization failed.";
-                        }}
-                    }});
-                }} catch (err) {{
+                                alert("Success! You are logged in.");
+                            } else {
+                                const errText = await fetchRes.text();
+                                document.getElementById('status').innerText = "Error saving token: " + errText;
+                                alert("Error saving token: " + errText);
+                            }
+                        } catch (err) {
+                            console.error("Auth error:", err);
+                            document.getElementById('status').innerText = "Authorization failed: " + err;
+                            alert("Authorization failed: " + err);
+                        }
+                    });
+                } catch (err) {
                     console.error("Config error", err);
-                }}
-            }});
+                    document.getElementById('status').innerText = "Config Error: " + err;
+                    alert("Config error: " + err);
+                }
+            });
         </script>
     </body>
     </html>
     """
+    # Replace the f-string formatting for dev_token since we used {{ for js
+    html = html.replace('{{dev_token}}', dev_token)
     return HTMLResponse(html)
 
 async def apple_callback(request: Request):
@@ -328,23 +401,36 @@ async def apple_callback(request: Request):
 class AuthMiddleware(BaseHTTPMiddleware):
     async def dispatch(self, request: Request, call_next):
         # Public endpoints
-        if request.url.path in ["/", "/health", "/authorize", "/token"]:
+        if request.url.path in ["/", "/health", "/authorize", "/token", "/login"]:
             return await call_next(request)
         
-        # Check Authorization Header
+        # 1. Check Header (MCP Client)
         auth_header = request.headers.get("Authorization")
-        if not auth_header or not auth_header.startswith("Bearer "):
-             return JSONResponse({"error": "Unauthorized"}, status_code=401)
+        token = None
         
-        token = auth_header.split(" ")[1]
+        if auth_header and auth_header.startswith("Bearer "):
+             token = auth_header.split(" ")[1]
+             
+        # 2. Check Cookie (Browser Admin)
+        if not token:
+            token = request.cookies.get("access_token")
+        
+        if not token:
+             # Redirect browser requests to login
+             if request.url.path.startswith("/apple-auth"):
+                 return RedirectResponse(f"/login?next={request.url.path}")
+                 
+             return JSONResponse({"error": "Unauthorized"}, status_code=401)
         
         try:
             # Verify JWT
             payload = jwt.decode(token, MCP_JWT_SECRET, algorithms=[ALGORITHM])
-            if payload.get("type") != "access":
-                 raise ValueError("Invalid token type")
+            # if payload.get("type") != "access":
+            #      raise ValueError("Invalid token type")
             request.state.user = payload
         except Exception as e:
+            if request.url.path.startswith("/apple-auth"):
+                 return RedirectResponse(f"/login?next={request.url.path}")
             return JSONResponse({"error": "Invalid Token"}, status_code=401)
 
         return await call_next(request)
@@ -574,12 +660,16 @@ app = Starlette(
         Route("/", health),
         Route("/health", health),
         
-        # Mount the session manager at root ("/") as a catch-all.
-        Mount("/", app=manager.handle_request),
-        
         # Apple Music Auth
         Route("/apple-auth", apple_login_page, methods=["GET"]),
         Route("/apple-auth/callback", apple_callback, methods=["POST"]),
+        
+        # Admin Login
+        Route("/login", login_page, methods=["GET"]),
+        Route("/login", login_submit, methods=["POST"]),
+        
+        # Mount the session manager at root ("/") as a catch-all.
+        Mount("/", app=manager.handle_request),
     ],
     middleware=[Middleware(AuthMiddleware)],
     lifespan=lifespan
