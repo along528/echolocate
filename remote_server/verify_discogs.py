@@ -145,7 +145,11 @@ async def run_verification():
             
             if username:
                 print(f"Fetching wantlist for {username}...")
-                data = await client.get_wantlist(username, per_page=5)
+                # data = await client.get_wantlist(username, per_page=5)
+                # Try specific endpoint for debugging
+                url = f"https://api.discogs.com/users/{username}/wants"
+                data = await client._get(url, params={"per_page": 5})
+                
                 wants = data.get("wants", [])
                 print(f"Found {len(wants)} items (showing top 5):")
                 for w in wants:
