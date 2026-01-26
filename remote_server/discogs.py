@@ -87,6 +87,24 @@ class DiscogsClient:
         tasks = [self.get_release(rid) for rid in release_ids]
         return await asyncio.gather(*tasks, return_exceptions=True)
 
+    async def get_identity(self) -> Dict[str, Any]:
+        """
+        Get authenticated user identity.
+        """
+        url = f"{self.BASE_URL}/oauth/identity"
+        return await self._get(url)
+
+    async def get_wantlist(self, username: str, page: int = 1, per_page: int = 50) -> Dict[str, Any]:
+        """
+        Get user's wantlist.
+        """
+        url = f"{self.BASE_URL}/users/{username}/wantlist"
+        params = {
+            "page": page,
+            "per_page": per_page
+        }
+        return await self._get(url, params=params)
+
     def get_marketplace_url(self, release_id: str) -> str:
         """
         Returns the simplified marketplace URL for a given release ID.

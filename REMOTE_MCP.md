@@ -92,6 +92,7 @@ You can set these as **Environment Variables** (for local dev) or create them in
 - `search_discogs(query)` - Search for albums (master releases)
 - `get_discogs_versions(master_id)` - Get versions for a master release (with marketplace links)
 - `get_discogs_release(release_id)` - Get details for a specific release
+- `get_discogs_wantlist()` - Get your Discogs wantlist items
 
 ## Client Configuration
 

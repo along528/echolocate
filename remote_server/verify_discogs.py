@@ -133,5 +133,28 @@ async def run_verification():
         else:
             print(f"❌ No results found for query: {search_query}")
 
+    # Test 4: Wantlist
+    print("\n--- Testing Wantlist ---")
+    if token == "DUMMY_TOKEN":
+         print("⚠️  Skipping real wantlist checking due to dummy token.")
+    else:
+        try:
+            identity = await client.get_identity()
+            username = identity.get("username")
+            print(f"✅ Authenticated as: {username}")
+            
+            if username:
+                print(f"Fetching wantlist for {username}...")
+                data = await client.get_wantlist(username, per_page=5)
+                wants = data.get("wants", [])
+                print(f"Found {len(wants)} items (showing top 5):")
+                for w in wants:
+                    info = w.get("basic_information", {})
+                    rid = str(info.get("id"))
+                    print(f"✅ [{rid}] {info.get('title')} ({info.get('year')})")
+                    print(f"   {client.get_marketplace_url(rid)}")
+        except Exception as e:
+            print(f"❌ Error fetching wantlist: {e}")
+
 if __name__ == "__main__":
     asyncio.run(run_verification())

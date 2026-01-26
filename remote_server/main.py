@@ -631,6 +631,17 @@ async def list_tools():
                     "release_ids": {"type": "array", "items": {"type": "string"}, "description": "List of Release IDs (optional, supports batch)"}
                 }
             }
+        ),
+        Tool(
+            name="get_discogs_wantlist",
+            description="Get the authenticated user's Discogs Wantlist.",
+            inputSchema={
+                "type": "object",
+                "properties": {
+                    "page": {"type": "integer", "description": "Page number (default 1)"},
+                    "limit": {"type": "integer", "description": "Results per page (default 50)"}
+                }
+            }
         )
     ]
 
@@ -841,6 +852,55 @@ Tracklist:""")
                  
         except Exception as e:
              result = f"Error fetching releases: {e}"
+
+    elif name == "get_discogs_wantlist":
+        if not discogs_client:
+             return [TextContent(type="text", text="Discogs is not configured on this server.")]
+        
+        page = arguments.get("page", 1)
+        limit = arguments.get("limit", 50)
+        
+        try:
+            # 1. Get Identity (Username)
+            identity = await discogs_client.get_identity()
+            username = identity.get("username")
+            if not username:
+                 return [TextContent(type="text", text="Could not determine Discogs username.")]
+                 
+            # 2. Get Wantlist
+            data = await discogs_client.get_wantlist(username, page=page, per_page=limit)
+            wants = data.get("wants", [])
+            pagination = data.get("pagination", {})
+            
+            if not wants:
+                result = "Wantlist is empty."
+            else:
+                formatted = [f"Found {pagination.get('items', 0)} items in wantlist (Page {page}/{pagination.get('pages', 0)}):"]
+                for w in wants:
+                    # Basic info usually in 'basic_information'
+                    info = w.get("basic_information", {})
+                    rid = str(info.get("id"))
+                    title = info.get("title")
+                    year = info.get("year")
+                    artists = ", ".join([a.get("name") for a in info.get("artists", [])])
+                    
+                    # Formats
+                    formats = [f.get("name") for f in info.get("formats", [])]
+                    fmt_str = ", ".join(formats[:2]) # Keep it brief
+                    
+                    mkt_url = discogs_client.get_marketplace_url(rid)
+                    formatted.append(f"""
+---
+Title: {title}
+Artist: {artists}
+Year: {year}
+Format: {fmt_str}
+Marketplace: {mkt_url}
+""")
+                result = "".join(formatted)
+                
+        except Exception as e:
+            result = f"Error fetching wantlist: {e}"
 
     else:
         result = f"Unknown tool: {name}"
