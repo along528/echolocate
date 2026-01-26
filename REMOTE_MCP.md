@@ -41,6 +41,7 @@ You can set these as **Environment Variables** (for local dev) or create them in
 | `APPLE_TEAM_ID` | Apple Developer Team ID (Membership). |
 | `APPLE_KEY_ID` | MusicKit Private Key ID (Keys -> MusicKit). |
 | `APPLE_PRIVATE_KEY` | Contents of the `.p8` private key file. |
+| `DISCOGS_TOKEN` | Discogs Personal Access Token. |
 
 ### Using Google Secret Manager
 
@@ -57,6 +58,9 @@ You can set these as **Environment Variables** (for local dev) or create them in
    echo -n "YOUR_TEAM_ID" | gcloud secrets create APPLE_TEAM_ID --data-file=-
    echo -n "YOUR_KEY_ID" | gcloud secrets create APPLE_KEY_ID --data-file=-
    gcloud secrets create APPLE_PRIVATE_KEY --data-file=path/to/AuthKey_XXXXXX.p8
+
+   # Discogs Secret
+   echo -n "YOUR_DISCOGS_TOKEN" | gcloud secrets create DISCOGS_TOKEN --data-file=-
    ```
 3. **Grant Access**:
    The Cloud Run service account must have `roles/secretmanager.secretAccessor`.
@@ -85,6 +89,10 @@ You can set these as **Environment Variables** (for local dev) or create them in
 - `greet(name)` - Returns a greeting from Cloud Run
 - `add(a, b)` - Adds two numbers
 - `echo(message)` - Echoes back a message
+- `search_discogs(query)` - Search for albums (master releases)
+- `get_discogs_versions(master_id)` - Get versions for a master release (with marketplace links)
+- `get_discogs_release(release_id)` - Get details for a specific release
+- `get_discogs_wantlist()` - Get your Discogs wantlist items
 
 ## Client Configuration
 
@@ -134,6 +142,7 @@ gcloud run deploy mcp-helloworld \
 | [main.py](remote_server/main.py) | Starlette + Streamable HTTP Manager + OAuth Provider + Secret Manager |
 | [Dockerfile](remote_server/Dockerfile) | Container configuration |
 | [requirements.txt](remote_server/requirements.txt) | Python dependencies |
+| [discogs.py](remote_server/discogs.py) | Discogs API Client |
 
 ## Implementation Notes
 
