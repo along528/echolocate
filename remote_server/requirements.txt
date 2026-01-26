@@ -6,3 +6,4 @@ python-jose[cryptography]
 python-multipart
 jinja2
 google-cloud-secret-manager
+httpx

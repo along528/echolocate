@@ -38,6 +38,9 @@ You can set these as **Environment Variables** (for local dev) or create them in
 | `MCP_JWT_SECRET` | A secure random string used to sign Access Tokens. |
 | `MCP_CLIENT_ID` | (Optional) If set, validates the `client_id` from Claude. |
 | `MCP_CLIENT_SECRET` | (Optional) If set, validates the `client_secret` from Claude. |
+| `APPLE_TEAM_ID` | Apple Developer Team ID (Membership). |
+| `APPLE_KEY_ID` | MusicKit Private Key ID (Keys -> MusicKit). |
+| `APPLE_PRIVATE_KEY` | Contents of the `.p8` private key file. |
 
 ### Using Google Secret Manager
 
@@ -49,6 +52,11 @@ You can set these as **Environment Variables** (for local dev) or create them in
    echo -n `openssl rand -hex 32` | gcloud secrets create MCP_AUTH_SECRET --data-file=-
    echo -n `openssl rand -hex 32` | gcloud secrets create MCP_JWT_SECRET --data-file=-
    echo -n "cloud-crate" | gcloud secrets create MCP_CLIENT_ID --data-file=-
+   
+   # Apple Music Secrets
+   echo -n "YOUR_TEAM_ID" | gcloud secrets create APPLE_TEAM_ID --data-file=-
+   echo -n "YOUR_KEY_ID" | gcloud secrets create APPLE_KEY_ID --data-file=-
+   gcloud secrets create APPLE_PRIVATE_KEY --data-file=path/to/AuthKey_XXXXXX.p8
    ```
 3. **Grant Access**:
    The Cloud Run service account must have `roles/secretmanager.secretAccessor`.
@@ -63,7 +71,9 @@ You can set these as **Environment Variables** (for local dev) or create them in
 
 - `GET /authorize`: Renders the login page.
 - `POST /authorize`: Validates password and issues auth code.
+- `POST /authorize`: Validates password and issues auth code.
 - `POST /token`: Exchanges code for Bearer Token (JWT).
+- `GET /apple-auth`: Renders "Log in with Apple Music" page.
 
 ## Available Tools
 
