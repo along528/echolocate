@@ -104,3 +104,6 @@ gcloud run deploy mcp-helloworld \
 ```
 
 For more details, see the root [REMOTE_MCP.md](../REMOTE_MCP.md).
+
+### 5. Apple Music Integration
+The `AppleMusicClient` now supports batch fetching of song details, including preview URLs, via the `get_songs(ids)` method. This is essential for efficiently retrieving audio previews for embedding generation.

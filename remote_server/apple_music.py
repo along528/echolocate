@@ -82,6 +82,14 @@ class AppleMusicClient:
         # Type mapping cleanup if needed
         return await self._request("GET", f"catalog/{storefront}/{type}/{id}", user_token=user_token)
 
+    async def get_songs(self, ids: list[str], storefront: str = "us"):
+        """
+        Get multiple songs by ID.
+        """
+        # Join IDs with comma
+        ids_str = ",".join(ids)
+        return await self._request("GET", f"catalog/{storefront}/songs", params={"ids": ids_str})
+
     async def create_playlist(self, name: str, description: str, track_ids: list[str], user_token: str):
         """
         Create a playlist and add tracks.

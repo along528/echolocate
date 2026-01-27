@@ -48,3 +48,18 @@ The script generates `embeddings_sample.json` containing:
 
 *   Integration with PostgreSQL (`pgvector`) for persistent storage.
 *   Building "Sonic Interpolation" queries.
+
+## Verification
+
+To verify the end-to-end flow of fetching Apple Music previews and ensuring they can be embedded, use the verification script:
+
+```bash
+python3 audio_embedding/verify_preview_embedding.py
+```
+
+This script:
+1.  Searches for a sample song ("Taylor Swift Anti-Hero").
+2.  Fetches the song details to get the preview URL.
+3.  Downloads the preview audio to `audio_embedding/tmp/`.
+4.  Generates a single embedding for the preview audio.
+5.  Saves the embedding to `audio_embedding/tmp/`.

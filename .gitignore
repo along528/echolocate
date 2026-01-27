@@ -20,4 +20,8 @@ remote_server/*.pyc
 
 # Embedding Artifacts
 embeddings_sample.json
-audio_embedding/embeddings_sample.json
+
+# Audio Embedding Tmp
+audio_embedding/tmp/
+audio_embedding/__pycache__/
+audio_embedding/*.pyc
