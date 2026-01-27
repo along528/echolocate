@@ -2,17 +2,15 @@
 
 **Objective:** Build a multi-phase pipeline to generate semantic music embeddings using **MERT-v1-95M** and store them in **pgvector** for a music discovery application.
 
-## Phase 1: Local Embedding Prototype
+## Phase 1: Local Embedding Prototype (COMPLETED)
 
-*   **Audio Loading:** Use `librosa` to load local files. Resample all audio to **24,000Hz**.
-*   **The "DJ Trinity" Extraction:** For each track, extract exactly **5 seconds** from three specific segments:
-    1.  **Intro:** 0s to 5s.
-    2.  **Middle:** (Duration/2) to (Duration/2 + 5s).
-    3.  **Outro:** (Duration - 5s) to Duration.
-*   **Model Inference:** Use `transformers` to load `m-a-p/MERT-v1-95M`. Generate vectors by taking the **mean of the last hidden state** (resulting in a **768-dimension** vector per segment).
-*   **Output:** Save results to a local `embeddings_sample.json` for validation.
+*   **Status**: Done. Files moved to `audio_embedding/`.
+*   **Audio Loading**: implemented in `audio_embedding/embedding_lib.py` using `librosa`. Resampled to 24kHz.
+*   **The "DJ Trinity" Extraction**: implemented. Extracts 5s segments (Intro, Mid, Outro).
+*   **Model Inference**: implemented `MusicEncoder` class using `m-a-p/MERT-v1-95M`. Returns 768-dim vectors.
+*   **Output**: Verified. Script `audio_embedding/generate_sample.py` successfully produces `embeddings_sample.json`.
 
-## Phase 2: pgvector Integration
+## Phase 2: pgvector Integration (PAUSED)
 
 *   **Database Setup:** Create a PostgreSQL schema with the `vector` extension.
 *   **Table Design:** Define a `tracks` table with columns `v_intro`, `v_mid`, and `v_outro`, all type `vector(768)`.

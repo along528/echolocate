@@ -17,3 +17,7 @@ remote_server/*.pyc
 
 # Virtual Env
 .venv/
+
+# Embedding Artifacts
+embeddings_sample.json
+audio_embedding/embeddings_sample.json
