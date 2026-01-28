@@ -62,6 +62,7 @@ Finds the nearest neighbors for a given 768-dimensional vector.
     "title": "Title",
     "artist": "Artist",
     "album": "Unknown",
+    "relative_path": "crate/Artist/Title.mp3",
     "similarity": 0.95
   }
 ]

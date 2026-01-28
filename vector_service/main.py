@@ -19,6 +19,7 @@ class SearchResult(BaseModel):
     title: str
     artist: str
     album: str
+    relative_path: str
     similarity: float
 
 @app.on_event("startup")
@@ -50,13 +51,10 @@ def search_tracks(request: SearchRequest):
             raise HTTPException(status_code=400, detail=f"Vector must be 768 dimensions, got {len(request.vector)}")
 
         # Perform Query
-        # We use array_cosine_similarity (or distance)
-        # array_cosine_similarity returns -1 to 1. Higher is better. 
-        # User requested metric='cosine' in index, which usually optimizes for distance, 
-        # but let's return similarity for easier consumption.
+        # Using v_mid as the default representation for search
         
         query = """
-            SELECT id, title, artist, album, array_cosine_similarity(embedding, ?::FLOAT[768]) as similarity
+            SELECT id, title, artist, album, relative_path, array_cosine_similarity(v_mid, ?::FLOAT[768]) as similarity
             FROM tracks
             ORDER BY similarity DESC
             LIMIT ?
@@ -74,7 +72,8 @@ def search_tracks(request: SearchRequest):
                 title=row[1],
                 artist=row[2],
                 album=row[3],
-                similarity=row[4]
+                relative_path=row[4],
+                similarity=row[5]
             ))
             
         return response

@@ -23,11 +23,20 @@
 
 ## Phase 3: Scaling & Discovery Logic
 
-*   **Expansion:** Process a larger sample set including your local library and **Apple Music previews** (fetched via MusicKit URL).
-*   **Discovery Queries:** Implement SQL functions for:
-    *   **Sonic Interpolation:** Find the "midpoint" between two tracks using `(vector_a + vector_b) / 2`.
-    *   **Contextual Matching:** Match the `v_outro` of Song A to the `v_intro` of other tracks.
-*   **Indexing:** Add an **HNSW index** to the vector columns to ensure high-performance searching.
+### Completed
+*   **Audio Sampling**: Created `select_samples.py` to randomly pick tracks.
+*   **Embedding Pipeline**: Updated `generate_embeddings.py` to support file lists, progress tracking, and metadata extraction.
+*   **Database Schema**: Updated to support:
+    *   `v_intro`, `v_mid`, `v_outro` vector columns.
+    *   `relative_path` for consistent file referencing.
+    *   **Hashed IDs** (`artist|album|title`) for consistency.
+*   **Indexing**: Created HNSW index on `v_mid` for primary search.
+
+### Pending (To Be Implemented)
+*   **Discovery Queries**: Implement SQL functions/endpoints for:
+    *   **Sonic Interpolation**: Find the "midpoint" between two tracks using `(vector_a + vector_b) / 2`.
+    *   **Contextual Matching**: Match the `v_outro` of Song A to the `v_intro` of other tracks.
+*   **Apple Music Integration**: Fetch previews via MusicKit URL (optional).
 
 ## Phase 4: MCP Server Integration
 

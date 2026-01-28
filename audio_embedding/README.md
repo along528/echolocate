@@ -11,7 +11,10 @@ The system extracts 5-second segments (Intro, Mid, Outro) from audio files and c
 *   **`embedding_lib.py`**: Core library containing:
     *   `load_and_segment`: Uses `librosa` to load audio and extract the 3 segments (Intro, Mid, Outro).
     *   `MusicEncoder`: A wrapper class for the `m-a-p/MERT-v1-95M` transformer model.
-*   **`generate_sample.py`**: A CLI script to batch process a directory of audio files and output a JSON file.
+    *   `MusicEncoder`: A wrapper class for the `m-a-p/MERT-v1-95M` transformer model.
+*   **`select_samples.py`**: Randomly selects audio files from the library and saves paths to a text file.
+*   **`generate_embeddings.py`**: Scans files (from directory or list), extracts segments, generates embeddings, and saves to JSON.
+*   **`generate_db.py`**: Loads the JSON embeddings, creates a DuckDB database with HNSW indexes, and handles ID hashing.
 
 ## Prerequisites
 
@@ -31,11 +34,16 @@ pip install -r audio_embedding/requirements.txt
 Run the sample generator from the project root (to ensure correct python path resolution):
 
 ```bash
-# Process files in a specific directory
-python3 audio_embedding/generate_sample.py "path/to/music/directory"
+```bash
+# 1. Select a sample of files
+python3 audio_embedding/select_samples.py
 
-# Example
-python3 audio_embedding/generate_sample.py "crate/Rage"
+# 2. Generate Embeddings (uses data/sample_files.txt by default)
+python3 audio_embedding/generate_embeddings.py
+
+# Or process a specific directory
+python3 audio_embedding/generate_embeddings.py "crate/Rage"
+```
 ```
 
 ## Output

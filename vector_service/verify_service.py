@@ -63,7 +63,8 @@ try:
         results = response.json()
         print(f"✅ Success! Found {len(results)} results:")
         for res in results:
-            print(f" - {res['similarity']:.4f}: {res['title']} by {res['artist']}")
+            rel_path = res.get('relative_path', 'N/A')
+            print(f" - {res['similarity']:.4f}: {res['title']} by {res['artist']} ({rel_path})")
     else:
         print(f"❌ Error {response.status_code}: {response.text}")
 

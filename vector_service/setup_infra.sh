@@ -21,19 +21,9 @@ fi
 
 # 2. Check for Database File
 if [ ! -f "$DB_FILE" ]; then
-    echo "Database file not found at $DB_FILE."
-    echo "Attempting to generate it..."
-    
-    # Check if duckdb is installed
-    PYTHON_CMD="../.venv/bin/python"
-    if ! $PYTHON_CMD -c "import duckdb" &>/dev/null; then
-        echo "Error: duckdb python package not found in .venv."
-        exit 1
-    fi
-    
-    cd ..
-    $PYTHON_CMD audio_embedding/generate_db.py
-    cd vector_service
+    echo "Error: Database file not found at $DB_FILE."
+    echo "Please run 'python audio_embedding/generate_db.py' to generate it."
+    exit 1
 fi
 
 # 3. Upload Database

@@ -1,6 +1,7 @@
 import duckdb
 import json
 import os
+import hashlib
 
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 DATA_DIR = os.path.join(BASE_DIR, "../data")
@@ -30,19 +31,30 @@ def initialize_db():
             title VARCHAR,
             artist VARCHAR,
             album VARCHAR,
-            embedding FLOAT[768]
+            relative_path VARCHAR,
+            v_intro FLOAT[768],
+            v_mid FLOAT[768],
+            v_outro FLOAT[768]
         );
     """)
     
-    # Create HNSW Index
-    print("Creating HNSW index...")
+    # Create HNSW Indexes for each vector column
+    # Note: Creating multiple indexes might be heavy, but useful for different search types.
+    print("Creating HNSW indexes...")
     con.execute("""
-        CREATE INDEX IF NOT EXISTS sonic_idx 
-        ON tracks USING HNSW (embedding) 
+        CREATE INDEX IF NOT EXISTS idx_mid 
+        ON tracks USING HNSW (v_mid) 
         WITH (metric = 'cosine');
     """)
+    # We can add indexes for intro/outro later if needed for performance, 
+    # but starting with mid is reasonable for main search.
     
     return con
+
+def generate_track_id(artist, album, title):
+    # Create a consistent hash ID
+    raw = f"{artist}|{album}|{title}"
+    return hashlib.md5(raw.encode('utf-8')).hexdigest()
 
 def load_data(con):
     if not os.path.exists(JSON_PATH):
@@ -55,45 +67,47 @@ def load_data(con):
     
     track_data_list = []
     
-    # Structure is list of dicts with keys: filename, path, duration, v_intro, v_mid, v_outro
     if isinstance(data, list):
         for info in data:
-            # Use path as ID since it's unique
-            track_id = info.get('path') or info.get('filename')
+            # Extract fields
+            artist = info.get('artist', 'Unknown')
+            album = info.get('album', 'Unknown')
+            title = info.get('title', 'Unknown')
+            relative_path = info.get('relative_path', '')
             
-            # Prefer v_mid, fallback to others
-            embedding = info.get('v_mid') or info.get('v_intro') or info.get('v_outro')
+            # Generate ID
+            track_id = generate_track_id(artist, album, title)
             
-            if not track_id or not embedding:
-                print(f"Skipping track without ID or embedding: {info.get('filename')}")
-                continue
-                
-            # Naive metadata extraction from path "crate/Artist/Title.mp3"
-            # path: "crate/Rage/7 Renegades of Funk.mp3"
-            try:
-                parts = track_id.split('/')
-                if len(parts) >= 2:
-                    artist = parts[-2]
-                    filename = parts[-1]
-                    title = os.path.splitext(filename)[0]
-                    album = "Unknown" # Not in path
-                else:
-                    artist = "Unknown"
-                    title = track_id
-                    album = "Unknown"
-            except:
-                artist = "Unknown"
-                title = track_id
-                album = "Unknown"
+            # Vectors
+            v_intro = info.get('v_intro')
+            v_mid = info.get('v_mid')
+            v_outro = info.get('v_outro')
+            
+            if not v_mid:
+                 print(f"Skipping track without v_mid: {info.get('filename')}")
+                 continue
 
-            track_data_list.append((track_id, title, artist, album, embedding))
+            if artist == "Unknown" and album == "Unknown" and title == "Unknown":
+                print(f"Skipping track with completely missing metadata: {relative_path}")
+                continue
+
+            track_data_list.append((
+                track_id, 
+                title, 
+                artist, 
+                album, 
+                relative_path, 
+                v_intro, 
+                v_mid, 
+                v_outro
+            ))
 
     print(f"Inserting {len(track_data_list)} tracks...")
     
     # Batch insert
     con.executemany("""
-        INSERT OR IGNORE INTO tracks (id, title, artist, album, embedding) 
-        VALUES (?, ?, ?, ?, ?)
+        INSERT OR IGNORE INTO tracks (id, title, artist, album, relative_path, v_intro, v_mid, v_outro) 
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?)
     """, track_data_list)
     
     # Force write to disk
@@ -112,3 +126,5 @@ if __name__ == "__main__":
         print(f"✅ Database created at {DB_PATH}")
     except Exception as e:
         print(f"❌ Error: {e}")
+        import traceback
+        traceback.print_exc()
