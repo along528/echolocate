@@ -6,7 +6,7 @@ cd "$(dirname "$0")"
 
 # Configuration
 BUCKET_NAME="cloud-crate-vector-db"
-DB_FILE="../cloudcrate.duckdb"
+DB_FILE="../data/cloudcrate.duckdb"
 REGION="us-central1"
 
 echo "Using Bucket Name: $BUCKET_NAME"
@@ -32,7 +32,7 @@ if [ ! -f "$DB_FILE" ]; then
     fi
     
     cd ..
-    $PYTHON_CMD generate_duckdb.py
+    $PYTHON_CMD audio_embedding/generate_db.py
     cd vector_service
 fi
 

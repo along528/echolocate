@@ -25,6 +25,7 @@ embeddings_sample.json
 audio_embedding/tmp/
 audio_embedding/__pycache__/
 audio_embedding/*.pyc
+audio_embedding/data/
 
 # DuckDB
 *.duckdb

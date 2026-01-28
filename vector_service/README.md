@@ -22,8 +22,8 @@ This service provides a read-only HTTP API to search for similar music tracks us
 The database is static and generated locally before upload.
 
 ```bash
-# Generates 'cloudcrate.duckdb' from '../embeddings_sample.json'
-python ../generate_duckdb.py
+# Generates 'data/cloudcrate.duckdb' from 'data/embeddings_sample.json'
+python ../audio_embedding/generate_db.py
 ```
 
 ### 3. Setup Infrastructure (Upload DB)

@@ -2,8 +2,10 @@ import duckdb
 import json
 import os
 
-DB_PATH = "cloudcrate.duckdb"
-JSON_PATH = "embeddings_sample.json"
+BASE_DIR = os.path.dirname(os.path.abspath(__file__))
+DATA_DIR = os.path.join(BASE_DIR, "../data")
+DB_PATH = os.path.join(DATA_DIR, "cloudcrate.duckdb")
+JSON_PATH = os.path.join(DATA_DIR, "embeddings_sample.json")
 
 def initialize_db():
     if os.path.exists(DB_PATH):

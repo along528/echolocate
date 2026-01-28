@@ -32,7 +32,7 @@ if not SERVICE_URL:
 
 # Load a sample vector
 try:
-    with open("embeddings_sample.json", "r") as f:
+    with open("data/embeddings_sample.json", "r") as f:
         data = json.load(f)
         
     # Get a random vector

@@ -3,7 +3,10 @@ import json
 import glob
 from embedding_lib import MusicEncoder, load_and_segment
 
-def generate_sample(directory, output_file="embeddings_sample.json", limit=5):
+BASE_DIR = os.path.dirname(os.path.abspath(__file__))
+DEFAULT_OUTPUT = os.path.join(BASE_DIR, "../data/embeddings_sample.json")
+
+def generate_embeddings(directory, output_file=DEFAULT_OUTPUT, limit=5):
     """
     Scans directory for audio files, generates embeddings, and saves to JSON.
     """
@@ -70,4 +73,11 @@ if __name__ == "__main__":
     elif os.path.exists("music"):
         target_dir = "music"
     
-    generate_sample(target_dir, limit=3)
+    limit = 5
+    if len(sys.argv) > 2:
+        try:
+            limit = int(sys.argv[2])
+        except ValueError:
+            print("Invalid limit provided, using default.")
+
+    generate_embeddings(target_dir, limit=limit)
