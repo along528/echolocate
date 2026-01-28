@@ -42,6 +42,7 @@ You can set these as **Environment Variables** (for local dev) or create them in
 | `APPLE_KEY_ID` | MusicKit Private Key ID (Keys -> MusicKit). |
 | `APPLE_PRIVATE_KEY` | Contents of the `.p8` private key file. |
 | `DISCOGS_TOKEN` | Discogs Personal Access Token. |
+| `VECTOR_SERVICE_URL` | URL of the internal Vector Service (e.g. `https://cloudcrate-vector-ie7zxu4hbq-uc.a.run.app`). |
 
 ### Using Google Secret Manager
 
@@ -61,6 +62,9 @@ You can set these as **Environment Variables** (for local dev) or create them in
 
    # Discogs Secret
    echo -n "YOUR_DISCOGS_TOKEN" | gcloud secrets create DISCOGS_TOKEN --data-file=-
+   
+   # Vector Service URL (Optional, defaults to http://vector-service:8080)
+   echo -n "https://cloudcrate-vector-ie7zxu4hbq-uc.a.run.app" | gcloud secrets create VECTOR_SERVICE_URL --data-file=-
    ```
 3. **Grant Access**:
    The Cloud Run service account must have `roles/secretmanager.secretAccessor`.
@@ -86,9 +90,13 @@ You can set these as **Environment Variables** (for local dev) or create them in
 
 ## Available Tools
 
-- `greet(name)` - Returns a greeting from Cloud Run
-- `add(a, b)` - Adds two numbers
-- `echo(message)` - Echoes back a message
+- `greeting(name)` - Returns a greeting from Cloud Run
+- `search_apple_music(query)` - Search Apple Music Catalog
+- `search_library(query)` - Search your Apple Music Library
+- `sample_vector_db()` - List tracks in Vector DB to find IDs
+- `find_similar_tracks(track_id)` - Find similar tracks (requires Vector DB ID)
+- `interpolate_tracks(track_id_1, track_id_2)` - Sonic interpolation (requires Vector DB IDs)
+- `create_interpolation_playlist(...)` - Create sonic playlist (requires Vector DB IDs)
 - `search_discogs(query)` - Search for albums (master releases)
 - `get_discogs_versions(master_id)` - Get versions for a master release (with marketplace links)
 - `get_discogs_release(release_id)` - Get details for a specific release
@@ -131,7 +139,7 @@ gcloud run deploy mcp-helloworld \
   --source . \
   --region us-central1 \
   --port 8080 \
-  --set-env-vars GOOGLE_CLOUD_PROJECT=cloud-crate-485418
+  --set-env-vars GOOGLE_CLOUD_PROJECT=cloud-crate-485418,VECTOR_SERVICE_URL=https://cloudcrate-vector-ie7zxu4hbq-uc.a.run.app
 ```
 *Note: We set `GOOGLE_CLOUD_PROJECT` explicitly just to be safe, though Cloud Run usually provides it. We NO LONGER pass secrets as env vars.*
 
@@ -160,7 +168,7 @@ The server uses:
 1. ✅ **Phase 1**: Hello world MCP on Cloud Run
 2. ✅ **Phase 2**: Authentication (OAuth 2.1) for Mobile Support
 3. ✅ **Phase 3**: Google Secret Manager Integration
-4. **Phase 4**: Migrate read-only tools (`search_library`, etc.)
+4. ✅ **Phase 4**: Migrate read-only tools (`search_library`, `vector_search`, etc.)
 5. **Phase 5**: BigQuery integration for library data
 6. **Phase 6**: Vertex AI embeddings for semantic search
 7. **Phase 7**: Hybrid local/remote for write operations

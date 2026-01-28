@@ -60,6 +60,7 @@ MCP_AUTH_SECRET = get_secret("MCP_AUTH_SECRET")
 MCP_JWT_SECRET = get_secret("MCP_JWT_SECRET")
 MCP_CLIENT_ID = get_secret("MCP_CLIENT_ID")
 MCP_CLIENT_SECRET = get_secret("MCP_CLIENT_SECRET")
+VECTOR_SERVICE_URL = get_secret("VECTOR_SERVICE_URL", "http://vector-service:8080")
 
 # Apple Music Secrets
 APPLE_TEAM_ID = get_secret("APPLE_TEAM_ID")
@@ -508,6 +509,23 @@ class AuthMiddleware(BaseHTTPMiddleware):
         return await call_next(request)
 
 
+
+# --- Vector Service Helper ---
+
+async def call_vector_service(path: str, method: str = "GET", json_body: dict = None, params: dict = None):
+    """
+    Helper to call the internal Vector Service.
+    """
+    url = f"{VECTOR_SERVICE_URL}{path}"
+    async with httpx.AsyncClient() as client:
+        try:
+            response = await client.request(method, url, json=json_body, params=params, timeout=30.0)
+            response.raise_for_status()
+            return response.json()
+        except httpx.HTTPError as e:
+            print(f"Vector Service Error ({path}): {e}")
+            raise Exception(f"Vector Service failed: {e}")
+
 # --- MCP Server Logic ---
 # Create MCP server with tools
 server = Server("Hello World MCP")
@@ -641,6 +659,68 @@ async def list_tools():
                     "page": {"type": "integer", "description": "Page number (default 1)"},
                     "limit": {"type": "integer", "description": "Results per page (default 50)"}
                 }
+            }
+            }
+        ),
+        Tool(
+            name="search_library",
+            description="Search for songs in your personal Apple Music Library.",
+            inputSchema={
+                "type": "object",
+                "properties": {
+                    "query": {"type": "string", "description": "Search term"},
+                    "limit": {"type": "integer", "description": "Max results (default 5)"}
+                },
+                "required": ["query"]
+            }
+        ),
+        Tool(
+            name="sample_vector_db",
+            description="Sample/List tracks from the Vector Database to discover valid Track IDs.",
+            inputSchema={
+                "type": "object",
+                "properties": {
+                    "limit": {"type": "integer", "description": "Number of tracks to return (default 20)"},
+                    "offset": {"type": "integer", "description": "Pagination offset (default 0)"}
+                }
+            }
+        ),
+        Tool(
+            name="find_similar_tracks",
+            description="Find tracks similar to a given track ID using vector similarity (Requires Vector DB Track ID).",
+            inputSchema={
+                "type": "object",
+                "properties": {
+                    "track_id": {"type": "string", "description": "Vector DB Track ID (use sample_vector_db to find IDs)"},
+                    "limit": {"type": "integer", "description": "Number of similar tracks to return (default 5)"}
+                },
+                "required": ["track_id"]
+            }
+        ),
+        Tool(
+            name="interpolate_tracks",
+            description="Find a sonic path (interpolation) between two tracks (Requires Vector DB Track IDs).",
+            inputSchema={
+                "type": "object",
+                "properties": {
+                    "track_id_1": {"type": "string", "description": "Start Vector DB Track ID"},
+                    "track_id_2": {"type": "string", "description": "End Vector DB Track ID"},
+                    "limit": {"type": "integer", "description": "Max number of intermediate tracks (default 10)"}
+                },
+                "required": ["track_id_1", "track_id_2"]
+            }
+        ),
+        Tool(
+            name="create_interpolation_playlist",
+            description="Create a playlist that transitions sonically between two tracks (Requires Vector DB Track IDs).",
+            inputSchema={
+                "type": "object",
+                "properties": {
+                    "name": {"type": "string", "description": "Name of the new playlist"},
+                    "track_id_1": {"type": "string", "description": "Start Vector DB Track ID"},
+                    "track_id_2": {"type": "string", "description": "End Vector DB Track ID"}
+                },
+                "required": ["name", "track_id_1", "track_id_2"]
             }
         )
     ]
@@ -797,7 +877,160 @@ Title: {v.get('title')}
 Format: {v.get('format', 'Unknown')}
 Label: {v.get('label', 'Unknown')}
 Country: {v.get('country', 'Unknown')}
-Year: {v.get('released', 'Unknown')}
+
+    elif name == "search_library":
+        if not apple_client:
+            return [TextContent(type="text", text="Apple Music is not configured on this server.")]
+        if not APPLE_MUSIC_USER_TOKEN:
+             return [TextContent(type="text", text="User is not logged in to Apple Music. Please visit /apple-auth to log in.")]
+             
+        query = arguments.get("query")
+        limit = arguments.get("limit", 5)
+        
+        try:
+            # Search Library
+            data = await apple_client.search_library(query, APPLE_MUSIC_USER_TOKEN, limit=limit)
+            results = data.get("results", {}).get("library-songs", {}).get("data", [])
+            
+            if not results:
+                result = "No results found in library."
+            else:
+                formatted = []
+                for item in results:
+                    attrs = item.get("attributes", {})
+                    # Library songs might act as valid inputs for vector service if their ID matches catalog or is mapped.
+                    # Usually vector service expects catalog IDs or specific mapped IDs.
+                    # The vector service currently seems to use IDs that look like mapped catalog IDs or internal IDs.
+                    # We'll display the ID provided by Apple.
+                    formatted.append(f"""
+---
+Track ID: {item['id']}
+Title: {attrs.get('name')}
+Artist: {attrs.get('artistName')}
+Album: {attrs.get('albumName')}
+""")
+                result = "".join(formatted)
+        except Exception as e:
+            result = f"Error searching library: {e}"
+
+    elif name == "sample_vector_db":
+        limit = arguments.get("limit", 20)
+        offset = arguments.get("offset", 0)
+        try:
+            results = await call_vector_service("/tracks", params={"limit": limit, "offset": offset})
+            if not results:
+                result = "No tracks found in Vector DB."
+            else:
+                formatted = []
+                for item in results:
+                    formatted.append(f"""
+---
+Vector DB ID: {item['id']}
+Title: {item['title']}
+Artist: {item['artist']}
+Album: {item.get('album', 'Unknown')}
+""")
+                result = "".join(formatted)
+        except Exception as e:
+            result = f"Error sampling Vector DB: {e}"
+
+    elif name == "find_similar_tracks":
+        track_id = arguments.get("track_id")
+        limit = arguments.get("limit", 5)
+        
+        # Strip prefixes if present to match vector service expectation
+        if track_id.startswith("catalog:"):
+            track_id = track_id.split(":", 1)[1]
+            
+        try:
+            results = await call_vector_service(f"/tracks/{track_id}/similar", params={"limit": limit})
+            if not results:
+                 result = "No similar tracks found."
+            else:
+                 formatted = []
+                 for item in results:
+                     formatted.append(f"""
+---
+Track ID: {item['id']}
+Title: {item['title']}
+Artist: {item['artist']}
+Album: {item['album']}
+Similarity: {item.get('similarity', 0):.4f}
+""")
+                 result = "".join(formatted)
+        except Exception as e:
+            result = f"Error finding similar tracks: {e}"
+
+    elif name == "interpolate_tracks":
+        track_id_1 = arguments.get("track_id_1")
+        track_id_2 = arguments.get("track_id_2")
+        limit = arguments.get("limit", 10)
+        
+        if track_id_1.startswith("catalog:"): track_id_1 = track_id_1.split(":", 1)[1]
+        if track_id_2.startswith("catalog:"): track_id_2 = track_id_2.split(":", 1)[1]
+        
+        try:
+            payload = {
+                "track_id_1": track_id_1,
+                "track_id_2": track_id_2,
+                "limit": limit
+            }
+            results = await call_vector_service("/interpolate", method="POST", json_body=payload)
+             
+            formatted = []
+            for item in results:
+                 formatted.append(f"""
+---
+Track ID: {item['id']}
+Title: {item['title']}
+Artist: {item['artist']}
+Similarity: {item.get('similarity', 0):.4f}
+""")
+            result = "".join(formatted)
+        except Exception as e:
+            result = f"Error interpolating: {e}"
+
+    elif name == "create_interpolation_playlist":
+        if not apple_client:
+             return [TextContent(type="text", text="Apple Music is not configured.")]
+        if not APPLE_MUSIC_USER_TOKEN:
+             return [TextContent(type="text", text="User not logged in.")]
+             
+        name_playlist = arguments.get("name")
+        track_id_1 = arguments.get("track_id_1")
+        track_id_2 = arguments.get("track_id_2")
+        
+        if track_id_1.startswith("catalog:"): track_id_1 = track_id_1.split(":", 1)[1]
+        if track_id_2.startswith("catalog:"): track_id_2 = track_id_2.split(":", 1)[1]
+        
+        try:
+            # 1. Get Path from Vector Service
+            payload = {
+                "track_id_1": track_id_1,
+                "track_id_2": track_id_2,
+                "limit": 20 # reasonable default for playlist
+            }
+            # Note: vector service has /interpolate/playlist endpoint that returns full path
+            results = await call_vector_service("/interpolate/playlist", method="POST", json_body=payload)
+            
+            # 2. Extract IDs
+            track_ids = [item['id'] for item in results]
+            
+            if not track_ids:
+                return [TextContent(type="text", text="Could not generate interpolation path.")]
+                
+            # 3. Create Playlist via Apple Music
+            desc = f"Interpolation from {results[0]['title']} to {results[-1]['title']}"
+            data = await apple_client.create_playlist(name_playlist, desc, track_ids, APPLE_MUSIC_USER_TOKEN)
+            
+            if data and "data" in data and len(data["data"]) > 0:
+                new_id = data["data"][0]["id"]
+                result = f"Successfully created playlist '{name_playlist}' (ID: {new_id}) with {len(track_ids)} tracks."
+            else:
+                result = "Playlist created but no ID returned?"
+                
+        except Exception as e:
+            result = f"Error creating interpolation playlist: {e}"
 Marketplace: {mkt_url}
 """)
                  result = "".join(formatted)

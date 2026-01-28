@@ -97,5 +97,6 @@ Finds the nearest neighbors for a given 768-dimensional vector.
 Run the verification script to query the deployed service with a random sample vector:
 
 ```bash
-python verify_service.py <SERVICE_URL>
+```bash
+python verify_service.py https://cloudcrate-vector-ie7zxu4hbq-uc.a.run.app
 ```

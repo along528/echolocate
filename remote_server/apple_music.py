@@ -129,3 +129,17 @@ class AppleMusicClient:
 
         # POST to /me/library/playlists
         return await self._request("POST", "me/library/playlists", user_token=user_token, json_body=payload)
+
+    async def search_library(self, query: str, user_token: str, limit: int = 5, types: str = "library-songs"):
+        """
+        Search the user's Apple Music Library.
+        """
+        if not user_token:
+            raise ValueError("User Token is required for library search.")
+            
+        params = {
+            "term": query,
+            "limit": limit,
+            "types": types
+        }
+        return await self._request("GET", "me/library/search", user_token=user_token, params=params)
