@@ -55,11 +55,16 @@ def health_check():
     return {"status": "ok", "service": "cloudcrate-vector"}
 
 @app.get("/tracks", response_model=List[TrackResponse])
-def list_tracks(limit: int = 50, offset: int = 0):
+def list_tracks(limit: int = 50, offset: int = 0, random: bool = False):
     try:
         con = get_db_connection()
-        query = "SELECT id, title, artist, album, relative_path FROM tracks LIMIT ? OFFSET ?"
-        results = con.execute(query, [limit, offset]).fetchall()
+        if random:
+            # Efficient random sampling
+            query = "SELECT id, title, artist, album, relative_path FROM tracks ORDER BY RANDOM() LIMIT ?"
+            results = con.execute(query, [limit]).fetchall()
+        else:
+            query = "SELECT id, title, artist, album, relative_path FROM tracks LIMIT ? OFFSET ?"
+            results = con.execute(query, [limit, offset]).fetchall()
         con.close()
         
         response = []

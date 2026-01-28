@@ -919,8 +919,9 @@ Album: {attrs.get('albumName')}
     elif name == "sample_vector_db":
         limit = arguments.get("limit", 20)
         offset = arguments.get("offset", 0)
+        is_random = arguments.get("random", True)
         try:
-            results = await call_vector_service("/tracks", params={"limit": limit, "offset": offset})
+            results = await call_vector_service("/tracks", params={"limit": limit, "offset": offset, "random": str(is_random).lower()})
             if not results:
                 result = "No tracks found in Vector DB."
             else:
