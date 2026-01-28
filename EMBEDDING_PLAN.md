@@ -10,11 +10,16 @@
 *   **Model Inference**: implemented `MusicEncoder` class using `m-a-p/MERT-v1-95M`. Returns 768-dim vectors.
 *   **Output**: Verified. Script `audio_embedding/generate_sample.py` successfully produces `embeddings_sample.json`.
 
-## Phase 2: pgvector Integration (PAUSED)
+## Phase 2: Vector Database (DuckDB) (COMPLETED)
 
-*   **Database Setup:** Create a PostgreSQL schema with the `vector` extension.
-*   **Table Design:** Define a `tracks` table with columns `v_intro`, `v_mid`, and `v_outro`, all type `vector(768)`.
-*   **Data Migration:** Write a script using `psycopg2` or `SQLAlchemy` to batch-upload the JSON data from Phase 1 into the database.
+*   **Architecture**: Serverless vector DB using **DuckDB** running on **Cloud Run** with **Google Cloud Storage** volume mounts.
+*   **Database File**: `cloudcrate.duckdb` generated locally with `vss` extension (HNSW index).
+*   **Service**: `vector_service/` (FastAPI) deployed as `cloudcrate-vector`.
+*   **Data Flow**:
+    1.  Generate `.duckdb` locally from JSON.
+    2.  Upload to GCS bucket `cloud-crate-vector-db`.
+    3.  Cloud Run mounts bucket to `/data`.
+    4.  Service queries `/data/cloudcrate.duckdb` (Read-Only).
 
 ## Phase 3: Scaling & Discovery Logic
 

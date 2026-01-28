@@ -1,0 +1,6 @@
+duckdb>=1.0.0
+fastapi
+uvicorn
+pydantic
+python-multipart
+google-cloud-storage
