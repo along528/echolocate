@@ -31,11 +31,16 @@
     *   `relative_path` for consistent file referencing.
     *   **Hashed IDs** (`artist|album|title`) for consistency.
 *   **Indexing**: Created HNSW index on `v_mid` for primary search.
+*   **Discovery Queries**: Implemented in `vector_service`:
+    *   **Sonic Interpolation**: `/interpolate` endpoint (midpoint between two tracks).
+    *   **Find Similar by ID**: `/tracks/{id}/similar` endpoint.
+    *   **List Tracks**: `/tracks` endpoint with paging.
+*   **Scaling & Robustness**:
+    *   Switched to **JSONL** (`embeddings.jsonl`) for incremental writing.
+    *   Added **Resume Capability** to skip already processed files.
+    *   Updated `select_samples.py` to default to 10k tracks.
 
 ### Pending (To Be Implemented)
-*   **Discovery Queries**: Implement SQL functions/endpoints for:
-    *   **Sonic Interpolation**: Find the "midpoint" between two tracks using `(vector_a + vector_b) / 2`.
-    *   **Contextual Matching**: Match the `v_outro` of Song A to the `v_intro` of other tracks.
 *   **Apple Music Integration**: Fetch previews via MusicKit URL (optional).
 
 ## Phase 4: MCP Server Integration

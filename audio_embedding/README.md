@@ -34,28 +34,27 @@ pip install -r audio_embedding/requirements.txt
 Run the sample generator from the project root (to ensure correct python path resolution):
 
 ```bash
-```bash
-# 1. Select a sample of files
-python3 audio_embedding/select_samples.py
+# 1. Select a sample of files (defaults to 10k)
+# Use the optional argument to limit the number of files (e.g. 500)
+python3 audio_embedding/select_samples.py [limit]
 
 # 2. Generate Embeddings (uses data/sample_files.txt by default)
+# Supports Resume: Skips files already in embeddings.jsonl
 python3 audio_embedding/generate_embeddings.py
 
 # Or process a specific directory
 python3 audio_embedding/generate_embeddings.py "crate/Rage"
 ```
-```
 
 ## Output
 
-The script generates `embeddings_sample.json` containing:
+The script generates `embeddings.jsonl` (JSON Lines) containing one JSON object per line. This format supports:
+*   **Incremental writing**: Data is saved immediately after processing each track.
+*   **Resume Capability**: The script checks this file on startup to skip already processed tracks.
+
+Each line contains:
 *   File path and metadata
 *   `v_intro`, `v_mid`, `v_outro`: 768-float vectors
-
-## Next Steps
-
-*   Integration with PostgreSQL (`pgvector`) for persistent storage.
-*   Building "Sonic Interpolation" queries.
 
 ## Verification
 

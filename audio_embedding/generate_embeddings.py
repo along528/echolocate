@@ -3,23 +3,39 @@ import json
 import glob
 import sys
 from embedding_lib import MusicEncoder, load_and_segment
+import time
 
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 PROJECT_ROOT = os.path.dirname(BASE_DIR)
-DEFAULT_OUTPUT = os.path.join(BASE_DIR, "../data/embeddings.json")
+DEFAULT_OUTPUT = os.path.join(BASE_DIR, "../data/embeddings.jsonl")
 DEFAULT_FILE_LIST = os.path.join(BASE_DIR, "../data/sample_files.txt")
-
-import time
 
 def generate_embeddings(target_input, output_file=DEFAULT_OUTPUT, limit=None):
     """
     Generates embeddings for audio files.
     target_input: Can be a directory path OR a text file containing a list of relative paths.
     """
-    # Initialize Encoder
-    encoder = MusicEncoder()
     
-    results = []
+    # 1. Load already processed files (Resume Capability)
+    processed_paths = set()
+    if os.path.exists(output_file):
+        print(f"Checking existing output file {output_file} for resume...")
+        try:
+            with open(output_file, 'r') as f:
+                for line in f:
+                    line = line.strip()
+                    if line:
+                        try:
+                            data = json.loads(line)
+                            if 'relative_path' in data:
+                                processed_paths.add(data['relative_path'])
+                        except json.JSONDecodeError:
+                            pass # Skip invalid lines
+            print(f"Found {len(processed_paths)} already processed files.")
+        except Exception as e:
+            print(f"Error reading existing file: {e}")
+
+    # 2. Gather Files
     files = []
     
     # Check if target_input is a list file or a directory
@@ -48,78 +64,84 @@ def generate_embeddings(target_input, output_file=DEFAULT_OUTPUT, limit=None):
         print(f"Target not found: {target_input}")
         return
 
-    print(f"Found {len(files)} audio files to process.")
+    # Filter out processed files
+    files_to_process = [f for f in files if f['rel_path'] not in processed_paths]
+    print(f"Found {len(files)} total files. {len(files_to_process)} to process.")
     
+    if not files_to_process:
+        print("All files processed.")
+        return
+
+    # Initialize Encoder (only if needed)
+    encoder = MusicEncoder()
+
     processed_count = 0
     total_duration = 0
     
-    for item in files:
-        if limit and processed_count >= limit:
-            break
+    # Open file in append mode for eager writing
+    with open(output_file, 'a') as out_f:
+        for item in files_to_process:
+            if limit and processed_count >= limit:
+                break
+                
+            f_path = item['path']
+            rel_path = item['rel_path']
             
-        f = item['path']
-        rel_path = item['rel_path']
-        
-        start_time = time.time()
-        print(f"[{processed_count + 1}/{len(files)}] Processing: {rel_path}")
-        
-        try:
-            segments = load_and_segment(f, target_sr=encoder.sampling_rate)
+            start_time = time.time()
+            print(f"[{processed_count + 1}/{len(files_to_process)}] Processing: {rel_path}")
             
-            if segments:
-                # Generate Embeddings
-                # print("  Generating vectors...") # Reduced verbosity
-                emb_intro = encoder.get_embedding(segments['intro'])
-                emb_mid = encoder.get_embedding(segments['mid'])
-                emb_outro = encoder.get_embedding(segments['outro'])
+            try:
+                segments = load_and_segment(f_path, target_sr=encoder.sampling_rate)
                 
-                # Extract Metadata from path
-                # Expecting: crate/Artist/Album/Title.ext
-                parts = rel_path.split(os.sep)
-                artist = "Unknown"
-                album = "Unknown"
-                title = os.path.splitext(os.path.basename(f))[0]
-                
-                if len(parts) >= 4 and parts[0] == 'crate':
-                     # crate/Apple/Artist/Album/Title -> index -3, -2
-                     # Actually structure seems to be crate/Source/Artist/Album/Title
-                     # Let's try to be flexible.
-                     artist = parts[-3]
-                     album = parts[-2]
-                
-                track_data = {
-                    "filename": os.path.basename(f),
-                    "relative_path": rel_path,
-                    "artist": artist,
-                    "album": album,
-                    "title": title,
-                    "duration": segments['duration'],
-                    "v_intro": emb_intro,
-                    "v_mid": emb_mid,
-                    "v_outro": emb_outro
-                }
-                
-                results.append(track_data)
-                processed_count += 1
-                
-                duration = time.time() - start_time
-                total_duration += duration
-                avg_time = total_duration / processed_count
-                
-                # Estimate remaining
-                remaining_items = limit - processed_count if limit else len(files) - processed_count
-                remaining_time = avg_time * remaining_items
-                
-                print(f"  > Processed in {duration:.2f}s. Avg: {avg_time:.2f}s. Est. Remaining: {remaining_time/60:.2f}m")
-                
-        except Exception as e:
-            print(f"Error processing {f}: {e}")
+                if segments:
+                    # Generate Embeddings
+                    emb_intro = encoder.get_embedding(segments['intro'])
+                    emb_mid = encoder.get_embedding(segments['mid'])
+                    emb_outro = encoder.get_embedding(segments['outro'])
+                    
+                    # Extract Metadata from path
+                    parts = rel_path.split(os.sep)
+                    artist = "Unknown"
+                    album = "Unknown"
+                    title = os.path.splitext(os.path.basename(f_path))[0]
+                    
+                    if len(parts) >= 4 and parts[0] == 'crate':
+                         # Structure: crate/Source/Artist/Album/Title
+                         artist = parts[-3]
+                         album = parts[-2]
+                    
+                    track_data = {
+                        "filename": os.path.basename(f_path),
+                        "relative_path": rel_path,
+                        "artist": artist,
+                        "album": album,
+                        "title": title,
+                        "duration": segments['duration'],
+                        "v_intro": emb_intro,
+                        "v_mid": emb_mid,
+                        "v_outro": emb_outro
+                    }
+                    
+                    # Write to file immediately (JSONL)
+                    out_f.write(json.dumps(track_data) + "\n")
+                    out_f.flush()
+                    
+                    processed_count += 1
+                    
+                    duration = time.time() - start_time
+                    total_duration += duration
+                    avg_time = total_duration / processed_count
+                    
+                    # Estimate remaining
+                    remaining_items = limit - processed_count if limit else len(files_to_process) - processed_count
+                    remaining_time = avg_time * remaining_items
+                    
+                    print(f"  > Processed in {duration:.2f}s. Avg: {avg_time:.2f}s. Est. Remaining: {remaining_time/60:.2f}m")
+                    
+            except Exception as e:
+                print(f"Error processing {f_path}: {e}")
             
-    # Save to JSON
-    with open(output_file, 'w') as f:
-        json.dump(results, f, indent=2)
-        
-    print(f"Done! Saved {len(results)} embeddings to {output_file}")
+    print(f"Done! Processed {processed_count} new files.")
 
 if __name__ == "__main__":
     target = "." 

@@ -6,6 +6,7 @@ import hashlib
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 DATA_DIR = os.path.join(BASE_DIR, "../data")
 DB_PATH = os.path.join(DATA_DIR, "cloudcrate.duckdb")
+JSONL_PATH = os.path.join(DATA_DIR, "embeddings.jsonl")
 JSON_PATH = os.path.join(DATA_DIR, "embeddings.json")
 
 def initialize_db():
@@ -57,18 +58,36 @@ def generate_track_id(artist, album, title):
     return hashlib.md5(raw.encode('utf-8')).hexdigest()
 
 def load_data(con):
-    if not os.path.exists(JSON_PATH):
-        print(f"Error: {JSON_PATH} not found.")
+    # Determine which file to load
+    target_path = None
+    file_type = None
+    
+    if os.path.exists(JSONL_PATH):
+        target_path = JSONL_PATH
+        file_type = 'jsonl'
+    elif os.path.exists(JSON_PATH):
+        target_path = JSON_PATH
+        file_type = 'json'
+    else:
+        print(f"Error: No embeddings file found (checked {JSONL_PATH} and {JSON_PATH}).")
         return
 
-    print(f"Loading data from {JSON_PATH}...")
-    with open(JSON_PATH, 'r') as f:
-        data = json.load(f)
+    print(f"Loading data from {target_path} ({file_type})...")
     
     track_data_list = []
     
-    if isinstance(data, list):
-        for info in data:
+    with open(target_path, 'r') as f:
+        if file_type == 'json':
+            data = json.load(f)
+            if isinstance(data, list):
+                items = data
+            else:
+                items = []
+        else:
+            # JSONL: Read line by line generator
+            items = (json.loads(line) for line in f if line.strip())
+
+        for info in items:
             # Extract fields
             artist = info.get('artist', 'Unknown')
             album = info.get('album', 'Unknown')
@@ -84,7 +103,7 @@ def load_data(con):
             v_outro = info.get('v_outro')
             
             if not v_mid:
-                 print(f"Skipping track without v_mid: {info.get('filename')}")
+                 # print(f"Skipping track without v_mid: {info.get('filename')}")
                  continue
 
             if artist == "Unknown" and album == "Unknown" and title == "Unknown":
@@ -105,6 +124,8 @@ def load_data(con):
     print(f"Inserting {len(track_data_list)} tracks...")
     
     # Batch insert
+    # Note: for very large datasets (10k+), we might want to chunk this insert too,
+    # but 10k rows is easily handled by DuckDB in one go.
     con.executemany("""
         INSERT OR IGNORE INTO tracks (id, title, artist, album, relative_path, v_intro, v_mid, v_outro) 
         VALUES (?, ?, ?, ?, ?, ?, ?, ?)

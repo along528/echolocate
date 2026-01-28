@@ -22,7 +22,7 @@ This service provides a read-only HTTP API to search for similar music tracks us
 The database is static and generated locally before upload.
 
 ```bash
-# Generates 'data/cloudcrate.duckdb' from 'data/embeddings.json'
+# Generates 'data/cloudcrate.duckdb' from 'data/embeddings.jsonl'
 python ../audio_embedding/generate_db.py
 ```
 
@@ -41,6 +41,31 @@ Deploys the container and mounts the GCS bucket.
 ```
 
 ## Usage
+
+### endpoint: `GET /tracks`
+
+List tracks with paging.
+
+**Query Params:** `limit` (default 50), `offset` (default 0).
+
+### endpoint: `GET /tracks/{id}/similar`
+
+Find similar tracks by ID.
+
+**Query Params:** `limit` (default 10).
+
+### endpoint: `POST /interpolate`
+
+Find the "sonic midpoint" between two tracks.
+
+**Request:**
+```json
+{
+  "track_id_1": "track_id_a",
+  "track_id_2": "track_id_b",
+  "limit": 10
+}
+```
 
 ### endpoint: `POST /search`
 

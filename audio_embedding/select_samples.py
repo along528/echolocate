@@ -8,7 +8,7 @@ DATA_DIR = os.path.join(PROJECT_ROOT, "data")
 SEARCH_DIR = os.path.join(PROJECT_ROOT, "crate", "Apple")
 OUTPUT_FILE = os.path.join(DATA_DIR, "sample_files.txt")
 
-def select_samples(limit=10):
+def select_samples(limit=10000):
     if not os.path.exists(DATA_DIR):
         os.makedirs(DATA_DIR)
 
@@ -43,4 +43,12 @@ def select_samples(limit=10):
     print(f"Saved list to {OUTPUT_FILE}")
 
 if __name__ == "__main__":
-    select_samples()
+    import sys
+    limit = 10000
+    if len(sys.argv) > 1:
+        try:
+            limit = int(sys.argv[1])
+        except ValueError:
+            print(f"Invalid limit: {sys.argv[1]}. Using default {limit}.")
+    
+    select_samples(limit=limit)
