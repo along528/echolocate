@@ -22,7 +22,7 @@ This service provides a read-only HTTP API to search for similar music tracks us
 The database is static and generated locally before upload.
 
 ```bash
-# Generates 'data/cloudcrate.duckdb' from 'data/embeddings_sample.json'
+# Generates 'data/cloudcrate.duckdb' from 'data/embeddings.json'
 python ../audio_embedding/generate_db.py
 ```
 
@@ -71,5 +71,5 @@ Finds the nearest neighbors for a given 768-dimensional vector.
 Run the verification script to query the deployed service with a random sample vector:
 
 ```bash
-python ../verify_remote_vector.py <SERVICE_URL>
+python verify_service.py <SERVICE_URL>
 ```

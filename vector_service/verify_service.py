@@ -7,7 +7,7 @@ import sys
 SERVICE_URL = sys.argv[1] if len(sys.argv) > 1 else None
 
 if not SERVICE_URL:
-    print("Usage: python verify_remote_vector.py <SERVICE_URL>")
+    print("Usage: python verify_service.py <SERVICE_URL>")
     # Try to find url from gcloud if not provided? 
     # For now, let's just error or ask user to provide it.
     # Actually, I can try to grab it from the deploy output if I could, 
@@ -31,8 +31,12 @@ if not SERVICE_URL:
         sys.exit(1)
 
 # Load a sample vector
+import os
+BASE_DIR = os.path.dirname(os.path.abspath(__file__))
+DATA_PATH = os.path.join(BASE_DIR, "../data/embeddings.json")
+
 try:
-    with open("data/embeddings_sample.json", "r") as f:
+    with open(DATA_PATH, "r") as f:
         data = json.load(f)
         
     # Get a random vector

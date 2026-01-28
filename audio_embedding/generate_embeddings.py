@@ -4,7 +4,7 @@ import glob
 from embedding_lib import MusicEncoder, load_and_segment
 
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
-DEFAULT_OUTPUT = os.path.join(BASE_DIR, "../data/embeddings_sample.json")
+DEFAULT_OUTPUT = os.path.join(BASE_DIR, "../data/embeddings.json")
 
 def generate_embeddings(directory, output_file=DEFAULT_OUTPUT, limit=5):
     """
