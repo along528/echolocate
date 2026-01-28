@@ -660,7 +660,6 @@ async def list_tools():
                     "limit": {"type": "integer", "description": "Results per page (default 50)"}
                 }
             }
-            }
         ),
         Tool(
             name="search_library",
@@ -877,6 +876,10 @@ Title: {v.get('title')}
 Format: {v.get('format', 'Unknown')}
 Label: {v.get('label', 'Unknown')}
 Country: {v.get('country', 'Unknown')}
+""")
+                 result = "".join(formatted)
+        except Exception as e:
+            result = f"Error fetching versions: {e}"
 
     elif name == "search_library":
         if not apple_client:
@@ -949,14 +952,15 @@ Album: {item.get('album', 'Unknown')}
             else:
                  formatted = []
                  for item in results:
-                     formatted.append(f"""
+                     sim = item.get('similarity', 0)
+                     formatted.append("""
 ---
-Track ID: {item['id']}
-Title: {item['title']}
-Artist: {item['artist']}
-Album: {item['album']}
-Similarity: {item.get('similarity', 0):.4f}
-""")
+Track ID: {0}
+Title: {1}
+Artist: {2}
+Album: {3}
+Similarity: {4:.4f}
+""".format(item['id'], item['title'], item['artist'], item['album'], sim))
                  result = "".join(formatted)
         except Exception as e:
             result = f"Error finding similar tracks: {e}"
@@ -979,13 +983,14 @@ Similarity: {item.get('similarity', 0):.4f}
              
             formatted = []
             for item in results:
-                 formatted.append(f"""
+                 sim = item.get('similarity', 0)
+                 formatted.append("""
 ---
-Track ID: {item['id']}
-Title: {item['title']}
-Artist: {item['artist']}
-Similarity: {item.get('similarity', 0):.4f}
-""")
+Track ID: {0}
+Title: {1}
+Artist: {2}
+Similarity: {3:.4f}
+""".format(item['id'], item['title'], item['artist'], sim))
             result = "".join(formatted)
         except Exception as e:
             result = f"Error interpolating: {e}"
@@ -1031,11 +1036,6 @@ Similarity: {item.get('similarity', 0):.4f}
                 
         except Exception as e:
             result = f"Error creating interpolation playlist: {e}"
-Marketplace: {mkt_url}
-""")
-                 result = "".join(formatted)
-        except Exception as e:
-             result = f"Error fetching versions: {e}"
 
     elif name == "get_discogs_release":
         if not discogs_client:
@@ -1175,7 +1175,6 @@ app = Starlette(
         Route("/health", health),
         
         # Apple Music Auth
-        Route("/apple-auth", apple_login_page, methods=["GET"]),
         Route("/apple-auth", apple_login_page, methods=["GET"]),
         Route("/apple-auth/callback", apple_callback, methods=["POST"]),
         Route("/client-log", client_log, methods=["POST"]),
