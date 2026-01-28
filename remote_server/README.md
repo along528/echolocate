@@ -114,6 +114,6 @@ The `AppleMusicClient` supports both Catalog search and Library search:
 ### 6. Vector Service Integration
 The server connects to an internal or external Vector Service to provide sonic analysis:
 - **Similarity**: Find songs that "sound like" a target song (MERT-v1 embeddings).
-- **Interpolation**: Generate a playlist that smoothly transitions between two songs.
+- **Interpolation**: Generate a playlist that smoothly transitions between two songs. Use `generate_interpolation_playlist`.
 
 Configure the URL via `VECTOR_SERVICE_URL` env var or secret.

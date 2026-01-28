@@ -710,16 +710,16 @@ async def list_tools():
             }
         ),
         Tool(
-            name="create_interpolation_playlist",
-            description="Create a playlist that transitions sonically between two tracks (Requires Vector DB Track IDs).",
+            name="generate_interpolation_playlist",
+            description="Generate a list of tracks that transition sonically between two tracks. The result must be searched against your library to find valid Library IDs.",
             inputSchema={
                 "type": "object",
                 "properties": {
-                    "name": {"type": "string", "description": "Name of the new playlist"},
                     "track_id_1": {"type": "string", "description": "Start Vector DB Track ID"},
-                    "track_id_2": {"type": "string", "description": "End Vector DB Track ID"}
+                    "track_id_2": {"type": "string", "description": "End Vector DB Track ID"},
+                    "limit": {"type": "integer", "description": "Number of tracks (default 20)"}
                 },
-                "required": ["name", "track_id_1", "track_id_2"]
+                "required": ["track_id_1", "track_id_2"]
             }
         )
     ]
@@ -995,15 +995,11 @@ Similarity: {3:.4f}
         except Exception as e:
             result = f"Error interpolating: {e}"
 
-    elif name == "create_interpolation_playlist":
-        if not apple_client:
-             return [TextContent(type="text", text="Apple Music is not configured.")]
-        if not APPLE_MUSIC_USER_TOKEN:
-             return [TextContent(type="text", text="User not logged in.")]
-             
-        name_playlist = arguments.get("name")
+
+    elif name == "generate_interpolation_playlist":
         track_id_1 = arguments.get("track_id_1")
         track_id_2 = arguments.get("track_id_2")
+        limit = arguments.get("limit", 20)
         
         if track_id_1.startswith("catalog:"): track_id_1 = track_id_1.split(":", 1)[1]
         if track_id_2.startswith("catalog:"): track_id_2 = track_id_2.split(":", 1)[1]
@@ -1013,29 +1009,27 @@ Similarity: {3:.4f}
             payload = {
                 "track_id_1": track_id_1,
                 "track_id_2": track_id_2,
-                "limit": 20 # reasonable default for playlist
+                "limit": limit
             }
-            # Note: vector service has /interpolate/playlist endpoint that returns full path
             results = await call_vector_service("/interpolate/playlist", method="POST", json_body=payload)
             
-            # 2. Extract IDs
-            track_ids = [item['id'] for item in results]
-            
-            if not track_ids:
-                return [TextContent(type="text", text="Could not generate interpolation path.")]
-                
-            # 3. Create Playlist via Apple Music
-            desc = f"Interpolation from {results[0]['title']} to {results[-1]['title']}"
-            data = await apple_client.create_playlist(name_playlist, desc, track_ids, APPLE_MUSIC_USER_TOKEN)
-            
-            if data and "data" in data and len(data["data"]) > 0:
-                new_id = data["data"][0]["id"]
-                result = f"Successfully created playlist '{name_playlist}' (ID: {new_id}) with {len(track_ids)} tracks."
+            if not results:
+                 result = "Could not generate interpolation path."
             else:
-                result = "Playlist created but no ID returned?"
-                
+                 formatted = []
+                 formatted.append("Generated Interpolation Path (search these in your library):")
+                 for item in results:
+                     formatted.append(f"""
+---
+Title: {item['title']}
+Artist: {item['artist']}
+Album: {item.get('album', 'Unknown')}
+Vector ID: {item['id']}
+""")
+                 result = "".join(formatted)
+                 
         except Exception as e:
-            result = f"Error creating interpolation playlist: {e}"
+            result = f"Error generating interpolation playlist: {e}"
 
     elif name == "get_discogs_release":
         if not discogs_client:

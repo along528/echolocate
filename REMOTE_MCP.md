@@ -96,7 +96,7 @@ You can set these as **Environment Variables** (for local dev) or create them in
 - `sample_vector_db()` - List tracks in Vector DB to find IDs
 - `find_similar_tracks(track_id)` - Find similar tracks (requires Vector DB ID)
 - `interpolate_tracks(track_id_1, track_id_2)` - Sonic interpolation (requires Vector DB IDs)
-- `create_interpolation_playlist(...)` - Create sonic playlist (requires Vector DB IDs)
+- `generate_interpolation_playlist(...)` - Generate sonic playlist data (requires library search)
 - `search_discogs(query)` - Search for albums (master releases)
 - `get_discogs_versions(master_id)` - Get versions for a master release (with marketplace links)
 - `get_discogs_release(release_id)` - Get details for a specific release
