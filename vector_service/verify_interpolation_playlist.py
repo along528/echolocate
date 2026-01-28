@@ -61,7 +61,7 @@ try:
     payload = {
         "track_id_1": track_a['id'],
         "track_id_2": track_b['id'],
-        "limit": 10
+        "limit": 20
     }
     
     response = requests.post(f"{SERVICE_URL}/interpolate/playlist", json=payload)

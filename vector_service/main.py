@@ -3,6 +3,7 @@ from fastapi import FastAPI, HTTPException
 from pydantic import BaseModel
 from typing import List, Optional
 import os
+import math
 
 app = FastAPI()
 
@@ -307,19 +308,20 @@ def interpolate_playlist(request: InterpolationPlaylistRequest):
         exclude_ids = {request.track_id_1, request.track_id_2}
         
         # 2. Generate Path
-        # We use a depth limit. 
-        # depth=1 -> 1 intermediate (A -> M -> B)
-        # depth=2 -> 3 intermediates (A -> L -> M -> R -> B)
-        # The user 'limit' is the max total songs in the generated playlist (excluding start/end).
-        # We'll use a heuristic for recursion depth or just hardcap it. 
-        # Let's say depth 3 is plenty (User asks for limit, we can try to respect it but recursion is binary).
-        # We will use the limit primarily to stop the recursion if list gets too long? 
-        # Actually the algorithm description says: "Find midpoint... Then find midpoint between those... And so on"
-        # This is naturally recursive.
+        # The algorithm produces 2^depth + 1 songs.
+        # We calculate the max depth that fits within the requested limit.
+        # 2^depth + 1 <= limit  =>  2^depth <= limit - 1  =>  depth <= log2(limit - 1)
         
-        # Let's cap recursion depth to avoid explosion. 
-        # Depth 3 = 7 intermediates max. Depth 4 = 15 intermediates.
-        path = recursive_interpolation(con, vec_start, vec_end, exclude_ids, depth_limit=3)
+        if request.limit and request.limit >= 3:
+            depth_limit = int(math.log2(request.limit - 1))
+        else:
+            depth_limit = 0 # Just start and end
+            
+        # Hard cap depth to avoid performance issues (e.g. depth 5 = 33 songs, depth 6 = 65)
+        # Let's allow up to depth 6 (65 songs) if they really want it.
+        depth_limit = min(depth_limit, 6)
+
+        path = recursive_interpolation(con, vec_start, vec_end, exclude_ids, depth_limit=depth_limit)
         
         con.close()
         
