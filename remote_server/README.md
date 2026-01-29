@@ -100,7 +100,20 @@ gcloud run deploy mcp-helloworld \
   --source . \
   --region us-central1 \
   --port 8080 \
-  --set-env-vars GOOGLE_CLOUD_PROJECT=cloud-crate-485418
+  --set-env-vars GOOGLE_CLOUD_PROJECT=cloud-crate-485418,VECTOR_SERVICE_URL=https://cloudcrate-vector-ie7zxu4hbq-uc.a.run.app
 ```
 
 For more details, see the root [REMOTE_MCP.md](../REMOTE_MCP.md).
+
+### 5. Apple Music Integration
+The `AppleMusicClient` supports both Catalog search and Library search:
+- `search(query)`: Search Global Catalog.
+- `search_library(query, user_token)`: Search User's Personal Library.
+- `get_songs(ids)`: Batch fetch song details (e.g. for preview URLs).
+
+### 6. Vector Service Integration
+The server connects to an internal or external Vector Service to provide sonic analysis:
+- **Similarity**: Find songs that "sound like" a target song (MERT-v1 embeddings).
+- **Interpolation**: Generate a playlist that smoothly transitions between two songs. Use `generate_interpolation_playlist`.
+
+Configure the URL via `VECTOR_SERVICE_URL` env var or secret.

@@ -82,6 +82,14 @@ class AppleMusicClient:
         # Type mapping cleanup if needed
         return await self._request("GET", f"catalog/{storefront}/{type}/{id}", user_token=user_token)
 
+    async def get_songs(self, ids: list[str], storefront: str = "us"):
+        """
+        Get multiple songs by ID.
+        """
+        # Join IDs with comma
+        ids_str = ",".join(ids)
+        return await self._request("GET", f"catalog/{storefront}/songs", params={"ids": ids_str})
+
     async def create_playlist(self, name: str, description: str, track_ids: list[str], user_token: str):
         """
         Create a playlist and add tracks.
@@ -121,3 +129,18 @@ class AppleMusicClient:
 
         # POST to /me/library/playlists
         return await self._request("POST", "me/library/playlists", user_token=user_token, json_body=payload)
+
+    async def search_library(self, query: str, user_token: str, limit: int = 5, types: str = "library-songs", offset: int = 0):
+        """
+        Search the user's Apple Music Library.
+        """
+        if not user_token:
+            raise ValueError("User Token is required for library search.")
+            
+        params = {
+            "term": query,
+            "limit": limit,
+            "types": types,
+            "offset": offset
+        }
+        return await self._request("GET", "me/library/search", user_token=user_token, params=params)

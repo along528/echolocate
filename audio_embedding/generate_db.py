@@ -1,0 +1,151 @@
+import duckdb
+import json
+import os
+import hashlib
+
+BASE_DIR = os.path.dirname(os.path.abspath(__file__))
+DATA_DIR = os.path.join(BASE_DIR, "../data")
+DB_PATH = os.path.join(DATA_DIR, "cloudcrate.duckdb")
+JSONL_PATH = os.path.join(DATA_DIR, "embeddings.jsonl")
+JSON_PATH = os.path.join(DATA_DIR, "embeddings.json")
+
+def initialize_db():
+    if os.path.exists(DB_PATH):
+        os.remove(DB_PATH)
+        print(f"Removed existing {DB_PATH}")
+
+    print(f"Connecting to {DB_PATH}...")
+    con = duckdb.connect(DB_PATH)
+    
+    # Load required extensions
+    print("Installing and loading VSS extension...")
+    con.execute("INSTALL vss; LOAD vss;")
+    
+    # ENABLE PERSISTENCE (Critical for saving vector index to disk)
+    con.execute("SET hnsw_enable_experimental_persistence = true;")
+    
+    # Create the schema
+    print("Creating table 'tracks'...")
+    con.execute("""
+        CREATE TABLE IF NOT EXISTS tracks (
+            id VARCHAR PRIMARY KEY,
+            title VARCHAR,
+            artist VARCHAR,
+            album VARCHAR,
+            relative_path VARCHAR,
+            v_intro FLOAT[768],
+            v_mid FLOAT[768],
+            v_outro FLOAT[768]
+        );
+    """)
+    
+    # Create HNSW Indexes for each vector column
+    # Note: Creating multiple indexes might be heavy, but useful for different search types.
+    print("Creating HNSW indexes...")
+    con.execute("""
+        CREATE INDEX IF NOT EXISTS idx_mid 
+        ON tracks USING HNSW (v_mid) 
+        WITH (metric = 'cosine');
+    """)
+    # We can add indexes for intro/outro later if needed for performance, 
+    # but starting with mid is reasonable for main search.
+    
+    return con
+
+def generate_track_id(artist, album, title):
+    # Create a consistent hash ID
+    raw = f"{artist}|{album}|{title}"
+    return hashlib.md5(raw.encode('utf-8')).hexdigest()
+
+def load_data(con):
+    # Determine which file to load
+    target_path = None
+    file_type = None
+    
+    if os.path.exists(JSONL_PATH):
+        target_path = JSONL_PATH
+        file_type = 'jsonl'
+    elif os.path.exists(JSON_PATH):
+        target_path = JSON_PATH
+        file_type = 'json'
+    else:
+        print(f"Error: No embeddings file found (checked {JSONL_PATH} and {JSON_PATH}).")
+        return
+
+    print(f"Loading data from {target_path} ({file_type})...")
+    
+    track_data_list = []
+    
+    with open(target_path, 'r') as f:
+        if file_type == 'json':
+            data = json.load(f)
+            if isinstance(data, list):
+                items = data
+            else:
+                items = []
+        else:
+            # JSONL: Read line by line generator
+            items = (json.loads(line) for line in f if line.strip())
+
+        for info in items:
+            # Extract fields
+            artist = info.get('artist', 'Unknown')
+            album = info.get('album', 'Unknown')
+            title = info.get('title', 'Unknown')
+            relative_path = info.get('relative_path', '')
+            
+            # Generate ID
+            track_id = generate_track_id(artist, album, title)
+            
+            # Vectors
+            v_intro = info.get('v_intro')
+            v_mid = info.get('v_mid')
+            v_outro = info.get('v_outro')
+            
+            if not v_mid:
+                 # print(f"Skipping track without v_mid: {info.get('filename')}")
+                 continue
+
+            if artist == "Unknown" and album == "Unknown" and title == "Unknown":
+                print(f"Skipping track with completely missing metadata: {relative_path}")
+                continue
+
+            track_data_list.append((
+                track_id, 
+                title, 
+                artist, 
+                album, 
+                relative_path, 
+                v_intro, 
+                v_mid, 
+                v_outro
+            ))
+
+    print(f"Inserting {len(track_data_list)} tracks...")
+    
+    # Batch insert
+    # Note: for very large datasets (10k+), we might want to chunk this insert too,
+    # but 10k rows is easily handled by DuckDB in one go.
+    con.executemany("""
+        INSERT OR IGNORE INTO tracks (id, title, artist, album, relative_path, v_intro, v_mid, v_outro) 
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+    """, track_data_list)
+    
+    # Force write to disk
+    print("Checkpointing to disk...")
+    con.execute("CHECKPOINT;")
+    
+    # Verify count
+    count = con.execute("SELECT COUNT(*) FROM tracks").fetchone()[0]
+    print(f"✅ Successfully inserted {count} tracks.")
+
+if __name__ == "__main__":
+    try:
+        con = initialize_db()
+        load_data(con)
+        con.close()
+        print(f"✅ Database created at {DB_PATH}")
+    except Exception as e:
+        print(f"❌ Error: {e}")
+        import traceback
+        traceback.print_exc()

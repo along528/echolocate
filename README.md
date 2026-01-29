@@ -89,3 +89,6 @@ A hello world MCP server is deployed on Google Cloud Run for remote access.
 
 See [REMOTE_MCP.md](REMOTE_MCP.md) for full details.
 
+## Vector Service
+See [vector_service/README.md](vector_service/README.md) for details on the Vector DB service.
+

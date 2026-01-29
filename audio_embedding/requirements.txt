@@ -1,0 +1,9 @@
+# Audio Embedding Dependencies
+# Pinned to ensure compatibility on macOS (avoiding cmake builds and strict torch versions)
+librosa==0.10.1
+numba==0.59.0
+llvmlite==0.42.0
+torch==2.2.2
+torchaudio==2.2.2
+transformers==4.46.0
+numpy<2.0.0

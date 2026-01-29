@@ -17,3 +17,15 @@ remote_server/*.pyc
 
 # Virtual Env
 .venv/
+
+# Data Artifacts
+data/
+
+# Audio Embedding Tmp
+audio_embedding/tmp/
+audio_embedding/__pycache__/
+audio_embedding/*.pyc
+
+# DuckDB
+*.duckdb
+.bucket_name
