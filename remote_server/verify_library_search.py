@@ -56,27 +56,42 @@ async def main():
         print(f"❌ Error initializing client: {e}")
         return
 
-    query = "Opeth"
-    print(f"\n🔍 Searching Library for '{query}'...")
-    
-    try:
-        results = await client.search_library(query, APPLE_MUSIC_USER_TOKEN, limit=5)
+    # Simulate Tool Arguments
+    test_cases = [
+        {"artist": "The Beatles"},
+        {"title": "Fool On the Hill"},
+        {"artist": "The Beatles", "title": "Fool On the Hill"}, # The problematic case
+    ]
+
+    for args in test_cases:
+        # Simulate Tool Logic
+        parts = []
+        if args.get("artist"): parts.append(args.get("artist"))
+        if args.get("album"): parts.append(args.get("album"))
+        if args.get("title"): parts.append(args.get("title"))
+        query = " - ".join(parts)
         
-        # Parse and print results
-        songs = results.get("results", {}).get("library-songs", {}).get("data", [])
+        print(f"\n------------------------------------------------")
+        print(f"🛠️  Testing Arguments: {args}")
+        print(f"🔍 Constructed Query: '{query}'")
         
-        if not songs:
-            print("⚠️ No results found.")
-        else:
-            print(f"✅ Found {len(songs)} results:\n")
-            for song in songs:
-                attrs = song.get("attributes", {})
-                print(f"🎵 {attrs.get('name')} - {attrs.get('artistName')}")
-                print(f"   Album: {attrs.get('albumName')}")
-                print(f"   ID: {song.get('id')}\n")
-                
-    except Exception as e:
-        print(f"❌ Search failed: {e}")
+        try:
+            results = await client.search_library(query, APPLE_MUSIC_USER_TOKEN, limit=3)
+            
+            # Parse and print results
+            songs = results.get("results", {}).get("library-songs", {}).get("data", [])
+            
+            if not songs:
+                print("⚠️ No results found.")
+            else:
+                print(f"✅ Found {len(songs)} results:")
+                for song in songs:
+                    attrs = song.get("attributes", {})
+                    print(f"   🎵 {attrs.get('name')} - {attrs.get('artistName')}")
+        except Exception as e:
+            print(f"❌ Search failed: {e}")
+            
+    print(f"\n------------------------------------------------")
 
 if __name__ == "__main__":
     asyncio.run(main())

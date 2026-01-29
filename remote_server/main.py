@@ -663,14 +663,15 @@ async def list_tools():
         ),
         Tool(
             name="search_library",
-            description="Search for songs in your personal Apple Music Library.",
+            description="Search for songs in your personal Apple Music Library. Provide at least one search term.",
             inputSchema={
                 "type": "object",
                 "properties": {
-                    "query": {"type": "string", "description": "Search term"},
+                    "title": {"type": "string", "description": "Song title"},
+                    "artist": {"type": "string", "description": "Artist name"},
+                    "album": {"type": "string", "description": "Album name"},
                     "limit": {"type": "integer", "description": "Max results (default 5)"}
-                },
-                "required": ["query"]
+                }
             }
         ),
         Tool(
@@ -887,7 +888,16 @@ Country: {v.get('country', 'Unknown')}
         if not APPLE_MUSIC_USER_TOKEN:
              return [TextContent(type="text", text="User is not logged in to Apple Music. Please visit /apple-auth to log in.")]
              
-        query = arguments.get("query")
+        # Construct query from parts
+        parts = []
+        if arguments.get("artist"): parts.append(arguments.get("artist"))
+        if arguments.get("album"): parts.append(arguments.get("album"))
+        if arguments.get("title"): parts.append(arguments.get("title"))
+        
+        if not parts:
+             return [TextContent(type="text", text="Please provide at least one of: artist, album, title.")]
+             
+        query = " - ".join(parts)
         limit = arguments.get("limit", 5)
         
         try:
