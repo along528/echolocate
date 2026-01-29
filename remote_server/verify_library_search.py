@@ -64,30 +64,62 @@ async def main():
     ]
 
     for args in test_cases:
-        # Simulate Tool Logic
-        parts = []
-        if args.get("artist"): parts.append(args.get("artist"))
-        if args.get("album"): parts.append(args.get("album"))
-        if args.get("title"): parts.append(args.get("title"))
-        query = " - ".join(parts)
+        # Simulate Tool Logic (Search + Filter)
         
+        # 1. Determine Primary Search Term
+        query = None
+        if args.get("title"):
+             query = args.get("title")
+        elif args.get("album"):
+             query = args.get("album")
+        elif args.get("artist"):
+             query = args.get("artist")
+             
+        if not query:
+            print("❌ Error: No search terms provided")
+            continue
+            
         print(f"\n------------------------------------------------")
         print(f"🛠️  Testing Arguments: {args}")
-        print(f"🔍 Constructed Query: '{query}'")
+        print(f"🔍 Primary Query: '{query}'")
         
         try:
-            results = await client.search_library(query, APPLE_MUSIC_USER_TOKEN, limit=3)
-            
-            # Parse and print results
+            # 2. Search with higher limit
+            results = await client.search_library(query, APPLE_MUSIC_USER_TOKEN, limit=25)
             songs = results.get("results", {}).get("library-songs", {}).get("data", [])
             
-            if not songs:
-                print("⚠️ No results found.")
+            # 3. Filter Results
+            filtered_songs = []
+            for song in songs:
+                attrs = song.get("attributes", {})
+                
+                # Check Artist
+                if args.get("artist"):
+                    if args.get("artist").lower() not in attrs.get("artistName", "").lower():
+                        continue
+                        
+                # Check Album
+                if args.get("album"):
+                    if args.get("album").lower() not in attrs.get("albumName", "").lower():
+                        continue
+                        
+                # Check Title (if we searched by Artist/Album but provided Title)
+                if args.get("title") and query != args.get("title"):
+                     if args.get("title").lower() not in attrs.get("name", "").lower():
+                        continue
+                        
+                filtered_songs.append(song)
+            
+            if not filtered_songs:
+                print("⚠️ No results found after filtering.")
             else:
-                print(f"✅ Found {len(songs)} results:")
-                for song in songs:
+                print(f"✅ Found {len(filtered_songs)} results (from {len(songs)} raw):")
+                # Simulate 'limit' from tool args
+                max_results = args.get("limit", 5)
+                for song in filtered_songs[:max_results]: 
                     attrs = song.get("attributes", {})
                     print(f"   🎵 {attrs.get('name')} - {attrs.get('artistName')}")
+                    print(f"      Album: {attrs.get('albumName')}")
         except Exception as e:
             print(f"❌ Search failed: {e}")
             

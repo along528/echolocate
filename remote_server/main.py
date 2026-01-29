@@ -888,17 +888,20 @@ Country: {v.get('country', 'Unknown')}
         if not APPLE_MUSIC_USER_TOKEN:
              return [TextContent(type="text", text="User is not logged in to Apple Music. Please visit /apple-auth to log in.")]
              
-        # Construct query from parts
-        parts = []
-        if arguments.get("artist"): parts.append(arguments.get("artist"))
-        if arguments.get("album"): parts.append(arguments.get("album"))
-        if arguments.get("title"): parts.append(arguments.get("title"))
-        
-        if not parts:
-             return [TextContent(type="text", text="Please provide at least one of: artist, album, title.")]
+        # 1. Determine Primary Search Term
+        query = None
+        if arguments.get("title"):
+             query = arguments.get("title")
+        elif arguments.get("album"):
+             query = arguments.get("album")
+        elif arguments.get("artist"):
+             query = arguments.get("artist")
              
-        query = " - ".join(parts)
-        limit = arguments.get("limit", 5)
+        if not query:
+             return [TextContent(type="text", text="Please provide at least one of: artist, album, title.")]
+
+        # Search with higher limit to allow filtering
+        limit = 100
         
         try:
             # Search Library
@@ -909,9 +912,28 @@ Country: {v.get('country', 'Unknown')}
                 result = "No results found in library."
             else:
                 formatted = []
+                count = 0
+                max_results = arguments.get("limit", 5)
+                
                 for item in results:
+                    if count >= max_results: break
+                    
                     attrs = item.get("attributes", {})
-                    # Library songs might act as valid inputs for vector service if their ID matches catalog or is mapped.
+                    
+                    # Filter Logic
+                    if arguments.get("artist"):
+                        if arguments.get("artist").lower() not in attrs.get("artistName", "").lower():
+                            continue
+                    if arguments.get("album"):
+                         if arguments.get("album").lower() not in attrs.get("albumName", "").lower():
+                            continue
+                    # Check Title (if distinct from query)
+                    if arguments.get("title") and query != arguments.get("title"):
+                         if arguments.get("title").lower() not in attrs.get("name", "").lower():
+                            continue
+
+                    count += 1
+                    formatted.append(f"""
                     # Usually vector service expects catalog IDs or specific mapped IDs.
                     # The vector service currently seems to use IDs that look like mapped catalog IDs or internal IDs.
                     # We'll display the ID provided by Apple.
