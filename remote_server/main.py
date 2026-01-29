@@ -900,13 +900,32 @@ Country: {v.get('country', 'Unknown')}
         if not query:
              return [TextContent(type="text", text="Please provide at least one of: artist, album, title.")]
 
-        # Search with higher limit to allow filtering
-        limit = 25
+        # Search with pagination (fetch up to 100)
+        limit_per_req = 25
+        max_total = 100
+        results = []
+        offset = 0
         
         try:
-            # Search Library
-            data = await apple_client.search_library(query, APPLE_MUSIC_USER_TOKEN, limit=limit)
-            results = data.get("results", {}).get("library-songs", {}).get("data", [])
+            while len(results) < max_total:
+                # Search Library
+                data = await apple_client.search_library(
+                    query, 
+                    APPLE_MUSIC_USER_TOKEN, 
+                    limit=limit_per_req,
+                    offset=offset
+                )
+                batch = data.get("results", {}).get("library-songs", {}).get("data", [])
+                
+                if not batch:
+                    break
+                    
+                results.extend(batch)
+                offset += len(batch)
+                
+                # Stop if we got fewer results than limit (end of list)
+                if len(batch) < limit_per_req:
+                    break
             
             if not results:
                 result = "No results found in library."

@@ -84,9 +84,24 @@ async def main():
         print(f"🔍 Primary Query: '{query}'")
         
         try:
-            # 2. Search with higher limit
-            results = await client.search_library(query, APPLE_MUSIC_USER_TOKEN, limit=25)
-            songs = results.get("results", {}).get("library-songs", {}).get("data", [])
+            # 2. Search with pagination (fetch up to 100)
+            limit_per_req = 25
+            max_total = 100
+            songs = []
+            offset = 0
+            
+            while len(songs) < max_total:
+                results = await client.search_library(query, APPLE_MUSIC_USER_TOKEN, limit=limit_per_req, offset=offset)
+                batch = results.get("results", {}).get("library-songs", {}).get("data", [])
+                
+                if not batch:
+                    break
+                    
+                songs.extend(batch)
+                offset += len(batch)
+                
+                if len(batch) < limit_per_req:
+                    break
             
             # 3. Filter Results
             filtered_songs = []
