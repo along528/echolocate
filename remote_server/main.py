@@ -901,7 +901,7 @@ Country: {v.get('country', 'Unknown')}
              return [TextContent(type="text", text="Please provide at least one of: artist, album, title.")]
 
         # Search with higher limit to allow filtering
-        limit = 100
+        limit = 25
         
         try:
             # Search Library
