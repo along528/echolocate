@@ -933,7 +933,6 @@ Country: {v.get('country', 'Unknown')}
                             continue
 
                     count += 1
-                    formatted.append(f"""
                     # Usually vector service expects catalog IDs or specific mapped IDs.
                     # The vector service currently seems to use IDs that look like mapped catalog IDs or internal IDs.
                     # We'll display the ID provided by Apple.
