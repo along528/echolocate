@@ -1,9 +1,54 @@
 import duckdb
 from fastapi import FastAPI, HTTPException
 from pydantic import BaseModel
-from typing import List, Optional
+from typing import List, Optional, Literal
 import os
+import numpy as np
 import math
+
+# SLERP Utility
+def slerp(v0, v1, t=0.5):
+    """
+    Spherical Linear Interpolation.
+    v0, v1: Lists or arrays of floats (the vectors)
+    t: float, interpolation factor (0.0 to 1.0). Default 0.5 for midpoint.
+    """
+    v0 = np.array(v0)
+    v1 = np.array(v1)
+    
+    # Normalize vectors to unit length to ensure they are on the hypersphere
+    v0_norm = v0 / np.linalg.norm(v0)
+    v1_norm = v1 / np.linalg.norm(v1)
+    
+    dot = np.dot(v0_norm, v1_norm)
+    
+    # Clamp dot product to [-1, 1] to avoid floating point errors with arccos
+    dot = np.clip(dot, -1.0, 1.0)
+    
+    # If vectors are too close (dot ~ 1) or opposite (dot ~ -1), fall back to linear
+    # to avoid division by zero in sin()
+    if dot > 0.9995:
+        return (v0 + v1) / 2.0
+        
+    theta_0 = np.arccos(dot)
+    sin_theta_0 = np.sin(theta_0)
+    
+    theta_t = theta_0 * t
+    sin_theta_t = np.sin(theta_t)
+    
+    s0 = np.sin(theta_0 - theta_t) / sin_theta_0
+    s1 = sin_theta_t / sin_theta_0
+    
+    return (s0 * v0 + s1 * v1).tolist()
+
+def get_midpoint(vec_a, vec_b, method="slerp"):
+    if method == "linear":
+        # Old method: simple average
+        return [(a + b) / 2.0 for a, b in zip(vec_a, vec_b)]
+    else:
+        # New default: SLERP
+        return slerp(vec_a, vec_b, 0.5)
+
 
 app = FastAPI()
 
@@ -34,6 +79,7 @@ class InterpolationRequest(BaseModel):
     track_id_1: str
     track_id_2: str
     limit: Optional[int] = 10
+    method: Optional[Literal["slerp", "linear"]] = "slerp" # Default to SLERP
 
 @app.on_event("startup")
 async def startup_event():
@@ -191,7 +237,10 @@ def interpolate_tracks(request: InterpolationRequest):
         # but averaging them is the standard 'midpoint' in vector space.
         # We can implement vector addition in Python easily since they are lists/arrays.
         
-        midpoint_vector = [(a + b) / 2.0 for a, b in zip(vec1, vec2)]
+        # 2. Compute midpoint
+        print(f"Interpolating with method: {request.method}")
+        midpoint_vector = get_midpoint(vec1, vec2, request.method)
+        print(f"Midpoint vector first 3 dim: {midpoint_vector[:3]}")
         
         # 3. Search for nearest neighbors to the midpoint
         # We exclude the two input tracks from the results
@@ -227,13 +276,14 @@ class InterpolationPlaylistRequest(BaseModel):
     track_id_1: str
     track_id_2: str
     limit: Optional[int] = 10
+    method: Optional[Literal["slerp", "linear"]] = "slerp" # Default to SLERP
 
-def recursive_interpolation(con, vec_a, vec_b, exclude_ids, depth_limit):
+def recursive_interpolation(con, vec_a, vec_b, exclude_ids, depth_limit, method="slerp"):
     if depth_limit <= 0:
         return []
 
-    # Calculate midpoint
-    midpoint_vector = [(a + b) / 2.0 for a, b in zip(vec_a, vec_b)]
+    # Calculate midpoint using the requested method
+    midpoint_vector = get_midpoint(vec_a, vec_b, method)
 
     # Find nearest neighbor to midpoint (excluding current chain)
     # We query for top 1 that is NOT in exclude_ids
@@ -278,10 +328,10 @@ def recursive_interpolation(con, vec_a, vec_b, exclude_ids, depth_limit):
     exclude_ids.add(match_id)
     
     # Recurse left (start -> match)
-    left_path = recursive_interpolation(con, vec_a, match_vec, exclude_ids, depth_limit - 1)
+    left_path = recursive_interpolation(con, vec_a, match_vec, exclude_ids, depth_limit - 1, method)
     
     # Recurse right (match -> end)
-    right_path = recursive_interpolation(con, match_vec, vec_b, exclude_ids, depth_limit - 1)
+    right_path = recursive_interpolation(con, match_vec, vec_b, exclude_ids, depth_limit - 1, method)
     
     return left_path + [match_obj] + right_path
 
@@ -326,7 +376,7 @@ def interpolate_playlist(request: InterpolationPlaylistRequest):
         # Let's allow up to depth 6 (65 songs) if they really want it.
         depth_limit = min(depth_limit, 6)
 
-        path = recursive_interpolation(con, vec_start, vec_end, exclude_ids, depth_limit=depth_limit)
+        path = recursive_interpolation(con, vec_start, vec_end, exclude_ids, depth_limit=depth_limit, method=request.method)
         
         con.close()
         
