@@ -300,8 +300,8 @@ async def list_tools():
     
     # --- Apple Crate Tools ---
     tools.append(Tool(
-        name="search_apple_music",
-        description="Search Apple Music Catalog.",
+        name="apple_search_catalog",
+        description="Search Apple Music Catalog. Returns Apple Music IDs.",
         inputSchema={
             "type": "object",
             "properties": {
@@ -312,7 +312,7 @@ async def list_tools():
         }
     ))
     tools.append(Tool(
-        name="create_playlist",
+        name="apple_create_playlist",
         description="Create Apple Music playlist.",
         inputSchema={
             "type": "object",
@@ -325,7 +325,7 @@ async def list_tools():
         }
     ))
     tools.append(Tool(
-        name="search_library",
+        name="apple_search_library",
         description="Search Apple Music Library.",
         inputSchema={
             "type": "object",
@@ -340,7 +340,7 @@ async def list_tools():
 
     # --- Record Crate Tools ---
     tools.append(Tool(
-        name="search_discogs",
+        name="discogs_search",
         description="Search Discogs.",
         inputSchema={
             "type": "object",
@@ -353,7 +353,7 @@ async def list_tools():
         }
     ))
     tools.append(Tool(
-        name="get_discogs_versions",
+        name="discogs_get_versions",
         description="Get versions of a Discogs master release.",
         inputSchema={
             "type": "object",
@@ -369,7 +369,7 @@ async def list_tools():
     # --- Echo Locate Tools ---
     if echo_locate:
         tools.append(Tool(
-            name="echo_locate_sample",
+            name="echolocate_sample",
             description="Sample tracks from a vector DB.",
             inputSchema={
                 "type": "object",
@@ -382,7 +382,7 @@ async def list_tools():
             }
         ))
         tools.append(Tool(
-            name="echo_locate_similar",
+            name="echolocate_similar",
             description="Find similar tracks.",
             inputSchema={
                 "type": "object",
@@ -395,7 +395,7 @@ async def list_tools():
             }
         ))
         tools.append(Tool(
-            name="echo_locate_interpolate",
+            name="echolocate_interpolate",
             description="Interpolate between two tracks.",
             inputSchema={
                 "type": "object",
@@ -411,7 +411,7 @@ async def list_tools():
             }
         ))
         tools.append(Tool(
-            name="generate_interpolation_playlist",
+            name="echolocate_generate_playlist",
             description="Generate a full playlist path between two tracks.",
             inputSchema={
                 "type": "object",
@@ -427,8 +427,8 @@ async def list_tools():
 
     # --- Context Tools ---
     tools.append(Tool(
-        name="get_track_context",
-        description="Get details for a catalog track.",
+        name="apple_get_track_context",
+        description="Get details for a catalog track using Apple Music ID.",
         inputSchema={
             "type": "object",
             "properties": {
@@ -440,7 +440,7 @@ async def list_tools():
     
     # --- Discogs Advanced Tools ---
     tools.append(Tool(
-        name="get_discogs_release",
+        name="discogs_get_release",
         description="Get specific Discogs release details.",
         inputSchema={
             "type": "object",
@@ -451,7 +451,7 @@ async def list_tools():
         }
     ))
     tools.append(Tool(
-        name="get_discogs_wantlist",
+        name="discogs_get_wantlist",
         description="Get user's Discogs wantlist.",
         inputSchema={
             "type": "object",
@@ -469,17 +469,17 @@ async def call_tool(name: str, arguments: dict):
     from mcp.types import TextContent
     
     # Apple Crate Handlers
-    if name == "search_apple_music":
+    if name == "apple_search_catalog":
         if not apple_crate: return [TextContent(type="text", text="Apple Crate not configured")]
         try:
             res = await apple_crate.search(arguments["query"], limit=arguments.get("limit", 5))
             songs = res.get("results", {}).get("songs", {}).get("data", [])
-            output = "\n".join([f"ID: {s['id']} | {s['attributes']['name']} - {s['attributes']['artistName']}" for s in songs])
+            output = "\n".join([f"Apple ID: {s['id']} | {s['attributes']['name']} - {s['attributes']['artistName']}" for s in songs])
             return [TextContent(type="text", text=output or "No results")]
         except Exception as e:
             return [TextContent(type="text", text=f"Error: {e}")]
 
-    elif name == "create_playlist":
+    elif name == "apple_create_playlist":
         if not apple_crate or not APPLE_MUSIC_USER_TOKEN: return [TextContent(type="text", text="Auth required")]
         try:
             res = await apple_crate.create_playlist(arguments["name"], arguments.get("description", ""), arguments["track_ids"], APPLE_MUSIC_USER_TOKEN)
@@ -488,7 +488,7 @@ async def call_tool(name: str, arguments: dict):
         except Exception as e:
             return [TextContent(type="text", text=f"Error: {e}")]
 
-    elif name == "search_library":
+    elif name == "apple_search_library":
         if not apple_crate or not APPLE_MUSIC_USER_TOKEN: return [TextContent(type="text", text="Auth required")]
         query = arguments.get("title") or arguments.get("artist") or arguments.get("album")
         if not query: return [TextContent(type="text", text="Query required")]
@@ -500,12 +500,13 @@ async def call_tool(name: str, arguments: dict):
                 term, APPLE_MUSIC_USER_TOKEN, limit=arguments.get("limit", 5)
             )
             data = res.get("results", {}).get("library-songs", {}).get("data", [])
-            output = "\n".join([f"ID: {s['id']} | {s['attributes']['name']}" for s in data])
+            data = res.get("results", {}).get("library-songs", {}).get("data", [])
+            output = "\n".join([f"Apple ID: {s['id']} | {s['attributes']['name']}" for s in data])
             return [TextContent(type="text", text=output or "No results")]
         except Exception as e:
             return [TextContent(type="text", text=f"Error: {e}")]
     
-    elif name == "get_track_context":
+    elif name == "apple_get_track_context":
         if not apple_crate: return [TextContent(type="text", text="Apple Crate not configured")]
         track_id = arguments.get("track_id")
         if track_id.startswith("catalog:"): track_id = track_id.split(":", 1)[1]
@@ -527,27 +528,29 @@ Duration: {attrs.get('durationInMillis')} ms
              return [TextContent(type="text", text=f"Error: {e}")]
 
     # Record Crate Handlers
-    elif name == "search_discogs":
+    elif name == "discogs_search":
         if not record_crate: return [TextContent(type="text", text="Record Crate not configured")]
         try:
             res = await record_crate.search(arguments["query"], limit=arguments.get("limit", 5), format=arguments.get("format"))
             results = res.get("results", [])
-            output = "\n".join([f"ID: {r.get('id')} | {r.get('title')}" for r in results])
+            results = res.get("results", [])
+            output = "\n".join([f"Discogs ID: {r.get('id')} | {r.get('title')}" for r in results])
             return [TextContent(type="text", text=output or "No results")]
         except Exception as e:
             return [TextContent(type="text", text=f"Error: {e}")]
 
-    elif name == "get_discogs_versions":
+    elif name == "discogs_get_versions":
         if not record_crate: return [TextContent(type="text", text="Record Crate not configured")]
         try:
             res = await record_crate.get_master_versions(arguments["master_id"], page=arguments.get("page", 1), per_page=arguments.get("limit", 10))
             vers = res.get("versions", [])
-            output = "\n".join([f"ID: {v.get('id')} | {v.get('title')} | {v.get('format')}" for v in vers])
+            vers = res.get("versions", [])
+            output = "\n".join([f"Discogs ID: {v.get('id')} | {v.get('title')} | {v.get('format')}" for v in vers])
             return [TextContent(type="text", text=output or "No versions")]
         except Exception as e:
             return [TextContent(type="text", text=f"Error: {e}")]
 
-    elif name == "get_discogs_release":
+    elif name == "discogs_get_release":
         if not record_crate: return [TextContent(type="text", text="Record Crate not configured")]
         release_id = arguments.get("release_id")
         if not release_id and arguments.get("release_ids"): 
@@ -572,7 +575,7 @@ Duration: {attrs.get('durationInMillis')} ms
                  
                  final_output.append(f"""
 ---
-Release ID: {rid}
+Discogs Release ID: {rid}
 Title: {data.get('title')}
 Artists: {', '.join([a.get('name') for a in data.get('artists', [])])}
 Year: {data.get('year')}
@@ -582,7 +585,7 @@ Marketplace: {record_crate.get_marketplace_url(rid)}
         except Exception as e:
              return [TextContent(type="text", text=f"Error: {e}")]
 
-    elif name == "get_discogs_wantlist":
+    elif name == "discogs_get_wantlist":
         if not record_crate: return [TextContent(type="text", text="Record Crate not configured")]
         try:
              identity = await record_crate.get_identity()
@@ -596,40 +599,40 @@ Marketplace: {record_crate.get_marketplace_url(rid)}
              for w in wants:
                   info = w.get("basic_information", {})
                   rid = str(info.get("id"))
-                  output.append(f"[{rid}] {info.get('title')} - {', '.join([a.get('name') for a in info.get('artists', [])])}")
+                  output.append(f"[Discogs ID: {rid}] {info.get('title')} - {', '.join([a.get('name') for a in info.get('artists', [])])}")
              return [TextContent(type="text", text="\n".join(output) or "Wantlist empty")]
         except Exception as e:
              return [TextContent(type="text", text=f"Error: {e}")]
 
     # Echo Locate Handlers
-    elif name.startswith("echo_locate_") or name == "generate_interpolation_playlist":
+    elif name.startswith("echolocate_"):
         if not echo_locate: return [TextContent(type="text", text="Echo Locate not configured")]
         try:
             service = arguments.get("service_name", "default")
             
-            if name == "generate_interpolation_playlist":
+            if name == "echolocate_generate_playlist":
                  res = await echo_locate.generate_playlist(arguments["track_id_1"], arguments["track_id_2"], service, limit=arguments.get("limit", 20))
-                 output = "\n".join([f"- {t['title']} by {t['artist']} (ID: {t['id']})" for t in res])
+                 output = "\n".join([f"- {t['title']} by {t['artist']} (Vector ID: {t['id']})" for t in res])
                  return [TextContent(type="text", text=f"Generated Path:\n{output}")]
 
-            elif name == "echo_locate_sample":
+            elif name == "echolocate_sample":
                 res = await echo_locate.sample_db(service, limit=arguments.get("limit", 20), offset=arguments.get("offset", 0), random_sample=arguments.get("random", True))
                 # Format output
-                output = "\n".join([f"ID: {t['id']} | {t['title']} - {t['artist']}" for t in res])
+                output = "\n".join([f"Vector ID: {t['id']} | {t['title']} - {t['artist']}" for t in res])
                 return [TextContent(type="text", text=output or "Empty DB")]
 
-            elif name == "echo_locate_similar":
+            elif name == "echolocate_similar":
                 res = await echo_locate.find_similar_tracks(arguments["track_id"], service, limit=arguments.get("limit", 5))
-                output = "\n".join([f"ID: {t['id']} | Sim: {t.get('similarity', 0):.2f} | {t['title']}" for t in res])
+                output = "\n".join([f"Vector ID: {t['id']} | Sim: {t.get('similarity', 0):.2f} | {t['title']}" for t in res])
                 return [TextContent(type="text", text=output or "No similar tracks")]
 
-            elif name == "echo_locate_interpolate":
+            elif name == "echolocate_interpolate":
                 res = await echo_locate.interpolate(
                     arguments["track_id_1"], arguments["track_id_2"], service,
                     limit=arguments.get("limit", 10), method=arguments.get("method", "greedy_walk"),
                     steer_track_id=arguments.get("steer_track_id")
                 )
-                output = "\n".join([f"ID: {t['id']} | {t['title']}" for t in res])
+                output = "\n".join([f"Vector ID: {t['id']} | {t['title']}" for t in res])
                 return [TextContent(type="text", text=output or "Interpolation failed")]
 
         except Exception as e:
