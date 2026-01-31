@@ -79,7 +79,7 @@ class InterpolationRequest(BaseModel):
     track_id_1: str
     track_id_2: str
     limit: Optional[int] = 10
-    method: Optional[Literal["slerp", "linear"]] = "slerp" # Default to SLERP
+    method: Optional[Literal["slerp", "linear", "greedy_walk"]] = "greedy_walk"
 
 @app.on_event("startup")
 async def startup_event():
@@ -276,7 +276,67 @@ class InterpolationPlaylistRequest(BaseModel):
     track_id_1: str
     track_id_2: str
     limit: Optional[int] = 10
-    method: Optional[Literal["slerp", "linear"]] = "slerp" # Default to SLERP
+    method: Optional[Literal["slerp", "linear", "greedy_walk"]] = "greedy_walk"
+
+def greedy_walk_interpolation(con, start_vec, end_vec, start_id, end_id, limit=10):
+    current_vec = start_vec
+    path = []
+    
+    # Track visited IDs to prevent loops (A -> B -> A)
+    visited_ids = {start_id, end_id} 
+    
+    # We loop up to 'limit' times to generate intermediate tracks
+    for _ in range(limit):
+        
+        # 1. Efficient Two-Step Query
+        # Inner Query: Find the "Neighborhood" (top 50 closest to CURRENT track)
+        # Outer Query: specific the best step towards the TARGET track
+        query = """
+            WITH neighborhood AS (
+                SELECT id, title, artist, album, relative_path, v_mid,
+                       array_cosine_similarity(v_mid, ?::FLOAT[768]) as sim_to_current
+                FROM tracks
+                ORDER BY sim_to_current DESC
+                LIMIT 50
+            )
+            SELECT id, title, artist, album, relative_path, v_mid,
+                   array_cosine_similarity(v_mid, ?::FLOAT[768]) as sim_to_target
+            FROM neighborhood
+            WHERE id NOT IN (SELECT UNNEST(?)) 
+            ORDER BY sim_to_target DESC
+            LIMIT 1
+        """
+        
+        # Convert set to list for DuckDB binding
+        visited_list = list(visited_ids)
+        
+        # Execute query: [current_pos, target_pos, exclude_list]
+        result = con.execute(query, [current_vec, end_vec, visited_list]).fetchone()
+        
+        # If we hit a dead end (no valid neighbors), stop
+        if not result:
+            break
+            
+        # Parse result
+        next_track = SearchResult(
+            id=result[0], 
+            title=result[1], 
+            artist=result[2], 
+            album=result[3], 
+            relative_path=result[4], 
+            similarity=result[6] # Similarity to TARGET
+        )
+        
+        path.append(next_track)
+        visited_ids.add(result[0])
+        current_vec = result[5] # Move our position to this new song
+        
+        # Optimization: Early exit if we are extremely close to the target
+        # (e.g. we found the target itself or a live version of it)
+        if result[6] > 0.98:
+            break
+            
+    return path
 
 def recursive_interpolation(con, vec_a, vec_b, exclude_ids, depth_limit, method="slerp"):
     if depth_limit <= 0:
@@ -359,47 +419,52 @@ def interpolate_playlist(request: InterpolationPlaylistRequest):
         vec_start = start_row[1]
         vec_end = end_row[1]
         
-        # Initialize exclusion set with start and end tracks to avoid selecting them as intermediates
-        exclude_ids = {request.track_id_1, request.track_id_2}
-        
-        # 2. Generate Path
-        # The algorithm produces 2^depth + 1 songs.
-        # We calculate the max depth that fits within the requested limit.
-        # 2^depth + 1 <= limit  =>  2^depth <= limit - 1  =>  depth <= log2(limit - 1)
-        
-        if request.limit and request.limit >= 3:
-            depth_limit = int(math.log2(request.limit - 1))
-        else:
-            depth_limit = 0 # Just start and end
+        # ROUTING LOGIC
+        if request.method == "greedy_walk":
+            # Use the new Graph Traversal method
+            # Note: The limit in the request is the MAX length of the playlist.
+            # We subtract 2 (start + end) to get the number of intermediates.
+            walk_limit = max(1, (request.limit or 10) - 2)
             
-        # Hard cap depth to avoid performance issues (e.g. depth 5 = 33 songs, depth 6 = 65)
-        # Let's allow up to depth 6 (65 songs) if they really want it.
-        depth_limit = min(depth_limit, 6)
+            path = greedy_walk_interpolation(
+                con, 
+                vec_start, 
+                vec_end, 
+                request.track_id_1, 
+                request.track_id_2, 
+                limit=walk_limit
+            )
+            
+        else:
+            # Fallback to existing Recursive/SLERP logic
+            exclude_ids = {request.track_id_1, request.track_id_2}
+            
+            if request.limit and request.limit >= 3:
+                depth_limit = int(math.log2(request.limit - 1))
+            else:
+                depth_limit = 0
+                
+            # Hard cap depth to avoid performance issues (e.g. depth 5 = 33 songs, depth 6 = 65)
+            # Let's allow up to depth 6 (65 songs) if they really want it.
+            depth_limit = min(depth_limit, 6)
 
-        path = recursive_interpolation(con, vec_start, vec_end, exclude_ids, depth_limit=depth_limit, method=request.method)
+            path = recursive_interpolation(
+                con, vec_start, vec_end, exclude_ids, 
+                depth_limit=depth_limit, method=request.method
+            )
         
         con.close()
         
-        # Construct full response: [Start] + Path + [End]
-        # Or just the path? The request says "Return the playlist ordered by the connected segments"
-        # Usually a playlist between A and B includes A and B.
-        
         start_obj = SearchResult(
-            id=start_row[0], title=start_row[2], artist=start_row[3], album=start_row[4], relative_path=start_row[5], similarity=1.0
+            id=start_row[0], title=start_row[2], artist=start_row[3], 
+            album=start_row[4], relative_path=start_row[5], similarity=1.0
         )
         end_obj = SearchResult(
-            id=end_row[0], title=end_row[2], artist=end_row[3], album=end_row[4], relative_path=end_row[5], similarity=1.0
+            id=end_row[0], title=end_row[2], artist=end_row[3], 
+            album=end_row[4], relative_path=end_row[5], similarity=1.0
         )
         
-        # Filter path if it exceeds limit (though our depth limit helps, we can allow user to cut it short?)
-        # Standardize: Return Start -> ... -> End
-        final_playlist = [start_obj] + path + [end_obj]
-        
-        # If user provided a specific numerical limit, we might want to respect that?
-        # But this algorithm produces 2^N - 1 intermediates.
-        # We will stick to the generated path.
-        
-        return final_playlist
+        return [start_obj] + path + [end_obj]
 
     except Exception as e:
         print(f"Error generating playlist: {e}")
