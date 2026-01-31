@@ -51,6 +51,14 @@ class EchoLocate:
             payload["steer_track_id"] = steer_track_id
             
         return await self._request(service_name, "POST", "/interpolate", json_body=payload)
+
+    async def generate_playlist(self, track_id_1: str, track_id_2: str, service_name: str = "default", limit: int = 20):
+        payload = {
+            "track_id_1": track_id_1,
+            "track_id_2": track_id_2,
+            "limit": limit
+        }
+        return await self._request(service_name, "POST", "/interpolate/playlist", json_body=payload)
     
     async def get_available_services(self) -> List[str]:
         return list(self.vector_service_urls.keys())
