@@ -278,12 +278,13 @@ class InterpolationPlaylistRequest(BaseModel):
     limit: Optional[int] = 10
     method: Optional[Literal["slerp", "linear", "greedy_walk"]] = "greedy_walk"
 
-def greedy_walk_interpolation(con, start_vec, end_vec, start_id, end_id, limit=10):
+def greedy_walk_interpolation(con, start_vec, end_vec, start_id, end_id, start_artist, end_artist, limit=10):
     current_vec = start_vec
     path = []
     
-    # Track visited IDs to prevent loops (A -> B -> A)
-    visited_ids = {start_id, end_id} 
+    # Track visited IDs and Artists to prevent loops and ensure diversity
+    visited_ids = {start_id, end_id}
+    visited_artists = {start_artist, end_artist}
     
     # We loop up to 'limit' times to generate intermediate tracks
     for _ in range(limit):
@@ -291,6 +292,11 @@ def greedy_walk_interpolation(con, start_vec, end_vec, start_id, end_id, limit=1
         # 1. Efficient Two-Step Query
         # Inner Query: Find the "Neighborhood" (top 50 closest to CURRENT track)
         # Outer Query: specific the best step towards the TARGET track
+        # We can't easily filter artists inside the subquery efficiently without blowing up the result set size checking,
+        # so we fetch candidates and filter in Python or use a WHERE clause if list is small.
+        # Passing string lists to UNNEST in DuckDB python client can sometimes be finicky with quoting, 
+        # so let's try fetch-and-filter for robustness + simplicity given the small N (limit 50).
+        
         query = """
             WITH neighborhood AS (
                 SELECT id, title, artist, album, relative_path, v_mid,
@@ -304,41 +310,52 @@ def greedy_walk_interpolation(con, start_vec, end_vec, start_id, end_id, limit=1
             FROM neighborhood
             WHERE id NOT IN (SELECT UNNEST(?)) 
             ORDER BY sim_to_target DESC
-            LIMIT 1
         """
         
         # Convert set to list for DuckDB binding
         visited_list = list(visited_ids)
         
         # Execute query: [current_pos, target_pos, exclude_list]
-        result = con.execute(query, [current_vec, end_vec, visited_list]).fetchone()
+        candidates = con.execute(query, [current_vec, end_vec, visited_list]).fetchall()
+        
+        best_next = None
+        for cand in candidates:
+            cand_id = cand[0]
+            cand_artist = cand[2]
+            
+            # Check artist uniqueness
+            if cand_artist in visited_artists:
+                continue
+                
+            best_next = cand
+            break
         
         # If we hit a dead end (no valid neighbors), stop
-        if not result:
+        if not best_next:
             break
             
         # Parse result
         next_track = SearchResult(
-            id=result[0], 
-            title=result[1], 
-            artist=result[2], 
-            album=result[3], 
-            relative_path=result[4], 
-            similarity=result[6] # Similarity to TARGET
+            id=best_next[0], 
+            title=best_next[1], 
+            artist=best_next[2], 
+            album=best_next[3], 
+            relative_path=best_next[4], 
+            similarity=best_next[6] # Similarity to TARGET
         )
         
         path.append(next_track)
-        visited_ids.add(result[0])
-        current_vec = result[5] # Move our position to this new song
+        visited_ids.add(best_next[0])
+        visited_artists.add(best_next[2])
+        current_vec = best_next[5] # Move our position to this new song
         
         # Optimization: Early exit if we are extremely close to the target
-        # (e.g. we found the target itself or a live version of it)
-        if result[6] > 0.98:
+        if best_next[6] > 0.98:
             break
             
     return path
 
-def recursive_interpolation(con, vec_a, vec_b, exclude_ids, depth_limit, method="slerp"):
+def recursive_interpolation(con, vec_a, vec_b, exclude_ids, exclude_artists, depth_limit, method="slerp"):
     if depth_limit <= 0:
         return []
 
@@ -364,9 +381,12 @@ def recursive_interpolation(con, vec_a, vec_b, exclude_ids, depth_limit, method=
     candidates = con.execute(query, [midpoint_vector]).fetchall()
     
     best_match = None
+    best_match = None
     for cand in candidates:
         cand_id = cand[0]
-        if cand_id not in exclude_ids:
+        cand_artist = cand[2]
+        
+        if cand_id not in exclude_ids and cand_artist not in exclude_artists:
             best_match = cand
             break
     
@@ -386,12 +406,13 @@ def recursive_interpolation(con, vec_a, vec_b, exclude_ids, depth_limit, method=
     )
     
     exclude_ids.add(match_id)
+    exclude_artists.add(best_match[2])
     
     # Recurse left (start -> match)
-    left_path = recursive_interpolation(con, vec_a, match_vec, exclude_ids, depth_limit - 1, method)
+    left_path = recursive_interpolation(con, vec_a, match_vec, exclude_ids, exclude_artists, depth_limit - 1, method)
     
     # Recurse right (match -> end)
-    right_path = recursive_interpolation(con, match_vec, vec_b, exclude_ids, depth_limit - 1, method)
+    right_path = recursive_interpolation(con, match_vec, vec_b, exclude_ids, exclude_artists, depth_limit - 1, method)
     
     return left_path + [match_obj] + right_path
 
@@ -431,13 +452,16 @@ def interpolate_playlist(request: InterpolationPlaylistRequest):
                 vec_start, 
                 vec_end, 
                 request.track_id_1, 
-                request.track_id_2, 
+                request.track_id_2,
+                start_row[2], # start artist
+                end_row[2],   # end artist
                 limit=walk_limit
             )
             
         else:
             # Fallback to existing Recursive/SLERP logic
             exclude_ids = {request.track_id_1, request.track_id_2}
+            exclude_artists = {start_row[2], end_row[2]}
             
             if request.limit and request.limit >= 3:
                 depth_limit = int(math.log2(request.limit - 1))
@@ -449,7 +473,7 @@ def interpolate_playlist(request: InterpolationPlaylistRequest):
             depth_limit = min(depth_limit, 6)
 
             path = recursive_interpolation(
-                con, vec_start, vec_end, exclude_ids, 
+                con, vec_start, vec_end, exclude_ids, exclude_artists,
                 depth_limit=depth_limit, method=request.method
             )
         
