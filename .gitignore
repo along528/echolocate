@@ -19,8 +19,8 @@ __pycache__/
 # Data Artifacts
 data/
 
-# Audio Embedding Tmp
-audio_embedding/tmp/
+# Embeddings Tmp
+embeddings/tmp/
 
 # DuckDB
 *.duckdb

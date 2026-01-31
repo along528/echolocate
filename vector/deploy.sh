@@ -4,7 +4,7 @@ set -e
 # Ensure we are in the script's directory
 cd "$(dirname "$0")"
 
-SERVICE_NAME="cloudcrate-vector"
+SERVICE_NAME="cloud-crate-vector"
 REGION="us-central1"
 
 # Get bucket name

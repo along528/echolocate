@@ -5,13 +5,13 @@ echo "🚀 Starting Cloud Crate Deployment..."
 
 # 1. Deploy Vector Service
 echo "📦 Deploying Vector Service..."
-cd vector_service
+cd vector
 ./deploy.sh
 cd ..
 
 # Capture Vector Service URL
 echo "🔍 Retrieving Vector Service URL..."
-VECTOR_URL=$(gcloud run services describe cloudcrate-vector --region us-central1 --format 'value(status.url)')
+VECTOR_URL=$(gcloud run services describe cloud-crate-vector --region us-central1 --format 'value(status.url)')
 echo "✅ Vector Service URL: $VECTOR_URL"
 
 # 2. Deploy MCP Server
