@@ -5,7 +5,7 @@ import httpx
 from jose import jwt
 import base64
 
-class AppleMusicClient:
+class AppleCrate:
     def __init__(self, team_id: str, key_id: str, private_key: str):
         self.team_id = team_id
         self.key_id = key_id

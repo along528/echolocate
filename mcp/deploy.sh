@@ -4,10 +4,11 @@ set -e
 # Ensure we are in the script's directory
 cd "$(dirname "$0")"
 
-SERVICE_NAME="mcp-helloworld"
+SERVICE_NAME="cloud-crate-mcp"
 REGION="us-central1"
 PROJECT="cloud-crate-485418"
-VECTOR_URL="https://cloudcrate-vector-403961692263.us-central1.run.app"
+# Allow overriding via env var
+VECTOR_URL=${VECTOR_SERVICE_URL:-"https://cloudcrate-vector-403961692263.us-central1.run.app"}
 
 echo "Deploying $SERVICE_NAME..."
 

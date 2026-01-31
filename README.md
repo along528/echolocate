@@ -6,90 +6,60 @@ It allows you to "chat" with your music library—asking for play history, analy
 
 ## Architecture
 
-The project consists of two main components:
+The project consists of a central MCP server and a vector service:
 
-1.  **Edge (macOS / Swift)**: A native tool that interfaces with MusicKit to export your library data securely.
-    - [Read more in edge/README.md](edge/README.md)
+1.  **Cloud Crate MCP (`mcp/`)**: The main Python server running on Cloud Run. It delegates to:
+    - **Apple Crate**: Interfaces with Apple Music API.
+    - **Record Crate**: Interfaces with Discogs API.
+    - **Echo Locate**: Interfaces with Vector DBs for sonic pathfinding.
 
-2.  **Backend (Python / MCP)**: A server that ingests the library data and exposes it as tools to AI agents.
-    - [Read more in backend/README.md](backend/README.md)
+2.  **Vector Service (`vector_service/`)**: A dedicated service hosting DuckDB for embedding storage and similarity search.
 
 ## Quick Start
 
-### 1. Export Library
-Run the Swift exporter to generate your library snapshot.
+### 1. Deploy All Services
+
+Use the top-level deployment script to deploy both the Vector Service and the MCP Server.
 
 ```bash
-cd edge
-./build.sh
-cd ..
-```
-This creates `crate/my_library.json`.
-
-### 2. Run Backend Server
-Install dependencies and start the MCP server.
-
-> [!IMPORTANT]
-> You MUST use the `.venv` virtual environment for all python commands to ensure dependencies are found.
-
-
-```bash
-# Setup Environment (if not already done)
-python3 -m venv .venv
-source .venv/bin/activate
-pip install -r backend/requirements.txt
-
-# Run Local Server
-python backend/local_server.py
+./deploy.sh
 ```
 
-### 3. Connect to AI Client
-Configure your MCP client (e.g., Claude Desktop) to run the server script.
+This will:
+1. Deploy `vector_service` to Cloud Run.
+2. Capture its URL.
+3. Deploy `mcp` server to Cloud Run, linked to the Vector Service.
+
+### 2. Connect to AI Client
+
+Configure your MCP client (e.g., Claude Desktop or generic client) to connect to the remote SSE endpoint.
 
 **Claude Desktop Config (`~/Library/Application Support/Claude/claude_desktop_config.json`):**
 ```json
 {
   "mcpServers": {
-    "cloud-crate": {
-      "command": "/ABSOLUTE/PATH/TO/PROJECT/.venv/bin/python3",
-      "args": [
-        "/ABSOLUTE/PATH/TO/PROJECT/backend/local_server.py"
-      ]
+    "cloud-crate-remote": {
+      "url": "https://cloud-crate-mcp-[YOUR_HASH].us-central1.run.app/sse"
     }
   }
 }
 ```
 
 ## Features
-- **Semantic Search**: Find songs by lyrics or vibe (Cloud mode).
+- **Semantic Search**: Find songs by lyrics or vibe.
 - **Text Search**: Search library and Apple Music Catalog for artists, albums, and tracks.
 - **Contextual Awareness**: detailed play counts and dates.
 - **Album aggregation**: View stats and tracks at the album level.
 - **Playlist Management**: Create new playlists from your library directly in Apple Music via Native APIs.
 - **Vibe Steering**: Generate playlists that Sonically interpolate between two tracks, steering through a specific "vibe" or track.
 
-## Remote MCP Server (Cloud Run)
+## Directory Structure
 
-A hello world MCP server is deployed on Google Cloud Run for remote access.
+- `mcp/`: Main MCP server code (Python).
+- `vector_service/`: Vector database service (DuckDB + FastAPI).
+- `data/`: Storage for generated embeddings and DB files.
 
-| Endpoint | URL |
-|----------|-----|
-| **Health Check** | https://mcp-helloworld-403961692263.us-central1.run.app/ |
-| **MCP SSE** | https://mcp-helloworld-403961692263.us-central1.run.app/sse |
-
-**Claude Desktop Config (remote)**:
-```json
-{
-  "mcpServers": {
-    "cloud-run-hello": {
-      "url": "https://mcp-helloworld-403961692263.us-central1.run.app/sse"
-    }
-  }
-}
-```
-
-See [REMOTE_MCP.md](REMOTE_MCP.md) for full details.
-
-## Vector Service
-See [vector_service/README.md](vector_service/README.md) for details on the Vector DB service.
-
+## Documentation
+- [MCP Server Details](mcp/README.md)
+- [Remote Setup Guide](REMOTE_MCP.md)
+- [Vector Service](vector_service/README.md)
