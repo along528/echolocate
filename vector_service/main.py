@@ -1,9 +1,71 @@
 import duckdb
 from fastapi import FastAPI, HTTPException
 from pydantic import BaseModel
-from typing import List, Optional
+from typing import List, Optional, Literal
 import os
+import numpy as np
 import math
+
+# SLERP Utility
+def slerp(v0, v1, t=0.5):
+    """
+    Spherical Linear Interpolation.
+    v0, v1: Lists or arrays of floats (the vectors)
+    t: float, interpolation factor (0.0 to 1.0). Default 0.5 for midpoint.
+    """
+    v0 = np.array(v0)
+    v1 = np.array(v1)
+    
+    # Normalize vectors to unit length to ensure they are on the hypersphere
+    v0_norm = v0 / np.linalg.norm(v0)
+    v1_norm = v1 / np.linalg.norm(v1)
+    
+    dot = np.dot(v0_norm, v1_norm)
+    
+    # Clamp dot product to [-1, 1] to avoid floating point errors with arccos
+    dot = np.clip(dot, -1.0, 1.0)
+    
+    # If vectors are too close (dot ~ 1) or opposite (dot ~ -1), fall back to linear
+    # to avoid division by zero in sin()
+    if dot > 0.9995:
+        return (v0 + v1) / 2.0
+        
+    theta_0 = np.arccos(dot)
+    sin_theta_0 = np.sin(theta_0)
+    
+    theta_t = theta_0 * t
+    sin_theta_t = np.sin(theta_t)
+    
+    s0 = np.sin(theta_0 - theta_t) / sin_theta_0
+    s1 = sin_theta_t / sin_theta_0
+    
+    return (s0 * v0 + s1 * v1).tolist()
+
+def quadratic_bezier_slerp(v0, v1, v2, t):
+    """
+    Computes a point on a Quadratic Bezier curve on the hypersphere.
+    v0: Start Vector
+    v1: Control Vector (The Steering Track)
+    v2: End Vector
+    t: 0.0 to 1.0
+    """
+    # Step 1: Interpolate between Start and Control
+    q0 = slerp(v0, v1, t)
+    
+    # Step 2: Interpolate between Control and End
+    q1 = slerp(v1, v2, t)
+    
+    # Step 3: Interpolate between the two intermediate points
+    return slerp(q0, q1, t)
+
+def get_midpoint(vec_a, vec_b, method="slerp"):
+    if method == "linear":
+        # Old method: simple average
+        return [(a + b) / 2.0 for a, b in zip(vec_a, vec_b)]
+    else:
+        # New default: SLERP
+        return slerp(vec_a, vec_b, 0.5)
+
 
 app = FastAPI()
 
@@ -34,6 +96,7 @@ class InterpolationRequest(BaseModel):
     track_id_1: str
     track_id_2: str
     limit: Optional[int] = 10
+    method: Optional[Literal["slerp", "linear", "greedy_walk"]] = "greedy_walk"
 
 @app.on_event("startup")
 async def startup_event():
@@ -55,7 +118,7 @@ def health_check():
     return {"status": "ok", "service": "cloudcrate-vector"}
 
 @app.get("/tracks", response_model=List[TrackResponse])
-def list_tracks(limit: int = 50, offset: int = 0, random: bool = False):
+def list_tracks(limit: int = 50, offset: int = 0, random: bool = True):
     try:
         con = get_db_connection()
         if random:
@@ -191,7 +254,10 @@ def interpolate_tracks(request: InterpolationRequest):
         # but averaging them is the standard 'midpoint' in vector space.
         # We can implement vector addition in Python easily since they are lists/arrays.
         
-        midpoint_vector = [(a + b) / 2.0 for a, b in zip(vec1, vec2)]
+        # 2. Compute midpoint
+        print(f"Interpolating with method: {request.method}")
+        midpoint_vector = get_midpoint(vec1, vec2, request.method)
+        print(f"Midpoint vector first 3 dim: {midpoint_vector[:3]}")
         
         # 3. Search for nearest neighbors to the midpoint
         # We exclude the two input tracks from the results
@@ -227,13 +293,132 @@ class InterpolationPlaylistRequest(BaseModel):
     track_id_1: str
     track_id_2: str
     limit: Optional[int] = 10
+    method: Optional[Literal["slerp", "linear", "greedy_walk"]] = "greedy_walk"
+    steer_track_id: Optional[str] = None # New optional field
 
-def recursive_interpolation(con, vec_a, vec_b, exclude_ids, depth_limit):
+
+def bezier_interpolation(con, vec_start, vec_control, vec_end, exclude_ids, limit=10):
+    path = []
+    
+    # We want 'limit' items total (excluding start/end).
+    # We generate equidistant time steps along the curve.
+    steps = limit + 1 
+    
+    for i in range(1, steps):
+        t = i / steps
+        
+        # Calculate the theoretical point on the curve
+        target_vector = quadratic_bezier_slerp(vec_start, vec_control, vec_end, t)
+        
+        # Find the nearest REAL song to this theoretical point
+        query = """
+            SELECT id, title, artist, album, relative_path, v_mid, array_cosine_similarity(v_mid, ?::FLOAT[768]) as similarity
+            FROM tracks
+            ORDER BY similarity DESC
+            LIMIT 20
+        """
+        
+        candidates = con.execute(query, [target_vector]).fetchall()
+        
+        best_match = None
+        for cand in candidates:
+            # Simple exclusion of visited IDs
+            if cand[0] not in exclude_ids:
+                best_match = cand
+                break
+        
+        if best_match:
+            exclude_ids.add(best_match[0])
+            path.append(SearchResult(
+                id=best_match[0], title=best_match[1], artist=best_match[2], 
+                album=best_match[3], relative_path=best_match[4], similarity=best_match[6]
+            ))
+            
+    return path
+
+def greedy_walk_interpolation(con, start_vec, end_vec, start_id, end_id, start_artist, end_artist, limit=10):
+    current_vec = start_vec
+    path = []
+    
+    # Track visited IDs and Artists to prevent loops and ensure diversity
+    visited_ids = {start_id, end_id}
+    visited_artists = {start_artist, end_artist}
+    
+    # We loop up to 'limit' times to generate intermediate tracks
+    for _ in range(limit):
+        
+        # 1. Efficient Two-Step Query
+        # Inner Query: Find the "Neighborhood" (top 50 closest to CURRENT track)
+        # Outer Query: specific the best step towards the TARGET track
+        # We can't easily filter artists inside the subquery efficiently without blowing up the result set size checking,
+        # so we fetch candidates and filter in Python or use a WHERE clause if list is small.
+        # Passing string lists to UNNEST in DuckDB python client can sometimes be finicky with quoting, 
+        # so let's try fetch-and-filter for robustness + simplicity given the small N (limit 50).
+        
+        query = """
+            WITH neighborhood AS (
+                SELECT id, title, artist, album, relative_path, v_mid,
+                       array_cosine_similarity(v_mid, ?::FLOAT[768]) as sim_to_current
+                FROM tracks
+                ORDER BY sim_to_current DESC
+                LIMIT 50
+            )
+            SELECT id, title, artist, album, relative_path, v_mid,
+                   array_cosine_similarity(v_mid, ?::FLOAT[768]) as sim_to_target
+            FROM neighborhood
+            WHERE id NOT IN (SELECT UNNEST(?)) 
+            ORDER BY sim_to_target DESC
+        """
+        
+        # Convert set to list for DuckDB binding
+        visited_list = list(visited_ids)
+        
+        # Execute query: [current_pos, target_pos, exclude_list]
+        candidates = con.execute(query, [current_vec, end_vec, visited_list]).fetchall()
+        
+        best_next = None
+        for cand in candidates:
+            cand_id = cand[0]
+            cand_artist = cand[2]
+            
+            # Check artist uniqueness
+            if cand_artist in visited_artists:
+                continue
+                
+            best_next = cand
+            break
+        
+        # If we hit a dead end (no valid neighbors), stop
+        if not best_next:
+            break
+            
+        # Parse result
+        next_track = SearchResult(
+            id=best_next[0], 
+            title=best_next[1], 
+            artist=best_next[2], 
+            album=best_next[3], 
+            relative_path=best_next[4], 
+            similarity=best_next[6] # Similarity to TARGET
+        )
+        
+        path.append(next_track)
+        visited_ids.add(best_next[0])
+        visited_artists.add(best_next[2])
+        current_vec = best_next[5] # Move our position to this new song
+        
+        # Optimization: Early exit if we are extremely close to the target
+        if best_next[6] > 0.98:
+            break
+            
+    return path
+
+def recursive_interpolation(con, vec_a, vec_b, exclude_ids, exclude_artists, depth_limit, method="slerp"):
     if depth_limit <= 0:
         return []
 
-    # Calculate midpoint
-    midpoint_vector = [(a + b) / 2.0 for a, b in zip(vec_a, vec_b)]
+    # Calculate midpoint using the requested method
+    midpoint_vector = get_midpoint(vec_a, vec_b, method)
 
     # Find nearest neighbor to midpoint (excluding current chain)
     # We query for top 1 that is NOT in exclude_ids
@@ -254,9 +439,12 @@ def recursive_interpolation(con, vec_a, vec_b, exclude_ids, depth_limit):
     candidates = con.execute(query, [midpoint_vector]).fetchall()
     
     best_match = None
+    best_match = None
     for cand in candidates:
         cand_id = cand[0]
-        if cand_id not in exclude_ids:
+        cand_artist = cand[2]
+        
+        if cand_id not in exclude_ids and cand_artist not in exclude_artists:
             best_match = cand
             break
     
@@ -276,12 +464,13 @@ def recursive_interpolation(con, vec_a, vec_b, exclude_ids, depth_limit):
     )
     
     exclude_ids.add(match_id)
+    exclude_artists.add(best_match[2])
     
     # Recurse left (start -> match)
-    left_path = recursive_interpolation(con, vec_a, match_vec, exclude_ids, depth_limit - 1)
+    left_path = recursive_interpolation(con, vec_a, match_vec, exclude_ids, exclude_artists, depth_limit - 1, method)
     
     # Recurse right (match -> end)
-    right_path = recursive_interpolation(con, match_vec, vec_b, exclude_ids, depth_limit - 1)
+    right_path = recursive_interpolation(con, match_vec, vec_b, exclude_ids, exclude_artists, depth_limit - 1, method)
     
     return left_path + [match_obj] + right_path
 
@@ -308,48 +497,109 @@ def interpolate_playlist(request: InterpolationPlaylistRequest):
 
         vec_start = start_row[1]
         vec_end = end_row[1]
-        
-        # Initialize exclusion set with start and end tracks to avoid selecting them as intermediates
-        exclude_ids = {request.track_id_1, request.track_id_2}
+
+        # 1.5 Fetch Steering Vector if requested
+        vec_steer = None
+        steer_row = None
+        if request.steer_track_id:
+            query_steer = "SELECT id, v_mid, title, artist, album, relative_path FROM tracks WHERE id = ?"
+            steer_row = con.execute(query_steer, [request.steer_track_id]).fetchone()
+            if not steer_row:
+                 # If steer track not found, fail or ignore? Let's fail for clarity.
+                 con.close()
+                 raise HTTPException(status_code=404, detail="Steering track not found")
+            vec_steer = steer_row[1]
         
         # 2. Generate Path
-        # The algorithm produces 2^depth + 1 songs.
-        # We calculate the max depth that fits within the requested limit.
-        # 2^depth + 1 <= limit  =>  2^depth <= limit - 1  =>  depth <= log2(limit - 1)
         
-        if request.limit and request.limit >= 3:
-            depth_limit = int(math.log2(request.limit - 1))
-        else:
-            depth_limit = 0 # Just start and end
+        # --- STRATEGY A: GREEDY WALK (Graph Traversal) ---
+        if request.method == "greedy_walk":
             
-        # Hard cap depth to avoid performance issues (e.g. depth 5 = 33 songs, depth 6 = 65)
-        # Let's allow up to depth 6 (65 songs) if they really want it.
-        depth_limit = min(depth_limit, 6)
+            if vec_steer:
+                # Multi-stage walk: Start -> Steer -> End
+                # Split limit roughly in half
+                limit_a = math.ceil(request.limit / 2)
+                limit_b = request.limit - limit_a
+                
+                # Part 1: Start -> Steer
+                path_a = greedy_walk_interpolation(
+                    con, vec_start, vec_steer, 
+                    start_row[0], steer_row[0], 
+                    start_row[2], steer_row[2], limit=limit_a
+                )
+                
+                # Part 2: Steer -> End
+                path_b = greedy_walk_interpolation(
+                    con, vec_steer, vec_end, 
+                    steer_row[0], end_row[0], 
+                    steer_row[2], end_row[2], limit=limit_b
+                )
+                
+                # Construct: Start + Path A + [Steer] + Path B + End
+                steer_obj = SearchResult(
+                    id=steer_row[0], title=steer_row[2], artist=steer_row[3], 
+                    album=steer_row[4], relative_path=steer_row[5], similarity=1.0
+                )
+                
+                # Note: path_a excludes start/end of its segment. 
+                # So we manually insert the Steer object in the middle.
+                path = path_a + [steer_obj] + path_b
+                
+            else:
+                # Standard A -> B walk
+                walk_limit = max(1, (request.limit or 10) - 2)
+                path = greedy_walk_interpolation(
+                    con, vec_start, vec_end, 
+                    start_row[0], end_row[0], 
+                    start_row[2], end_row[2], limit=walk_limit
+                )
 
-        path = recursive_interpolation(con, vec_start, vec_end, exclude_ids, depth_limit=depth_limit)
+        # --- STRATEGY B: GEOMETRIC (SLERP/Linear) ---
+        else:
+            exclude_ids = {request.track_id_1, request.track_id_2}
+            
+            if vec_steer:
+                # Bezier Curve Interpolation
+                exclude_ids.add(request.steer_track_id)
+                
+                # The limit is the number of intermediates
+                # If we want the steer track to be INCLUDED in the list, 
+                # Bezier math doesn't guarantee hitting the exact point P1, 
+                # it just curves towards it.
+                # If you want to explicitly include it, reduce limit and insert it? 
+                # For now, let's just do the pure curve generation.
+                
+                path = bezier_interpolation(
+                    con, vec_start, vec_steer, vec_end, exclude_ids, 
+                    limit=max(1, (request.limit or 10) - 2)
+                )
+                
+            else:
+                # Standard Recursive Bisection
+                exclude_artists = {start_row[2], end_row[2]}
+                if request.limit and request.limit >= 3:
+                    depth_limit = int(math.log2(request.limit - 1))
+                else:
+                    depth_limit = 0
+                depth_limit = min(depth_limit, 6)
+
+                path = recursive_interpolation(
+                    con, vec_start, vec_end, exclude_ids, exclude_artists,
+                    depth_limit=depth_limit, method=request.method
+                )
         
         con.close()
         
-        # Construct full response: [Start] + Path + [End]
-        # Or just the path? The request says "Return the playlist ordered by the connected segments"
-        # Usually a playlist between A and B includes A and B.
-        
         start_obj = SearchResult(
-            id=start_row[0], title=start_row[2], artist=start_row[3], album=start_row[4], relative_path=start_row[5], similarity=1.0
+            id=start_row[0], title=start_row[2], artist=start_row[3], 
+            album=start_row[4], relative_path=start_row[5], similarity=1.0
         )
         end_obj = SearchResult(
-            id=end_row[0], title=end_row[2], artist=end_row[3], album=end_row[4], relative_path=end_row[5], similarity=1.0
+            id=end_row[0], title=end_row[2], artist=end_row[3], 
+            album=end_row[4], relative_path=end_row[5], similarity=1.0
         )
         
-        # Filter path if it exceeds limit (though our depth limit helps, we can allow user to cut it short?)
-        # Standardize: Return Start -> ... -> End
-        final_playlist = [start_obj] + path + [end_obj]
-        
-        # If user provided a specific numerical limit, we might want to respect that?
-        # But this algorithm produces 2^N - 1 intermediates.
-        # We will stick to the generated path.
-        
-        return final_playlist
+        return [start_obj] + path + [end_obj]
 
     except Exception as e:
         print(f"Error generating playlist: {e}")

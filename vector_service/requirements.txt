@@ -4,3 +4,4 @@ uvicorn
 pydantic
 python-multipart
 google-cloud-storage
+numpy

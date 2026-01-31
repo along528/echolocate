@@ -45,6 +45,9 @@ The architecture is divided into the **Local Edge** (to interface with Apple's s
   * search\_apple\_music(query, limit): Search the global Apple Music Catalog (Artists, Albums, Songs).
   * get\_track\_context(track\_id): Returns full metadata \+ "WXYC-style" summary.  
   * get\_rotation(category): Filters tracks by "Heavy," "Gold," or "Unplayed" logic.
+  * interpolate\_tracks(track\_id\_1, track\_id\_2): "Vibe Steering" - find a sonic path between two tracks.
+    * Supports optional `steer_track_id` to route the path through a specific vibe.
+    * Supports `method` selection ("greedy_walk" vs "slerp").
 
 ## **4\. Implementation Phases**
 
