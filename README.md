@@ -66,6 +66,7 @@ Configure your MCP client (e.g., Claude Desktop) to run the server script.
 - **Contextual Awareness**: detailed play counts and dates.
 - **Album aggregation**: View stats and tracks at the album level.
 - **Playlist Management**: Create new playlists from your library directly in Apple Music via Native APIs.
+- **Vibe Steering**: Generate playlists that Sonically interpolate between two tracks, steering through a specific "vibe" or track.
 
 ## Remote MCP Server (Cloud Run)
 
