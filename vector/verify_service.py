@@ -17,7 +17,7 @@ if not SERVICE_URL:
     try:
         import subprocess
         result = subprocess.run(
-            ["gcloud", "run", "services", "describe", "cloudcrate-vector", 
+            ["gcloud", "run", "services", "describe", "cloud-crate-vector", 
              "--region", "us-central1", "--format", "value(status.url)"],
             capture_output=True, text=True
         )
