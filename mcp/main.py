@@ -483,8 +483,12 @@ async def call_tool(name: str, arguments: dict):
         if not apple_crate or not APPLE_MUSIC_USER_TOKEN: return [TextContent(type="text", text="Auth required")]
         try:
             res = await apple_crate.create_playlist(arguments["name"], arguments.get("description", ""), arguments["track_ids"], APPLE_MUSIC_USER_TOKEN)
-            # The API returns the playlist object sometimes, just say success
-            return [TextContent(type="text", text=f"Playlist Created Successfully.")]
+            # The API returns the playlist object
+            playlist_data = res.get("data", [])
+            if playlist_data:
+                playlist_id = playlist_data[0].get("id")
+                return [TextContent(type="text", text=f"Playlist Created Successfully. ID: {playlist_id}")]
+            return [TextContent(type="text", text="Playlist Created Successfully (No ID returned).")]
         except Exception as e:
             return [TextContent(type="text", text=f"Error: {e}")]
 
