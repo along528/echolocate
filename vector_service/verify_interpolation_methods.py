@@ -60,6 +60,12 @@ try:
     
     print(f"Track A: {get_track_display(track_a)}")
     print(f"Track B: {get_track_display(track_b)}")
+    
+    # 2.5 Select a Random Steering Track (ensure it's not A or B)
+    track_steer = None
+    while not track_steer or track_steer['id'] in [track_a['id'], track_b['id']]:
+        track_steer = random.choice(tracks)
+    print(f"Steering Track: {get_track_display(track_steer)}")
 
     # 3. Request Playlist Interpolation with SLERP (Default)
     print("\n--- Testing SLERP Playlist ---")
@@ -112,6 +118,39 @@ try:
         print(f"Greedy Walk Failed: {resp_greedy.text}")
         # Not exiting here so we can see other results
 
+    # 5.5 Request Playlist with Steering (Greedy & SLERP)
+    print("\n--- Testing Greedy Walk + Steering ---")
+    payload_greedy_steer = {
+        "track_id_1": track_a['id'],
+        "track_id_2": track_b['id'],
+        "limit": 10,
+        "method": "greedy_walk",
+        "steer_track_id": track_steer['id']
+    }
+    resp_gs = requests.post(f"{SERVICE_URL}/interpolate/playlist", json=payload_greedy_steer)
+    results_gs = []
+    if resp_gs.status_code == 200:
+        results_gs = resp_gs.json()
+        print(f"Greedy+Steer success. Got {len(results_gs)} songs.")
+    else:
+        print(f"Greedy+Steer Failed: {resp_gs.text}")
+
+    print("\n--- Testing SLERP + Steering (Bezier) ---")
+    payload_slerp_steer = {
+        "track_id_1": track_a['id'],
+        "track_id_2": track_b['id'],
+        "limit": 10,
+        "method": "slerp",
+        "steer_track_id": track_steer['id']
+    }
+    resp_ss = requests.post(f"{SERVICE_URL}/interpolate/playlist", json=payload_slerp_steer)
+    results_ss = []
+    if resp_ss.status_code == 200:
+        results_ss = resp_ss.json()
+        print(f"SLERP+Steer success. Got {len(results_ss)} songs.")
+    else:
+        print(f"SLERP+Steer Failed: {resp_ss.text}")
+
     # 6. Compare Results with Formatted Output
     print("\n" + "="*165)
     print(f"{'IDX':<4} | {'SLERP TRACK':<50} | {'LINEAR TRACK':<50} | {'GREEDY WALK TRACK':<50}")
@@ -135,6 +174,25 @@ try:
         
         print(f"{i:<4} | {slerp_val:<50} | {linear_val:<50} | {greedy_val:<50}")
 
+    print("-" * 165)
+
+    # 7. Compare Steering Results
+    print("\n" + "="*165)
+    print(f"STEERING COMPARISON (Via: {get_table_display(track_steer)})")
+    print(f"{'IDX':<4} | {'GREEDY + STEER':<50} | {'SLERP + STEER':<50}")
+    print("-" * 165)
+    
+    titles_gs = [get_table_display(t) for t in results_gs]
+    titles_ss = [get_table_display(t) for t in results_ss]
+    
+    max_len_steer = max(len(titles_gs), len(titles_ss))
+    
+    for i in range(max_len_steer):
+        gs_val = titles_gs[i] if i < len(titles_gs) else ""
+        ss_val = titles_ss[i] if i < len(titles_ss) else ""
+        
+        print(f"{i:<4} | {gs_val:<50} | {ss_val:<50}")
+        
     print("-" * 165)
     
     # Also trigger single interpolation just to check logs

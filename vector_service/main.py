@@ -41,6 +41,23 @@ def slerp(v0, v1, t=0.5):
     
     return (s0 * v0 + s1 * v1).tolist()
 
+def quadratic_bezier_slerp(v0, v1, v2, t):
+    """
+    Computes a point on a Quadratic Bezier curve on the hypersphere.
+    v0: Start Vector
+    v1: Control Vector (The Steering Track)
+    v2: End Vector
+    t: 0.0 to 1.0
+    """
+    # Step 1: Interpolate between Start and Control
+    q0 = slerp(v0, v1, t)
+    
+    # Step 2: Interpolate between Control and End
+    q1 = slerp(v1, v2, t)
+    
+    # Step 3: Interpolate between the two intermediate points
+    return slerp(q0, q1, t)
+
 def get_midpoint(vec_a, vec_b, method="slerp"):
     if method == "linear":
         # Old method: simple average
@@ -277,6 +294,47 @@ class InterpolationPlaylistRequest(BaseModel):
     track_id_2: str
     limit: Optional[int] = 10
     method: Optional[Literal["slerp", "linear", "greedy_walk"]] = "greedy_walk"
+    steer_track_id: Optional[str] = None # New optional field
+
+
+def bezier_interpolation(con, vec_start, vec_control, vec_end, exclude_ids, limit=10):
+    path = []
+    
+    # We want 'limit' items total (excluding start/end).
+    # We generate equidistant time steps along the curve.
+    steps = limit + 1 
+    
+    for i in range(1, steps):
+        t = i / steps
+        
+        # Calculate the theoretical point on the curve
+        target_vector = quadratic_bezier_slerp(vec_start, vec_control, vec_end, t)
+        
+        # Find the nearest REAL song to this theoretical point
+        query = """
+            SELECT id, title, artist, album, relative_path, v_mid, array_cosine_similarity(v_mid, ?::FLOAT[768]) as similarity
+            FROM tracks
+            ORDER BY similarity DESC
+            LIMIT 20
+        """
+        
+        candidates = con.execute(query, [target_vector]).fetchall()
+        
+        best_match = None
+        for cand in candidates:
+            # Simple exclusion of visited IDs
+            if cand[0] not in exclude_ids:
+                best_match = cand
+                break
+        
+        if best_match:
+            exclude_ids.add(best_match[0])
+            path.append(SearchResult(
+                id=best_match[0], title=best_match[1], artist=best_match[2], 
+                album=best_match[3], relative_path=best_match[4], similarity=best_match[6]
+            ))
+            
+    return path
 
 def greedy_walk_interpolation(con, start_vec, end_vec, start_id, end_id, start_artist, end_artist, limit=10):
     current_vec = start_vec
@@ -439,43 +497,96 @@ def interpolate_playlist(request: InterpolationPlaylistRequest):
 
         vec_start = start_row[1]
         vec_end = end_row[1]
-        
-        # ROUTING LOGIC
-        if request.method == "greedy_walk":
-            # Use the new Graph Traversal method
-            # Note: The limit in the request is the MAX length of the playlist.
-            # We subtract 2 (start + end) to get the number of intermediates.
-            walk_limit = max(1, (request.limit or 10) - 2)
-            
-            path = greedy_walk_interpolation(
-                con, 
-                vec_start, 
-                vec_end, 
-                request.track_id_1, 
-                request.track_id_2,
-                start_row[2], # start artist
-                end_row[2],   # end artist
-                limit=walk_limit
-            )
-            
-        else:
-            # Fallback to existing Recursive/SLERP logic
-            exclude_ids = {request.track_id_1, request.track_id_2}
-            exclude_artists = {start_row[2], end_row[2]}
-            
-            if request.limit and request.limit >= 3:
-                depth_limit = int(math.log2(request.limit - 1))
-            else:
-                depth_limit = 0
-                
-            # Hard cap depth to avoid performance issues (e.g. depth 5 = 33 songs, depth 6 = 65)
-            # Let's allow up to depth 6 (65 songs) if they really want it.
-            depth_limit = min(depth_limit, 6)
 
-            path = recursive_interpolation(
-                con, vec_start, vec_end, exclude_ids, exclude_artists,
-                depth_limit=depth_limit, method=request.method
-            )
+        # 1.5 Fetch Steering Vector if requested
+        vec_steer = None
+        steer_row = None
+        if request.steer_track_id:
+            query_steer = "SELECT id, v_mid, title, artist, album, relative_path FROM tracks WHERE id = ?"
+            steer_row = con.execute(query_steer, [request.steer_track_id]).fetchone()
+            if not steer_row:
+                 # If steer track not found, fail or ignore? Let's fail for clarity.
+                 con.close()
+                 raise HTTPException(status_code=404, detail="Steering track not found")
+            vec_steer = steer_row[1]
+        
+        # 2. Generate Path
+        
+        # --- STRATEGY A: GREEDY WALK (Graph Traversal) ---
+        if request.method == "greedy_walk":
+            
+            if vec_steer:
+                # Multi-stage walk: Start -> Steer -> End
+                # Split limit roughly in half
+                limit_a = math.ceil(request.limit / 2)
+                limit_b = request.limit - limit_a
+                
+                # Part 1: Start -> Steer
+                path_a = greedy_walk_interpolation(
+                    con, vec_start, vec_steer, 
+                    start_row[0], steer_row[0], 
+                    start_row[2], steer_row[2], limit=limit_a
+                )
+                
+                # Part 2: Steer -> End
+                path_b = greedy_walk_interpolation(
+                    con, vec_steer, vec_end, 
+                    steer_row[0], end_row[0], 
+                    steer_row[2], end_row[2], limit=limit_b
+                )
+                
+                # Construct: Start + Path A + [Steer] + Path B + End
+                steer_obj = SearchResult(
+                    id=steer_row[0], title=steer_row[2], artist=steer_row[3], 
+                    album=steer_row[4], relative_path=steer_row[5], similarity=1.0
+                )
+                
+                # Note: path_a excludes start/end of its segment. 
+                # So we manually insert the Steer object in the middle.
+                path = path_a + [steer_obj] + path_b
+                
+            else:
+                # Standard A -> B walk
+                walk_limit = max(1, (request.limit or 10) - 2)
+                path = greedy_walk_interpolation(
+                    con, vec_start, vec_end, 
+                    start_row[0], end_row[0], 
+                    start_row[2], end_row[2], limit=walk_limit
+                )
+
+        # --- STRATEGY B: GEOMETRIC (SLERP/Linear) ---
+        else:
+            exclude_ids = {request.track_id_1, request.track_id_2}
+            
+            if vec_steer:
+                # Bezier Curve Interpolation
+                exclude_ids.add(request.steer_track_id)
+                
+                # The limit is the number of intermediates
+                # If we want the steer track to be INCLUDED in the list, 
+                # Bezier math doesn't guarantee hitting the exact point P1, 
+                # it just curves towards it.
+                # If you want to explicitly include it, reduce limit and insert it? 
+                # For now, let's just do the pure curve generation.
+                
+                path = bezier_interpolation(
+                    con, vec_start, vec_steer, vec_end, exclude_ids, 
+                    limit=max(1, (request.limit or 10) - 2)
+                )
+                
+            else:
+                # Standard Recursive Bisection
+                exclude_artists = {start_row[2], end_row[2]}
+                if request.limit and request.limit >= 3:
+                    depth_limit = int(math.log2(request.limit - 1))
+                else:
+                    depth_limit = 0
+                depth_limit = min(depth_limit, 6)
+
+                path = recursive_interpolation(
+                    con, vec_start, vec_end, exclude_ids, exclude_artists,
+                    depth_limit=depth_limit, method=request.method
+                )
         
         con.close()
         
