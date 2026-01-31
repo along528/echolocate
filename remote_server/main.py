@@ -681,7 +681,8 @@ async def list_tools():
                 "type": "object",
                 "properties": {
                     "limit": {"type": "integer", "description": "Number of tracks to return (default 20)"},
-                    "offset": {"type": "integer", "description": "Pagination offset (default 0)"}
+                    "offset": {"type": "integer", "description": "Pagination offset (default 0)"},
+                    "random": {"type": "boolean", "description": "Whether to return random tracks (default true)"}
                 }
             }
         ),
@@ -718,7 +719,9 @@ async def list_tools():
                 "properties": {
                     "track_id_1": {"type": "string", "description": "Start Vector DB Track ID"},
                     "track_id_2": {"type": "string", "description": "End Vector DB Track ID"},
-                    "limit": {"type": "integer", "description": "Number of tracks (default 20)"}
+                    "limit": {"type": "integer", "description": "Number of tracks (default 20)"},
+                    "method": {"type": "string", "enum": ["greedy_walk", "slerp", "linear"], "description": "Interpolation method (default 'greedy_walk')"},
+                    "steer_track_id": {"type": "string", "description": "Optional: Track ID to steer the path through (creates a multi-stage walk or curved path)"}
                 },
                 "required": ["track_id_1", "track_id_2"]
             }
@@ -1051,6 +1054,8 @@ Similarity: {3:.4f}
         track_id_1 = arguments.get("track_id_1")
         track_id_2 = arguments.get("track_id_2")
         limit = arguments.get("limit", 20)
+        method = arguments.get("method", "greedy_walk")
+        steer_track_id = arguments.get("steer_track_id")
         
         if track_id_1.startswith("catalog:"): track_id_1 = track_id_1.split(":", 1)[1]
         if track_id_2.startswith("catalog:"): track_id_2 = track_id_2.split(":", 1)[1]
@@ -1060,8 +1065,13 @@ Similarity: {3:.4f}
             payload = {
                 "track_id_1": track_id_1,
                 "track_id_2": track_id_2,
-                "limit": limit
+                "limit": limit,
+                "method": method
             }
+            if steer_track_id:
+                if steer_track_id.startswith("catalog:"): steer_track_id = steer_track_id.split(":", 1)[1]
+                payload["steer_track_id"] = steer_track_id
+            
             results = await call_vector_service("/interpolate/playlist", method="POST", json_body=payload)
             
             if not results:
