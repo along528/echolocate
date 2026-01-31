@@ -35,10 +35,11 @@ class EchoLocate:
                 raise Exception(f"EchoLocate failed for {service_name}: {e}")
 
     async def sample_db(self, service_name: str = "default", limit: int = 20, offset: int = 0, random_sample: bool = True):
-        return await self._request(service_name, "GET", "/sample_db", params={"limit": limit, "offset": offset, "random": random_sample})
+        return await self._request(service_name, "GET", "/tracks", params={"limit": limit, "offset": offset, "random": random_sample})
 
     async def find_similar_tracks(self, track_id: str, service_name: str = "default", limit: int = 5):
-        return await self._request(service_name, "POST", "/find_similar", json_body={"track_id": track_id, "limit": limit})
+        # Use endpoint /tracks/{id}/similar
+        return await self._request(service_name, "GET", f"/tracks/{track_id}/similar", params={"limit": limit})
 
     async def interpolate(self, track_id_1: str, track_id_2: str, service_name: str = "default", limit: int = 10, method: str = "greedy_walk", steer_track_id: Optional[str] = None):
         payload = {
