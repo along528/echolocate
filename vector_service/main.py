@@ -101,7 +101,7 @@ def health_check():
     return {"status": "ok", "service": "cloudcrate-vector"}
 
 @app.get("/tracks", response_model=List[TrackResponse])
-def list_tracks(limit: int = 50, offset: int = 0, random: bool = False):
+def list_tracks(limit: int = 50, offset: int = 0, random: bool = True):
     try:
         con = get_db_connection()
         if random:
