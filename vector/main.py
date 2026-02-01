@@ -5,6 +5,8 @@ from typing import List, Optional, Literal
 import os
 import numpy as np
 import math
+import torch
+from transformers import AutoProcessor, ClapModel
 
 # SLERP Utility
 def slerp(v0, v1, t=0.5):
@@ -98,13 +100,35 @@ class InterpolationRequest(BaseModel):
     limit: Optional[int] = 10
     method: Optional[Literal["slerp", "linear", "greedy_walk"]] = "greedy_walk"
 
+class SemanticSearchRequest(BaseModel):
+    query: str
+    limit: Optional[int] = 10
+
+# CLAP Model (loaded at startup)
+clap_model = None
+clap_processor = None
+CLAP_MODEL_NAME = "laion/clap-htsat-unfused"
+
 @app.on_event("startup")
 async def startup_event():
+    global clap_model, clap_processor
+    
     # Verify DB exists
     if not os.path.exists(DB_PATH):
         print(f"WARNING: Database file not found at {DB_PATH}")
     else:
         print(f"Database found at {DB_PATH}")
+    
+    # Load CLAP model for semantic search
+    print(f"Loading CLAP model: {CLAP_MODEL_NAME}...")
+    try:
+        clap_model = ClapModel.from_pretrained(CLAP_MODEL_NAME)
+        clap_processor = AutoProcessor.from_pretrained(CLAP_MODEL_NAME)
+        clap_model.eval()
+        print("CLAP model loaded successfully.")
+    except Exception as e:
+        print(f"WARNING: Failed to load CLAP model: {e}")
+        print("Semantic search will be disabled.")
 
 def get_db_connection():
     # Connect in Read-Only mode to allow concurrency/cloud run compatibility
@@ -288,6 +312,60 @@ def vector_search_tracks(request: SearchRequest):
 
     except Exception as e:
         print(f"Error during search: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+@app.post("/semantic-search", response_model=List[SearchResult])
+def semantic_search(request: SemanticSearchRequest):
+    """
+    Search tracks using natural language queries like 'jazz saxophone' or 'ambient rain'.
+    Uses CLAP model to generate text embeddings and matches against v_clap audio embeddings.
+    """
+    if not clap_model or not clap_processor:
+        raise HTTPException(status_code=503, detail="CLAP model not loaded. Semantic search unavailable.")
+    
+    try:
+        # 1. Generate text embedding from query
+        text_inputs = clap_processor(text=[request.query], padding=True, return_tensors="pt")
+        
+        with torch.no_grad():
+            text_features = clap_model.get_text_features(**text_inputs)
+            # L2 normalize
+            text_features /= text_features.norm(dim=-1, keepdim=True)
+        
+        query_vector = text_features.squeeze(0).cpu().numpy().tolist()
+        
+        # 2. Search v_clap column
+        con = get_db_connection()
+        
+        query = """
+            SELECT id, title, artist, album, relative_path, array_cosine_similarity(v_clap, ?::FLOAT[512]) as similarity
+            FROM tracks
+            WHERE v_clap IS NOT NULL
+            ORDER BY similarity DESC
+            LIMIT ?
+        """
+        
+        results = con.execute(query, [query_vector, request.limit]).fetchall()
+        con.close()
+        
+        # 3. Format results
+        response = []
+        for row in results:
+            response.append(SearchResult(
+                id=row[0],
+                title=row[1],
+                artist=row[2],
+                album=row[3],
+                relative_path=row[4],
+                similarity=row[5]
+            ))
+        
+        return response
+    
+    except HTTPException:
+        raise
+    except Exception as e:
+        print(f"Error during semantic search: {e}")
         raise HTTPException(status_code=500, detail=str(e))
 
 @app.post("/interpolate", response_model=List[SearchResult])

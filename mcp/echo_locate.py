@@ -85,3 +85,19 @@ class EchoLocate:
             params["title"] = title
         return await self._request(service_name, "GET", "/search", params=params)
 
+    async def semantic_search(
+        self, 
+        query: str, 
+        service_name: str = "default", 
+        limit: int = 10
+    ):
+        """
+        Search for tracks using natural language queries like 'jazz saxophone' or 'ambient rain'.
+        Uses CLAP AI model to match audio content to text descriptions.
+        """
+        return await self._request(
+            service_name, 
+            "POST", 
+            "/semantic-search", 
+            json_body={"query": query, "limit": limit}
+        )

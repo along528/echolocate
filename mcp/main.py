@@ -439,6 +439,19 @@ async def list_tools():
                 }
             }
         ))
+        tools.append(Tool(
+            name="echolocate_semantic_search",
+            description="Search for tracks using natural language queries like 'jazz saxophone' or 'ambient rain'. Uses CLAP AI model to match audio content to text descriptions.",
+            inputSchema={
+                "type": "object",
+                "properties": {
+                    "query": {"type": "string", "description": "Natural language description of the sound you're looking for"},
+                    "service_name": {"type": "string", "description": "Vector Service Name (e.g. 'library', 'fma')", "default": "default"},
+                    "limit": {"type": "integer", "default": 10}
+                },
+                "required": ["query"]
+            }
+        ))
 
     # --- Context Tools ---
     tools.append(Tool(
@@ -781,6 +794,15 @@ Marketplace: {record_crate.get_marketplace_url(rid)}
                 )
                 output = "\n".join([f"Vector ID: {t['id']} | {t['title']} - {t['artist']}" for t in res])
                 return [TextContent(type="text", text=output or "No results")]
+
+            elif name == "echolocate_semantic_search":
+                res = await echo_locate.semantic_search(
+                    query=arguments["query"],
+                    service_name=service,
+                    limit=arguments.get("limit", 10)
+                )
+                output = "\n".join([f"Vector ID: {t['id']} | Sim: {t.get('similarity', 0):.3f} | {t['title']} - {t['artist']}" for t in res])
+                return [TextContent(type="text", text=output or "No semantic matches found")]
 
         except Exception as e:
             return [TextContent(type="text", text=f"Echo Locate Error: {e}")]
