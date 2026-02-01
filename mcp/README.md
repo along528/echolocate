@@ -17,6 +17,7 @@ The server exposes the following tools to the LLM, all strictly namespaced:
 - `discogs_get_release(release_id)`: Get detailed info about a release (tracklist, year, etc.).
 - `discogs_get_versions(master_id)`: List all versions of a master release.
 - `discogs_get_wantlist(page)`: Browse your Discogs wantlist.
+- `discogs_add_to_wantlist(release_id, notes, rating)`: Add a release to your wantlist.
 
 ### 🦇 Echo Locate (`echolocate_*`)
 - `echolocate_similar(track_id)`: Find tracks sonically similar to a given track.
