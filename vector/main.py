@@ -190,8 +190,67 @@ def find_similar(track_id: str, limit: int = 10):
         print(f"Error finding similar tracks: {e}")
         raise HTTPException(status_code=500, detail=str(e))
 
-@app.post("/search", response_model=List[SearchResult])
-def search_tracks(request: SearchRequest):
+@app.get("/search", response_model=List[TrackResponse])
+def search_tracks_text(
+    query: Optional[str] = None,
+    artist: Optional[str] = None,
+    album: Optional[str] = None,
+    title: Optional[str] = None,
+    limit: int = 20
+):
+    """Text-based search by artist, album, or title."""
+    try:
+        con = get_db_connection()
+        
+        # Build WHERE clause dynamically
+        conditions = []
+        params = []
+        
+        if query:
+            # General search across all text fields
+            conditions.append("(title ILIKE ? OR artist ILIKE ? OR album ILIKE ?)")
+            search_term = f"%{query}%"
+            params.extend([search_term, search_term, search_term])
+        if artist:
+            conditions.append("artist ILIKE ?")
+            params.append(f"%{artist}%")
+        if album:
+            conditions.append("album ILIKE ?")
+            params.append(f"%{album}%")
+        if title:
+            conditions.append("title ILIKE ?")
+            params.append(f"%{title}%")
+        
+        if not conditions:
+            con.close()
+            raise HTTPException(status_code=400, detail="At least one search parameter required: query, artist, album, or title")
+        
+        where_clause = " AND ".join(conditions)
+        sql = f"SELECT id, title, artist, album, relative_path FROM tracks WHERE {where_clause} LIMIT ?"
+        params.append(limit)
+        
+        results = con.execute(sql, params).fetchall()
+        con.close()
+        
+        response = []
+        for row in results:
+            response.append(TrackResponse(
+                id=row[0],
+                title=row[1],
+                artist=row[2],
+                album=row[3],
+                relative_path=row[4]
+            ))
+        return response
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        print(f"Error during text search: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+@app.post("/vector-search", response_model=List[SearchResult])
+def vector_search_tracks(request: SearchRequest):
     try:
         con = get_db_connection()
         

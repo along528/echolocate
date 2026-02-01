@@ -424,6 +424,21 @@ async def list_tools():
                 "required": ["track_id_1", "track_id_2"]
             }
         ))
+        tools.append(Tool(
+            name="echolocate_text_search",
+            description="Search tracks by text: artist, album, or title.",
+            inputSchema={
+                "type": "object",
+                "properties": {
+                    "query": {"type": "string", "description": "General search term (searches across all text fields)"},
+                    "artist": {"type": "string", "description": "Search by artist name"},
+                    "album": {"type": "string", "description": "Search by album name"},
+                    "title": {"type": "string", "description": "Search by track title"},
+                    "service_name": {"type": "string", "description": "Vector Service Name (e.g. 'library', 'fma')", "default": "default"},
+                    "limit": {"type": "integer", "default": 20}
+                }
+            }
+        ))
 
     # --- Context Tools ---
     tools.append(Tool(
@@ -754,6 +769,18 @@ Marketplace: {record_crate.get_marketplace_url(rid)}
                 )
                 output = "\n".join([f"Vector ID: {t['id']} | {t['title']}" for t in res])
                 return [TextContent(type="text", text=output or "Interpolation failed")]
+
+            elif name == "echolocate_text_search":
+                res = await echo_locate.text_search(
+                    service_name=service,
+                    query=arguments.get("query"),
+                    artist=arguments.get("artist"),
+                    album=arguments.get("album"),
+                    title=arguments.get("title"),
+                    limit=arguments.get("limit", 20)
+                )
+                output = "\n".join([f"Vector ID: {t['id']} | {t['title']} - {t['artist']}" for t in res])
+                return [TextContent(type="text", text=output or "No results")]
 
         except Exception as e:
             return [TextContent(type="text", text=f"Echo Locate Error: {e}")]

@@ -63,3 +63,25 @@ class EchoLocate:
     
     async def get_available_services(self) -> List[str]:
         return list(self.vector_service_urls.keys())
+
+    async def text_search(
+        self, 
+        service_name: str = "default", 
+        query: str = None,
+        artist: str = None, 
+        album: str = None, 
+        title: str = None,
+        limit: int = 20
+    ):
+        """Text-based search by artist, album, or title."""
+        params = {"limit": limit}
+        if query:
+            params["query"] = query
+        if artist:
+            params["artist"] = artist
+        if album:
+            params["album"] = album
+        if title:
+            params["title"] = title
+        return await self._request(service_name, "GET", "/search", params=params)
+
