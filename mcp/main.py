@@ -341,7 +341,7 @@ async def list_tools():
     # --- Record Crate Tools ---
     tools.append(Tool(
         name="discogs_search",
-        description="Search Discogs.",
+        description="Search Discogs. By default, this searches for 'Master' releases. If you need a specific 'Release' ID (e.g. for the wantlist), you should likely use 'discogs_get_versions' with the Master ID returned here.",
         inputSchema={
             "type": "object",
             "properties": {
@@ -354,7 +354,7 @@ async def list_tools():
     ))
     tools.append(Tool(
         name="discogs_get_versions",
-        description="Get versions of a Discogs master release.",
+        description="Get specific release versions for a Discogs Master Release. Returns 'Release' IDs that can be used for the wantlist.",
         inputSchema={
             "type": "object",
             "properties": {
@@ -463,11 +463,11 @@ async def list_tools():
     ))
     tools.append(Tool(
         name="discogs_add_to_wantlist",
-        description="Add a release to the Discogs wantlist.",
+        description="Add a release to the Discogs wantlist. IMPORTANT: You must provide a specific 'Release ID', NOT a 'Master ID'. Use 'discogs_get_versions' to find a Release ID from a Master ID.",
         inputSchema={
             "type": "object",
             "properties": {
-                "release_id": {"type": "string", "description": "Discogs Release ID"},
+                "release_id": {"type": "string", "description": "Discogs Release ID (NOT Master ID)"},
                 "notes": {"type": "string", "description": "Optional notes"},
                 "rating": {"type": "integer", "description": "Optional rating (1-5)"}
             },

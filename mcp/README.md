@@ -13,11 +13,11 @@ The server exposes the following tools to the LLM, all strictly namespaced:
 - `apple_create_playlist(name, track_ids)`: Create a new playlist with given tracks.
 
 ### 💿 Discogs (`discogs_*`)
-- `discogs_search(query, format)`: Search for releases (Vinyl, Master, etc.).
+- `discogs_search(query, format)`: Search for releases. Defaults to 'Master'. Use `get_versions` on a Master to find specific Release IDs.
 - `discogs_get_release(release_id)`: Get detailed info about a release (tracklist, year, etc.).
-- `discogs_get_versions(master_id)`: List all versions of a master release.
+- `discogs_get_versions(master_id)`: List all versions (Release IDs) of a master release.
 - `discogs_get_wantlist(page)`: Browse your Discogs wantlist.
-- `discogs_add_to_wantlist(release_id, notes, rating)`: Add a release to your wantlist.
+- `discogs_add_to_wantlist(release_id, notes, rating)`: Add a release to your wantlist. **Requires a Release ID (not Master ID).**
 
 ### 🦇 Echo Locate (`echolocate_*`)
 - `echolocate_similar(track_id)`: Find tracks sonically similar to a given track.
