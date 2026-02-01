@@ -113,13 +113,14 @@ def get_clap_model():
     """
     Lazy-load the CLAP model on first use.
     This avoids blocking startup and exceeding Cloud Run's timeout.
+    Uses local_files_only=True since model is pre-cached in Docker image.
     """
     global clap_model, clap_processor
     
     if clap_model is None:
         print(f"Loading CLAP model: {CLAP_MODEL_NAME}...")
-        clap_model = ClapModel.from_pretrained(CLAP_MODEL_NAME)
-        clap_processor = AutoProcessor.from_pretrained(CLAP_MODEL_NAME)
+        clap_model = ClapModel.from_pretrained(CLAP_MODEL_NAME, local_files_only=True)
+        clap_processor = AutoProcessor.from_pretrained(CLAP_MODEL_NAME, local_files_only=True)
         clap_model.eval()
         print("CLAP model loaded successfully.")
     
