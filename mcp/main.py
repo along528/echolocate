@@ -396,7 +396,7 @@ async def list_tools():
         ))
         tools.append(Tool(
             name="echolocate_interpolate",
-            description="Interpolate between two tracks.",
+            description="Interpolate between two tracks. Returns Vector IDs. When creating playlists, search for these tracks in the Apple Music Library first (apple_search_library), not the Catalog.",
             inputSchema={
                 "type": "object",
                 "properties": {
@@ -412,7 +412,7 @@ async def list_tools():
         ))
         tools.append(Tool(
             name="echolocate_generate_playlist",
-            description="Generate a full playlist path between two tracks.",
+            description="Generate a full playlist path between two tracks. Returns Vector IDs. When adding to Apple Music, search for these tracks in the Apple Music Library first (apple_search_library), not the Catalog.",
             inputSchema={
                 "type": "object",
                 "properties": {
