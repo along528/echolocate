@@ -19,11 +19,15 @@ echo "Deploying $SERVICE_NAME using bucket $BUCKET_NAME..."
 # Deploy to Cloud Run
 # We mount the bucket to /data
 # And we use gen2 execution environment for file system mounts
+# Memory/timeout increased for CLAP model loading
 gcloud run deploy $SERVICE_NAME \
     --source . \
     --region $REGION \
     --allow-unauthenticated \
     --execution-environment=gen2 \
+    --memory=4Gi \
+    --cpu=2 \
+    --timeout=300 \
     --add-volume=name=db-volume,type=cloud-storage,bucket=$BUCKET_NAME \
     --add-volume-mount=volume=db-volume,mount-path=/data \
     --set-env-vars DB_PATH=/data/cloudcrate.duckdb

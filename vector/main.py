@@ -104,31 +104,36 @@ class SemanticSearchRequest(BaseModel):
     query: str
     limit: Optional[int] = 10
 
-# CLAP Model (loaded at startup)
+# CLAP Model (lazy-loaded on first semantic search request)
 clap_model = None
 clap_processor = None
 CLAP_MODEL_NAME = "laion/clap-htsat-unfused"
 
-@app.on_event("startup")
-async def startup_event():
+def get_clap_model():
+    """
+    Lazy-load the CLAP model on first use.
+    This avoids blocking startup and exceeding Cloud Run's timeout.
+    """
     global clap_model, clap_processor
     
+    if clap_model is None:
+        print(f"Loading CLAP model: {CLAP_MODEL_NAME}...")
+        clap_model = ClapModel.from_pretrained(CLAP_MODEL_NAME)
+        clap_processor = AutoProcessor.from_pretrained(CLAP_MODEL_NAME)
+        clap_model.eval()
+        print("CLAP model loaded successfully.")
+    
+    return clap_model, clap_processor
+
+@app.on_event("startup")
+async def startup_event():
     # Verify DB exists
     if not os.path.exists(DB_PATH):
         print(f"WARNING: Database file not found at {DB_PATH}")
     else:
         print(f"Database found at {DB_PATH}")
     
-    # Load CLAP model for semantic search
-    print(f"Loading CLAP model: {CLAP_MODEL_NAME}...")
-    try:
-        clap_model = ClapModel.from_pretrained(CLAP_MODEL_NAME)
-        clap_processor = AutoProcessor.from_pretrained(CLAP_MODEL_NAME)
-        clap_model.eval()
-        print("CLAP model loaded successfully.")
-    except Exception as e:
-        print(f"WARNING: Failed to load CLAP model: {e}")
-        print("Semantic search will be disabled.")
+    print("CLAP model will be loaded on first semantic search request.")
 
 def get_db_connection():
     # Connect in Read-Only mode to allow concurrency/cloud run compatibility
@@ -320,15 +325,15 @@ def semantic_search(request: SemanticSearchRequest):
     Search tracks using natural language queries like 'jazz saxophone' or 'ambient rain'.
     Uses CLAP model to generate text embeddings and matches against v_clap audio embeddings.
     """
-    if not clap_model or not clap_processor:
-        raise HTTPException(status_code=503, detail="CLAP model not loaded. Semantic search unavailable.")
-    
     try:
+        # Lazy-load CLAP model on first request
+        model, processor = get_clap_model()
+        
         # 1. Generate text embedding from query
-        text_inputs = clap_processor(text=[request.query], padding=True, return_tensors="pt")
+        text_inputs = processor(text=[request.query], padding=True, return_tensors="pt")
         
         with torch.no_grad():
-            text_features = clap_model.get_text_features(**text_inputs)
+            text_features = model.get_text_features(**text_inputs)
             # L2 normalize
             text_features /= text_features.norm(dim=-1, keepdim=True)
         
