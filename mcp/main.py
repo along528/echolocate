@@ -461,6 +461,19 @@ async def list_tools():
             }
         }
     ))
+    tools.append(Tool(
+        name="discogs_add_to_wantlist",
+        description="Add a release to the Discogs wantlist.",
+        inputSchema={
+            "type": "object",
+            "properties": {
+                "release_id": {"type": "string", "description": "Discogs Release ID"},
+                "notes": {"type": "string", "description": "Optional notes"},
+                "rating": {"type": "integer", "description": "Optional rating (1-5)"}
+            },
+            "required": ["release_id"]
+        }
+    ))
 
     return tools
 
@@ -687,6 +700,27 @@ Marketplace: {record_crate.get_marketplace_url(rid)}
                   rid = str(info.get("id"))
                   output.append(f"[Discogs ID: {rid}] {info.get('title')} - {', '.join([a.get('name') for a in info.get('artists', [])])}")
              return [TextContent(type="text", text="\n".join(output) or "Wantlist empty")]
+        except Exception as e:
+             return [TextContent(type="text", text=f"Error: {e}")]
+
+    elif name == "discogs_add_to_wantlist":
+        if not record_crate: return [TextContent(type="text", text="Record Crate not configured")]
+        try:
+             # Need username
+             identity = await record_crate.get_identity()
+             username = identity.get("username")
+             if not username: return [TextContent(type="text", text="No username found")]
+             
+             release_id = arguments["release_id"]
+             res = await record_crate.add_to_wantlist(
+                 username, 
+                 release_id, 
+                 notes=arguments.get("notes"),
+                 rating=arguments.get("rating")
+             )
+             
+             title = res.get("basic_information", {}).get("title", "Unknown Title")
+             return [TextContent(type="text", text=f"Added to Wantlist: {title} (ID: {release_id})")]
         except Exception as e:
              return [TextContent(type="text", text=f"Error: {e}")]
 
