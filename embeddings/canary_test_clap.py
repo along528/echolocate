@@ -42,7 +42,7 @@ def canary_test(audio_path: str):
     print(f"  Audio embedding shape: {audio_vec.shape}")
     
     # Test Queries: The "Alien" Test
-    queries = ["an alien singing", "jazz saxophone", "heavy techno", "ambient rain"]
+    queries = ["an alien singing", "jazz saxophone", "cool trumpet jazz", "heavy techno", "ambient rain"]
     print(f"\nTesting queries: {queries}")
     
     text_inputs = processor(text=queries, padding=True, return_tensors="pt").to(device)

@@ -84,10 +84,10 @@ class ClapEncoder:
         return results
 
 
-def load_audio_for_clap(file_path: str) -> tuple:
+def load_audio_for_clap(file_path: str, rel_path: str) -> tuple:
     """
     Load audio file for CLAP processing.
-    Returns (audio_array, success) tuple.
+    Returns (audio_array, success, skip_reason) tuple.
     """
     try:
         # Load 10s from middle at 48kHz (CLAP requirement)
@@ -100,12 +100,11 @@ def load_audio_for_clap(file_path: str) -> tuple:
         
         # Check minimum length (at least 1 second)
         if len(audio) < CLAP_SAMPLE_RATE:
-            return None, False
+            return None, False, f"Too short after offset ({len(audio)/CLAP_SAMPLE_RATE:.1f}s < 1s)"
         
-        return audio, True
+        return audio, True, None
     except Exception as e:
-        print(f"  Error loading {file_path}: {e}")
-        return None, False
+        return None, False, str(e)
 
 
 def generate_clap_embeddings(target_input: str, output_file: str = DEFAULT_OUTPUT, limit: int = None):
@@ -184,12 +183,14 @@ def generate_clap_embeddings(target_input: str, output_file: str = DEFAULT_OUTPU
             rel_path = item['rel_path']
             
             # Load audio
-            audio, success = load_audio_for_clap(f_path)
+            audio, success, skip_reason = load_audio_for_clap(f_path, rel_path)
             
             if success:
                 batch.append((rel_path, audio))
             else:
                 error_count += 1
+                print(f"  ⚠️  Skipped: {rel_path}")
+                print(f"      Reason: {skip_reason}")
             
             # Process batch when full or at end
             if len(batch) >= BATCH_SIZE or (i == len(files_to_process) - 1 and batch):
