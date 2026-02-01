@@ -441,11 +441,20 @@ async def list_tools():
         ))
         tools.append(Tool(
             name="echolocate_semantic_search",
-            description="Search for tracks using natural language queries like 'jazz saxophone' or 'ambient rain'. Uses CLAP AI model to match audio content to text descriptions.",
+            description=(
+                "Search for music and audio by 'vibe' or acoustic description using the CLAP AI model. "
+                "IMPORTANT: Take the user's short music/sound query and expand it into a 1-sentence acoustic caption. "
+                "Focus on: Timbre (bright, dark, metallic, resonant), Environment (reverb, space, outdoors), "
+                "Action (playing, hitting, singing). Prepend with 'This is a sound of' or 'A recording of'. "
+                "Example: 'jazz sax' → 'A recording of a soulful jazz saxophone solo with warm tone in a resonant room.'"
+            ),
             inputSchema={
                 "type": "object",
                 "properties": {
-                    "query": {"type": "string", "description": "Natural language description of the sound you're looking for"},
+                    "query": {
+                        "type": "string", 
+                        "description": "An expanded acoustic caption describing the audio's timbre, mood, and environment."
+                    },
                     "service_name": {"type": "string", "description": "Vector Service Name (e.g. 'library', 'fma')", "default": "default"},
                     "limit": {"type": "integer", "default": 10}
                 },
