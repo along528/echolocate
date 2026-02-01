@@ -1,95 +1,58 @@
 # Cloud Crate
 
-Cloud Crate is an AI-powered music library manager that connects your personal music collection (via Apple Music) to Large Language Models (LLMs) using the Model Context Protocol (MCP).
-
-It allows you to "chat" with your music library—asking for play history, analyzing taste profiles, searching by vibe or genre, and discovering forgotten gems.
+Cloud Crate is a music library management and discovery system powered by MCP (Model Context Protocol), Google Cloud Run, DuckDB, and Vector Search. This repository contains the code for the backend MCP server, the vector search service, and the audio embedding pipeline.
 
 ## Architecture
 
-The project consists of two main components:
+![Architecture](https://via.placeholder.com/800x400?text=Cloud+Crate+Architecture)
 
-1.  **Edge (macOS / Swift)**: A native tool that interfaces with MusicKit to export your library data securely.
-    - [Read more in edge/README.md](edge/README.md)
+- **`mcp/`**: A remote MCP server that exposes tools for Apple Music, Discogs, and Vector Search. It handles authentication and orchestrates requests.
+- **`vector/`**: A high-performance vector search service using DuckDB. It serves audio embeddings and supports sonic interpolation.
+- **`embeddings/`**: Scripts for processing audio files, generating embeddings (using generic audio transformers), and building the DuckDB database.
+- **`crate/`**: Local music directory (synced or managed via other means).
 
-2.  **Backend (Python / MCP)**: A server that ingests the library data and exposes it as tools to AI agents.
-    - [Read more in backend/README.md](backend/README.md)
+## Features
 
-## Quick Start
+- **Apple Music**: Search catalog, manage library, create playlists.
+- **Discogs**: Search database, fetch release details, view wantlist.
+- **Echo Locate**: "Sonic" search finding similar tracks based on audio analysis, and "Sonic Interpolation" to generate smooth playlists between two tracks.
+- **Strict Naming**: All MCP tools are namespaced (`apple_*`, `discogs_*`, `echolocate_*`).
 
-### 1. Export Library
-Run the Swift exporter to generate your library snapshot.
+## Deployment
+
+The entire stack is designed to be deployed to Google Cloud Run.
+
+### Prerequisites
+- Google Cloud SDK (`gcloud`) installed and authenticated.
+- A Google Cloud Project with Cloud Run and Secret Manager enabled.
+- A GCS bucket containing your `cloudcrate.duckdb` file (for the vector service).
+
+### Deploying components
+You can deploy both services at once using the top-level deployment script:
 
 ```bash
-cd edge
-./build.sh
-cd ..
-```
-This creates `crate/my_library.json`.
-
-### 2. Run Backend Server
-Install dependencies and start the MCP server.
-
-> [!IMPORTANT]
-> You MUST use the `.venv` virtual environment for all python commands to ensure dependencies are found.
-
-
-```bash
-# Setup Environment (if not already done)
-python3 -m venv .venv
-source .venv/bin/activate
-pip install -r backend/requirements.txt
-
-# Run Local Server
-python backend/local_server.py
+./deploy.sh
 ```
 
-### 3. Connect to AI Client
-Configure your MCP client (e.g., Claude Desktop) to run the server script.
+This script will:
+1. Deploy the `cloud-crate-vector` service (requires a GCS bucket with `cloudcrate.duckdb`).
+2. Deploy the `cloud-crate-mcp` service, automatically linking it to the vector service.
 
-**Claude Desktop Config (`~/Library/Application Support/Claude/claude_desktop_config.json`):**
+### Connect to Claude
+Once deployed, configure your Claude Desktop or other MCP client with the Remote MCP URL:
+
 ```json
 {
   "mcpServers": {
     "cloud-crate": {
-      "command": "/ABSOLUTE/PATH/TO/PROJECT/.venv/bin/python3",
-      "args": [
-        "/ABSOLUTE/PATH/TO/PROJECT/backend/local_server.py"
-      ]
+      "command": "npx",
+      "args": ["-y", "@modelcontextprotocol/server-sse", "<YOUR_MCP_URL>/sse"]
     }
   }
 }
 ```
 
-## Features
-- **Semantic Search**: Find songs by lyrics or vibe (Cloud mode).
-- **Text Search**: Search library and Apple Music Catalog for artists, albums, and tracks.
-- **Contextual Awareness**: detailed play counts and dates.
-- **Album aggregation**: View stats and tracks at the album level.
-- **Playlist Management**: Create new playlists from your library directly in Apple Music via Native APIs.
-- **Vibe Steering**: Generate playlists that Sonically interpolate between two tracks, steering through a specific "vibe" or track.
-
-## Remote MCP Server (Cloud Run)
-
-A hello world MCP server is deployed on Google Cloud Run for remote access.
-
-| Endpoint | URL |
-|----------|-----|
-| **Health Check** | https://mcp-helloworld-403961692263.us-central1.run.app/ |
-| **MCP SSE** | https://mcp-helloworld-403961692263.us-central1.run.app/sse |
-
-**Claude Desktop Config (remote)**:
-```json
-{
-  "mcpServers": {
-    "cloud-run-hello": {
-      "url": "https://mcp-helloworld-403961692263.us-central1.run.app/sse"
-    }
-  }
-}
-```
-
-See [REMOTE_MCP.md](REMOTE_MCP.md) for full details.
-
-## Vector Service
-See [vector_service/README.md](vector_service/README.md) for details on the Vector DB service.
-
+## Verification
+Use the provided scripts to verify deployments remotely:
+- `python vector/verify_service.py <VECTOR_URL>`
+- `python mcp/verify_auth.py <MCP_URL>`

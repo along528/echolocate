@@ -1,7 +1,7 @@
 import os
 import asyncio
 import json
-from apple_music import AppleMusicClient
+from apple_crate import AppleCrate
 
 # --- Secret Configuration (Copied/Adapted from main.py) ---
 
@@ -51,7 +51,7 @@ async def main():
 
     print("✅ Credentials Found. Initializing Client...")
     try:
-        client = AppleMusicClient(APPLE_TEAM_ID, APPLE_KEY_ID, APPLE_PRIVATE_KEY)
+        client = AppleCrate(APPLE_TEAM_ID, APPLE_KEY_ID, APPLE_PRIVATE_KEY)
     except Exception as e:
         print(f"❌ Error initializing client: {e}")
         return

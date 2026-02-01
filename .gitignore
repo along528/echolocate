@@ -5,10 +5,8 @@
 crate/
 
 # Python
-backend/__pycache__/
-backend/*.pyc
-remote_server/__pycache__/
-remote_server/*.pyc
+__pycache__/
+*.pyc
 
 # Swift/Xcode
 .build/
@@ -21,10 +19,8 @@ remote_server/*.pyc
 # Data Artifacts
 data/
 
-# Audio Embedding Tmp
-audio_embedding/tmp/
-audio_embedding/__pycache__/
-audio_embedding/*.pyc
+# Embeddings Tmp
+embeddings/tmp/
 
 # DuckDB
 *.duckdb

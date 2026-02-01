@@ -4,7 +4,7 @@ import httpx
 import urllib.parse
 from typing import Optional, Dict, Any, List
 
-class DiscogsClient:
+class RecordCrate:
     """
     A simple async client for the Discogs API (v2.0).
     """

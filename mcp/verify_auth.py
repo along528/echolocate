@@ -6,9 +6,9 @@ import sys
 import time
 import re
 
-BASE_URL = "http://localhost:8080"
+BASE_URL = sys.argv[1] if len(sys.argv) > 1 else "http://localhost:8080"
 AUTH_SECRET = "test_auth_secret"
-CLIENT_ID = "test_client_id"
+CLIENT_ID = "cloud-crate-mcp"
 REDIRECT_URI = "https://claude.ai/auth/callback"
 STATE = "xyz123"
 

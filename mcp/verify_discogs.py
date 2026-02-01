@@ -1,6 +1,6 @@
 import asyncio
 import os
-from discogs import DiscogsClient
+from record_crate import RecordCrate
 
 async def get_secret_from_gsm(secret_name):
     # Try fetching from Google Secret Manager
@@ -37,7 +37,7 @@ async def run_verification():
         print("❌ DISCOGS_TOKEN not found in Env or GSM. Using a dummy token for loose verification...")
         token = "DUMMY_TOKEN"
     
-    client = DiscogsClient(token)
+    client = RecordCrate(token)
     print(f"✅ Client initialized with token prefix: {token[:4]}...")
 
     # Test 1: Search (Mocked if dummy)
