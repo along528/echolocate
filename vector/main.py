@@ -334,9 +334,14 @@ def semantic_search(request: SemanticSearchRequest):
         text_inputs = processor(text=[request.query], padding=True, return_tensors="pt")
         
         with torch.no_grad():
-            text_features = model.get_text_features(**text_inputs)
+            text_outputs = model.get_text_features(**text_inputs)
+            # Handle different return types from transformers versions
+            if hasattr(text_outputs, 'text_embeds'):
+                text_features = text_outputs.text_embeds
+            else:
+                text_features = text_outputs
             # L2 normalize
-            text_features /= text_features.norm(dim=-1, keepdim=True)
+            text_features = text_features / text_features.norm(dim=-1, keepdim=True)
         
         query_vector = text_features.squeeze(0).cpu().numpy().tolist()
         
