@@ -9,8 +9,11 @@ RUN apt-get update && apt-get install -y wget && rm -rf /var/lib/apt/lists/*
 COPY requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
 
+# Set cache directory that persists across build and runtime
+ENV HF_HOME=/app/.cache/huggingface
+ENV TRANSFORMERS_CACHE=/app/.cache/huggingface
+
 # Pre-download CLAP model during build (avoids HuggingFace rate limits at runtime)
-# This adds ~1GB to the image but eliminates runtime downloads
 RUN python -c "from transformers import AutoProcessor, ClapModel; \
     ClapModel.from_pretrained('laion/clap-htsat-unfused'); \
     AutoProcessor.from_pretrained('laion/clap-htsat-unfused')"
