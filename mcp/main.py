@@ -341,7 +341,7 @@ async def list_tools():
     # --- Record Crate Tools ---
     tools.append(Tool(
         name="discogs_search",
-        description="Search Discogs.",
+        description="Search Discogs. By default, this searches for 'Master' releases. If you need a specific 'Release' ID (e.g. for the wantlist), you should likely use 'discogs_get_versions' with the Master ID returned here.",
         inputSchema={
             "type": "object",
             "properties": {
@@ -354,7 +354,7 @@ async def list_tools():
     ))
     tools.append(Tool(
         name="discogs_get_versions",
-        description="Get versions of a Discogs master release.",
+        description="Get specific release versions for a Discogs Master Release. Returns 'Release' IDs that can be used for the wantlist.",
         inputSchema={
             "type": "object",
             "properties": {
@@ -396,7 +396,7 @@ async def list_tools():
         ))
         tools.append(Tool(
             name="echolocate_interpolate",
-            description="Interpolate between two tracks.",
+            description="Interpolate between two tracks. Returns Vector IDs. When creating playlists, search for these tracks in the Apple Music Library first (apple_search_library), not the Catalog.",
             inputSchema={
                 "type": "object",
                 "properties": {
@@ -412,7 +412,7 @@ async def list_tools():
         ))
         tools.append(Tool(
             name="echolocate_generate_playlist",
-            description="Generate a full playlist path between two tracks.",
+            description="Generate a full playlist path between two tracks. Returns Vector IDs. When adding to Apple Music, search for these tracks in the Apple Music Library first (apple_search_library), not the Catalog.",
             inputSchema={
                 "type": "object",
                 "properties": {
@@ -422,6 +422,21 @@ async def list_tools():
                     "limit": {"type": "integer"}
                 },
                 "required": ["track_id_1", "track_id_2"]
+            }
+        ))
+        tools.append(Tool(
+            name="echolocate_text_search",
+            description="Search tracks by text: artist, album, or title.",
+            inputSchema={
+                "type": "object",
+                "properties": {
+                    "query": {"type": "string", "description": "General search term (searches across all text fields)"},
+                    "artist": {"type": "string", "description": "Search by artist name"},
+                    "album": {"type": "string", "description": "Search by album name"},
+                    "title": {"type": "string", "description": "Search by track title"},
+                    "service_name": {"type": "string", "description": "Vector Service Name (e.g. 'library', 'fma')", "default": "default"},
+                    "limit": {"type": "integer", "default": 20}
+                }
             }
         ))
 
@@ -461,6 +476,19 @@ async def list_tools():
             }
         }
     ))
+    tools.append(Tool(
+        name="discogs_add_to_wantlist",
+        description="Add a release to the Discogs wantlist. IMPORTANT: You must provide a specific 'Release ID', NOT a 'Master ID'. Use 'discogs_get_versions' to find a Release ID from a Master ID.",
+        inputSchema={
+            "type": "object",
+            "properties": {
+                "release_id": {"type": "string", "description": "Discogs Release ID (NOT Master ID)"},
+                "notes": {"type": "string", "description": "Optional notes"},
+                "rating": {"type": "integer", "description": "Optional rating (1-5)"}
+            },
+            "required": ["release_id"]
+        }
+    ))
 
     return tools
 
@@ -493,22 +521,104 @@ async def call_tool(name: str, arguments: dict):
             return [TextContent(type="text", text=f"Error: {e}")]
 
     elif name == "apple_search_library":
-        if not apple_crate or not APPLE_MUSIC_USER_TOKEN: return [TextContent(type="text", text="Auth required")]
-        query = arguments.get("title") or arguments.get("artist") or arguments.get("album")
-        if not query: return [TextContent(type="text", text="Query required")]
+        if not apple_crate: return [TextContent(type="text", text="Apple Crate not configured")]
+        if not APPLE_MUSIC_USER_TOKEN: return [TextContent(type="text", text="Auth required")]
+        
+        # 1. Determine Primary Search Query
+        primary_query = None
+        if arguments.get("title"):
+             primary_query = arguments.get("title")
+        elif arguments.get("album"):
+             primary_query = arguments.get("album")
+        elif arguments.get("artist"):
+             primary_query = arguments.get("artist")
+             
+        if not primary_query:
+            return [TextContent(type="text", text="Please provide at least one of: artist, album, title.")]
+
+        limit_arg = arguments.get("limit", 5)
+
+        # --- Pass 1: Strict Search (Query + Filters) ---
+        strict_results = []
         try:
-            # Need to robustly handle the weird argument structure existing clients might send
-            # But here we just take the first valid one if the user said "title" or "artist"
-            term = query
-            res = await apple_crate.search_library(
-                term, APPLE_MUSIC_USER_TOKEN, limit=arguments.get("limit", 5)
-            )
-            data = res.get("results", {}).get("library-songs", {}).get("data", [])
-            data = res.get("results", {}).get("library-songs", {}).get("data", [])
-            output = "\n".join([f"Apple ID: {s['id']} | {s['attributes']['name']}" for s in data])
-            return [TextContent(type="text", text=output or "No results")]
+            # We paginate up to 100 to find matches that might be buried
+            limit_per_req = 25
+            max_total = 100
+            offset = 0
+            
+            while len(strict_results) < max_total:
+                res = await apple_crate.search_library(
+                    primary_query, APPLE_MUSIC_USER_TOKEN, limit=limit_per_req, offset=offset
+                )
+                batch = res.get("results", {}).get("library-songs", {}).get("data", [])
+                
+                if not batch: break
+                
+                for song in batch:
+                    attrs = song.get("attributes", {})
+                    
+                    # Apply Strict Filters
+                    match = True
+                    if arguments.get("artist"):
+                        if arguments.get("artist").lower() not in attrs.get("artistName", "").lower():
+                            match = False
+                    if match and arguments.get("album"):
+                         if arguments.get("album").lower() not in attrs.get("albumName", "").lower():
+                            match = False
+                    # For title in strict pass, we trust the primary query if it IS the title, 
+                    # but if we searched by artist/album and PROVIDED a title, we check it.
+                    if match and arguments.get("title") and primary_query != arguments.get("title"):
+                         if arguments.get("title").lower() not in attrs.get("name", "").lower():
+                            match = False
+                            
+                    if match:
+                        strict_results.append(song)
+                
+                offset += len(batch)
+                if len(batch) < limit_per_req: break
+                
         except Exception as e:
-            return [TextContent(type="text", text=f"Error: {e}")]
+            return [TextContent(type="text", text=f"Error in strict search: {e}")]
+
+        # --- Pass 2: Broad Title Search (Optional) ---
+        broad_results = []
+        if arguments.get("title"):
+             # We always perform the broad title search if a title is provided, 
+             # to ensure we capture "Title Only" matches even if the filtered search 
+             # (which might also use the title as the query) filtered them out due to artist/album constraints.
+             # This satisfies the requirement: "search for the song title by itself if provided... in addition"
+            try:
+                # Just fetch a small batch for the broad title match
+                # Use the provided limit for the broad search as well, or a default? 
+                # User didn't specify, but usually we want "some" results.
+                res = await apple_crate.search_library(
+                    arguments.get("title"), APPLE_MUSIC_USER_TOKEN, limit=limit_arg
+                )
+                broad_results = res.get("results", {}).get("library-songs", {}).get("data", [])
+            except Exception as e:
+                # Don't fail the whole request
+                print(f"Error in broad search: {e}")
+
+        # --- Merge & Deduplicate ---
+        # Priority: Strict results first (they matched all criteria), then Broad results
+        final_songs = []
+        seen_ids = set()
+        
+        for song in strict_results:
+            if song['id'] not in seen_ids:
+                final_songs.append(song)
+                seen_ids.add(song['id'])
+        
+        for song in broad_results:
+            if song['id'] not in seen_ids:
+                final_songs.append(song)
+                seen_ids.add(song['id'])
+                
+        # Limit
+        final_songs = final_songs[:limit_arg]
+        
+        output = "\n".join([f"Apple ID: {s['id']} | {s['attributes']['name']} - {s['attributes']['artistName']}" for s in final_songs])
+        return [TextContent(type="text", text=output or "No results")]
     
     elif name == "apple_get_track_context":
         if not apple_crate: return [TextContent(type="text", text="Apple Crate not configured")]
@@ -608,6 +718,27 @@ Marketplace: {record_crate.get_marketplace_url(rid)}
         except Exception as e:
              return [TextContent(type="text", text=f"Error: {e}")]
 
+    elif name == "discogs_add_to_wantlist":
+        if not record_crate: return [TextContent(type="text", text="Record Crate not configured")]
+        try:
+             # Need username
+             identity = await record_crate.get_identity()
+             username = identity.get("username")
+             if not username: return [TextContent(type="text", text="No username found")]
+             
+             release_id = arguments["release_id"]
+             res = await record_crate.add_to_wantlist(
+                 username, 
+                 release_id, 
+                 notes=arguments.get("notes"),
+                 rating=arguments.get("rating")
+             )
+             
+             title = res.get("basic_information", {}).get("title", "Unknown Title")
+             return [TextContent(type="text", text=f"Added to Wantlist: {title} (ID: {release_id})")]
+        except Exception as e:
+             return [TextContent(type="text", text=f"Error: {e}")]
+
     # Echo Locate Handlers
     elif name.startswith("echolocate_"):
         if not echo_locate: return [TextContent(type="text", text="Echo Locate not configured")]
@@ -638,6 +769,18 @@ Marketplace: {record_crate.get_marketplace_url(rid)}
                 )
                 output = "\n".join([f"Vector ID: {t['id']} | {t['title']}" for t in res])
                 return [TextContent(type="text", text=output or "Interpolation failed")]
+
+            elif name == "echolocate_text_search":
+                res = await echo_locate.text_search(
+                    service_name=service,
+                    query=arguments.get("query"),
+                    artist=arguments.get("artist"),
+                    album=arguments.get("album"),
+                    title=arguments.get("title"),
+                    limit=arguments.get("limit", 20)
+                )
+                output = "\n".join([f"Vector ID: {t['id']} | {t['title']} - {t['artist']}" for t in res])
+                return [TextContent(type="text", text=output or "No results")]
 
         except Exception as e:
             return [TextContent(type="text", text=f"Echo Locate Error: {e}")]

@@ -50,6 +50,12 @@ def initialize_db():
     # We can add indexes for intro/outro later if needed for performance, 
     # but starting with mid is reasonable for main search.
     
+    # Create text indexes for search
+    print("Creating text indexes...")
+    con.execute("CREATE INDEX IF NOT EXISTS idx_title ON tracks (title);")
+    con.execute("CREATE INDEX IF NOT EXISTS idx_artist ON tracks (artist);")
+    con.execute("CREATE INDEX IF NOT EXISTS idx_album ON tracks (album);")
+    
     return con
 
 def generate_track_id(artist, album, title):

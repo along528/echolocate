@@ -14,7 +14,7 @@ Cloud Crate is a music library management and discovery system powered by MCP (M
 ## Features
 
 - **Apple Music**: Search catalog, manage library, create playlists.
-- **Discogs**: Search database, fetch release details, view wantlist.
+- **Discogs**: Search database, fetch release details, manage wantlist.
 - **Echo Locate**: "Sonic" search finding similar tracks based on audio analysis, and "Sonic Interpolation" to generate smooth playlists between two tracks.
 - **Strict Naming**: All MCP tools are namespaced (`apple_*`, `discogs_*`, `echolocate_*`).
 

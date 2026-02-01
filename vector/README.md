@@ -18,7 +18,13 @@ A high-performance vector search service built with **DuckDB** and **FastAPI**, 
   - Params: `limit` (int)
 
 ### Search
-- `POST /search`: Search by raw vector.
+
+- `GET /search`: Text-based search by artist, album, or title.
+  - Params: `query` (str), `artist` (str), `album` (str), `title` (str), `limit` (int)
+  - All params are optional but at least one required. Multiple params use AND logic.
+  - Example: `/search?artist=Testament&album=Legacy&limit=5`
+
+- `POST /vector-search`: Search by raw embedding vector.
   - Body: `{"vector": [...], "limit": 10}`
 
 ### Interpolation

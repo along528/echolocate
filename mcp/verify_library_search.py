@@ -84,54 +84,76 @@ async def main():
         print(f"🔍 Primary Query: '{query}'")
         
         try:
-            # 2. Search with pagination (fetch up to 100)
+            # --- Pass 1: Strict Search (Query + Filters) ---
+            print("   (Pass 1: Strict Search)")
+            strict_results = []
             limit_per_req = 25
             max_total = 100
-            songs = []
             offset = 0
             
-            while len(songs) < max_total:
+            while len(strict_results) < max_total:
+                # Use primary query
                 results = await client.search_library(query, APPLE_MUSIC_USER_TOKEN, limit=limit_per_req, offset=offset)
                 batch = results.get("results", {}).get("library-songs", {}).get("data", [])
                 
-                if not batch:
-                    break
-                    
-                songs.extend(batch)
+                if not batch: break
+                
+                for song in batch:
+                    attrs = song.get("attributes", {})
+                    # Apply Strict Filters
+                    match = True
+                    if args.get("artist"):
+                        if args.get("artist").lower() not in attrs.get("artistName", "").lower():
+                            match = False
+                    if match and args.get("album"):
+                         if args.get("album").lower() not in attrs.get("albumName", "").lower():
+                            match = False
+                    if match and args.get("title") and query != args.get("title"):
+                         if args.get("title").lower() not in attrs.get("name", "").lower():
+                            match = False
+                            
+                    if match:
+                        strict_results.append(song)
+                
                 offset += len(batch)
-                
-                if len(batch) < limit_per_req:
-                    break
+                if len(batch) < limit_per_req: break
             
-            # 3. Filter Results
-            filtered_songs = []
-            for song in songs:
-                attrs = song.get("attributes", {})
-                
-                # Check Artist
-                if args.get("artist"):
-                    if args.get("artist").lower() not in attrs.get("artistName", "").lower():
-                        continue
-                        
-                # Check Album
-                if args.get("album"):
-                    if args.get("album").lower() not in attrs.get("albumName", "").lower():
-                        continue
-                        
-                # Check Title (if we searched by Artist/Album but provided Title)
-                if args.get("title") and query != args.get("title"):
-                     if args.get("title").lower() not in attrs.get("name", "").lower():
-                        continue
-                        
-                filtered_songs.append(song)
+            print(f"     -> Found {len(strict_results)} strict matches")
+
+            # --- Pass 2: Broad Title Search (Optional) ---
+            broad_results = []
             
-            if not filtered_songs:
-                print("⚠️ No results found after filtering.")
+            if args.get("title"):
+                print("   (Pass 2: Broad Title Search)")
+                try:
+                    res = await client.search_library(
+                        args.get("title"), APPLE_MUSIC_USER_TOKEN, limit=5
+                    )
+                    broad_results = res.get("results", {}).get("library-songs", {}).get("data", [])
+                    print(f"     -> Found {len(broad_results)} broad matches")
+                except Exception as e:
+                    print(f"     -> Broad search error: {e}")
+
+            # --- Merge & Deduplicate ---
+            final_songs = []
+            seen_ids = set()
+            
+            for song in strict_results:
+                if song['id'] not in seen_ids:
+                    final_songs.append(song)
+                    seen_ids.add(song['id'])
+            
+            for song in broad_results:
+                if song['id'] not in seen_ids:
+                    final_songs.append(song)
+                    seen_ids.add(song['id'])
+                    
+            if not final_songs:
+                print("⚠️ No results found.")
             else:
-                print(f"✅ Found {len(filtered_songs)} results (from {len(songs)} raw):")
-                # Simulate 'limit' from tool args
+                print(f"✅ Final Results: {len(final_songs)}")
                 max_results = args.get("limit", 5)
-                for song in filtered_songs[:max_results]: 
+                for song in final_songs[:max_results]: 
                     attrs = song.get("attributes", {})
                     print(f"   🎵 {attrs.get('name')} - {attrs.get('artistName')}")
                     print(f"      Album: {attrs.get('albumName')}")

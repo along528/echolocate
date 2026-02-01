@@ -58,7 +58,11 @@ class AppleCrate:
             
         async with httpx.AsyncClient() as client:
             response = await client.request(method, url, headers=headers, json=json_body, params=params)
-            response.raise_for_status()
+            try:
+                response.raise_for_status()
+            except httpx.HTTPStatusError as e:
+                print(f"HTTP Error {e.response.status_code} for {url}: {e.response.text}")
+                raise
             return response.json()
 
     async def search(self, query: str, limit: int = 5, types: str = "songs"):
@@ -127,8 +131,57 @@ class AppleCrate:
                  }
              }
 
+        if tracks_data:
+             payload["relationships"] = {
+                 "tracks": {
+                     "data": tracks_data
+                 }
+             }
+
+        # Ensure "Cloud Crate" folder exists
+        folder_id = await self._ensure_cloud_crate_folder(user_token)
+        if folder_id:
+             if "relationships" not in payload:
+                 payload["relationships"] = {}
+             
+             # Parent relationship (must be a list)
+             payload["relationships"]["parent"] = {
+                 "data": [{ "id": folder_id, "type": "library-playlist-folders" }]
+             }
+
         # POST to /me/library/playlists
         return await self._request("POST", "me/library/playlists", user_token=user_token, json_body=payload)
+
+    async def _ensure_cloud_crate_folder(self, user_token: str) -> str:
+        """
+        Finds or creates the 'Cloud Crate' folder. Returns its ID.
+        """
+        FOLDER_NAME = "Cloud Crate"
+        
+        try:
+            # Get current folders
+            res = await self._request("GET", "me/library/playlist-folders", user_token=user_token)
+            data = res.get("data", [])
+            for item in data:
+                if item["attributes"]["name"] == FOLDER_NAME:
+                    return item["id"]
+                    
+            # 2. If not found, create it
+            payload = {
+                "attributes": {
+                    "name": FOLDER_NAME
+                }
+            }
+            create_res = await self._request("POST", "me/library/playlist-folders", user_token=user_token, json_body=payload)
+            if create_res and "data" in create_res and len(create_res["data"]) > 0:
+                print(f"Created '{FOLDER_NAME}' folder: {create_res['data'][0]['id']}")
+                return create_res["data"][0]["id"]
+                
+        except Exception as e:
+            print(f"Error ensuring '{FOLDER_NAME}' folder: {e}")
+            return None
+        
+        return None
 
     async def search_library(self, query: str, user_token: str, limit: int = 5, types: str = "library-songs", offset: int = 0):
         """
