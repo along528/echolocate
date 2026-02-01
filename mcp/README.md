@@ -1,69 +1,61 @@
 # Cloud Crate MCP Server
 
-This directory contains the Python codebase for the Cloud Crate Remote MCP server, designed to run on Google Cloud Run.
+A specialized Model Context Protocol (MCP) server for music discovery and library management. It acts as the central brain, connecting to Apple Music, Discogs, and the Cloud Crate Vector Service.
 
-## Overview
+## Tools
 
-The server implements the **Model Context Protocol (MCP)** using the `Streamable HTTP` transport strategy (SSE-compatible).
+The server exposes the following tools to the LLM, all strictly namespaced:
 
-It delegates logic to specialized "Crates":
-- **Apple Crate**: Auth and interaction with Apple Music (Catalog & Library).
-- **Record Crate**: Interaction with Discogs (Releases & Wantlists).
-- **Echo Locate**: Abstraction layer for Vector Services (Similarity & Interpolation).
+### 🍎 Apple Music (`apple_*`)
+- `apple_search_catalog(query)`: Search the global Apple Music catalog.
+- `apple_search_library(query)`: Search your personal library (Songs).
+- `apple_get_track_context(track_id)`: Get detailed metadata for a specific track.
+- `apple_create_playlist(name, track_ids)`: Create a new playlist with given tracks.
 
-## Local Development
+### 💿 Discogs (`discogs_*`)
+- `discogs_search(query, format)`: Search for releases (Vinyl, Master, etc.).
+- `discogs_get_release(release_id)`: Get detailed info about a release (tracklist, year, etc.).
+- `discogs_get_versions(master_id)`: List all versions of a master release.
+- `discogs_get_wantlist(page)`: Browse your Discogs wantlist.
 
-1. **Install Dependencies**:
-   ```bash
-   pip install -r requirements.txt
-   ```
+### 🦇 Echo Locate (`echolocate_*`)
+- `echolocate_similar(track_id)`: Find tracks sonically similar to a given track.
+- `echolocate_interpolate(track_id_1, track_id_2, method)`: Generate a path of songs connecting two tracks.
+- `echolocate_generate_playlist(track_id_1, track_id_2)`: Same as interpolate but formatted for playlist creation.
+- `echolocate_sample(limit, random)`: Get a random sample of tracks from the vector DB.
 
-2. **Run Server**:
-   ```bash
-   # Runs on port 8080 by default
-   python main.py
-   ```
+## Configuration
 
-3. **Test Endpoints**:
-   - Health: `http://localhost:8080/health`
-   - SSE: `http://localhost:8080/sse`
+The server requires several secrets, managed via **Google Secret Manager**. Ensure the following secrets exist:
+
+| Secret Name | Description |
+|-------------|-------------|
+| `MCP_AUTH_SECRET` | Password/Token for MCP client authentication (if enabled). |
+| `MCP_CLIENT_ID` | Allowed Client ID for auth. |
+| `APPLE_TEAM_ID` | Apple Developer Team ID. |
+| `APPLE_KEY_ID` | Apple Music Key ID. |
+| `APPLE_PRIVATE_KEY` | Apple Music Private Key (PEM format). |
+| `APPLE_MUSIC_USER_TOKEN`| User-specific token (generated via `/apple-auth`). |
+| `DISCOGS_TOKEN` | Personal Access Token for Discogs API. |
+
+### Environment Variables
+- `VECTOR_SERVICE_URL`: URL of the deployed `cloud-crate-vector` service.
+- `GOOGLE_CLOUD_PROJECT`: GCP Project ID (for Secret Manager).
 
 ## Deployment
 
-Deploy using the script in this directory, or the top-level orchestrator.
+Deploy using the script in this directory (or the root `deploy.sh`):
 
 ```bash
 ./deploy.sh
 ```
 
-**Service Name**: `cloud-crate-mcp`
+This will:
+1. Build the Docker container.
+2. Push to Google Container Registry (GCR) or Artifact Registry.
+3. Deploy to Cloud Run as `cloud-crate-mcp`.
 
-### Configuration (Environment Variables & Secrets)
+## Authentication Flow
 
-The server relies on **Google Secret Manager** for sensitive keys. Ensure the following secrets exist:
-- `MCP_AUTH_SECRET`, `MCP_JWT_SECRET`
-- `MCP_CLIENT_ID`
-- `APPLE_TEAM_ID`, `APPLE_KEY_ID`, `APPLE_PRIVATE_KEY`
-- `DISCOGS_TOKEN`
-
-Environment Variables:
-- `VECTOR_SERVICE_URL`: URL of the primary vector service.
-- `LIBRARY_VECTOR_URL` (Optional): specific URL for library vector service.
-- `FMA_VECTOR_URL` (Optional): specific URL for FMA vector service.
-
-## Integration Details
-
-### Apple Music (`AppleCrate`)
-- `search_apple_music`: Search Global Catalog.
-- `search_library`: Search User's Personal Library.
-- `create_playlist`: Create playlists for the authenticated user.
-
-### Discogs (`RecordCrate`)
-- `search_discogs`: Search Database.
-- `get_discogs_versions`: List versions of a master release.
-- `get_discogs_wantlist`: Fetch user wantlist.
-
-### Vector Service (`EchoLocate`)
-The server connects to `VECTOR_SERVICE_URL` (Cloud Run) to provide:
-- **Similarity**: Find songs that "sound like" a target.
-- **Interpolation**: Generate a playlist that smoothly transitions between two songs.
+1. **Client Auth**: The MCP client/user must authenticate via the `/authorize` flow (OAuth2-like) or provide a valid Session Cookie.
+2. **Apple Music Auth**: To use user-library features, visit `/apple-auth` to log in with your Apple ID. This stores the `Music-User-Token`.

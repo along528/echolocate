@@ -1,65 +1,58 @@
 # Cloud Crate
 
-Cloud Crate is an AI-powered music library manager that connects your personal music collection (via Apple Music) to Large Language Models (LLMs) using the Model Context Protocol (MCP).
-
-It allows you to "chat" with your music library—asking for play history, analyzing taste profiles, searching by vibe or genre, and discovering forgotten gems.
+Cloud Crate is a music library management and discovery system powered by MCP (Model Context Protocol), Google Cloud Run, DuckDB, and Vector Search. This repository contains the code for the backend MCP server, the vector search service, and the audio embedding pipeline.
 
 ## Architecture
 
-The project consists of a central MCP server and a vector service:
+![Architecture](https://via.placeholder.com/800x400?text=Cloud+Crate+Architecture)
 
-1.  **Cloud Crate MCP (`mcp/`)**: The main Python server running on Cloud Run. It delegates to:
-    - **Apple Crate**: Interfaces with Apple Music API.
-    - **Record Crate**: Interfaces with Discogs API.
-    - **Echo Locate**: Interfaces with Vector DBs for sonic pathfinding.
+- **`mcp/`**: A remote MCP server that exposes tools for Apple Music, Discogs, and Vector Search. It handles authentication and orchestrates requests.
+- **`vector/`**: A high-performance vector search service using DuckDB. It serves audio embeddings and supports sonic interpolation.
+- **`embeddings/`**: Scripts for processing audio files, generating embeddings (using generic audio transformers), and building the DuckDB database.
+- **`crate/`**: Local music directory (synced or managed via other means).
 
-2.  **Vector Service (`vector_service/`)**: A dedicated service hosting DuckDB for embedding storage and similarity search.
+## Features
 
-## Quick Start
+- **Apple Music**: Search catalog, manage library, create playlists.
+- **Discogs**: Search database, fetch release details, view wantlist.
+- **Echo Locate**: "Sonic" search finding similar tracks based on audio analysis, and "Sonic Interpolation" to generate smooth playlists between two tracks.
+- **Strict Naming**: All MCP tools are namespaced (`apple_*`, `discogs_*`, `echolocate_*`).
 
-### 1. Deploy All Services
+## Deployment
 
-Use the top-level deployment script to deploy both the Vector Service and the MCP Server.
+The entire stack is designed to be deployed to Google Cloud Run.
+
+### Prerequisites
+- Google Cloud SDK (`gcloud`) installed and authenticated.
+- A Google Cloud Project with Cloud Run and Secret Manager enabled.
+- A GCS bucket containing your `cloudcrate.duckdb` file (for the vector service).
+
+### Deploying components
+You can deploy both services at once using the top-level deployment script:
 
 ```bash
 ./deploy.sh
 ```
 
-This will:
-1. Deploy `vector_service` to Cloud Run.
-2. Capture its URL.
-3. Deploy `mcp` server to Cloud Run, linked to the Vector Service.
+This script will:
+1. Deploy the `cloud-crate-vector` service (requires a GCS bucket with `cloudcrate.duckdb`).
+2. Deploy the `cloud-crate-mcp` service, automatically linking it to the vector service.
 
-### 2. Connect to AI Client
+### Connect to Claude
+Once deployed, configure your Claude Desktop or other MCP client with the Remote MCP URL:
 
-Configure your MCP client (e.g., Claude Desktop or generic client) to connect to the remote SSE endpoint.
-
-**Claude Desktop Config (`~/Library/Application Support/Claude/claude_desktop_config.json`):**
 ```json
 {
   "mcpServers": {
-    "cloud-crate-remote": {
-      "url": "https://cloud-crate-mcp-[YOUR_HASH].us-central1.run.app/sse"
+    "cloud-crate": {
+      "command": "npx",
+      "args": ["-y", "@modelcontextprotocol/server-sse", "<YOUR_MCP_URL>/sse"]
     }
   }
 }
 ```
 
-## Features
-- **Semantic Search**: Find songs by lyrics or vibe.
-- **Text Search**: Search library and Apple Music Catalog for artists, albums, and tracks.
-- **Contextual Awareness**: detailed play counts and dates.
-- **Album aggregation**: View stats and tracks at the album level.
-- **Playlist Management**: Create new playlists from your library directly in Apple Music via Native APIs.
-- **Vibe Steering**: Generate playlists that Sonically interpolate between two tracks, steering through a specific "vibe" or track.
-
-## Directory Structure
-
-- `mcp/`: Main MCP server code (Python).
-- `vector_service/`: Vector database service (DuckDB + FastAPI).
-- `data/`: Storage for generated embeddings and DB files.
-
-## Documentation
-- [MCP Server Details](mcp/README.md)
-- [Remote Setup Guide](REMOTE_MCP.md)
-- [Vector Service](vector_service/README.md)
+## Verification
+Use the provided scripts to verify deployments remotely:
+- `python vector/verify_service.py <VECTOR_URL>`
+- `python mcp/verify_auth.py <MCP_URL>`
