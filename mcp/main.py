@@ -493,22 +493,104 @@ async def call_tool(name: str, arguments: dict):
             return [TextContent(type="text", text=f"Error: {e}")]
 
     elif name == "apple_search_library":
-        if not apple_crate or not APPLE_MUSIC_USER_TOKEN: return [TextContent(type="text", text="Auth required")]
-        query = arguments.get("title") or arguments.get("artist") or arguments.get("album")
-        if not query: return [TextContent(type="text", text="Query required")]
+        if not apple_crate: return [TextContent(type="text", text="Apple Crate not configured")]
+        if not APPLE_MUSIC_USER_TOKEN: return [TextContent(type="text", text="Auth required")]
+        
+        # 1. Determine Primary Search Query
+        primary_query = None
+        if arguments.get("title"):
+             primary_query = arguments.get("title")
+        elif arguments.get("album"):
+             primary_query = arguments.get("album")
+        elif arguments.get("artist"):
+             primary_query = arguments.get("artist")
+             
+        if not primary_query:
+            return [TextContent(type="text", text="Please provide at least one of: artist, album, title.")]
+
+        limit_arg = arguments.get("limit", 5)
+
+        # --- Pass 1: Strict Search (Query + Filters) ---
+        strict_results = []
         try:
-            # Need to robustly handle the weird argument structure existing clients might send
-            # But here we just take the first valid one if the user said "title" or "artist"
-            term = query
-            res = await apple_crate.search_library(
-                term, APPLE_MUSIC_USER_TOKEN, limit=arguments.get("limit", 5)
-            )
-            data = res.get("results", {}).get("library-songs", {}).get("data", [])
-            data = res.get("results", {}).get("library-songs", {}).get("data", [])
-            output = "\n".join([f"Apple ID: {s['id']} | {s['attributes']['name']}" for s in data])
-            return [TextContent(type="text", text=output or "No results")]
+            # We paginate up to 100 to find matches that might be buried
+            limit_per_req = 25
+            max_total = 100
+            offset = 0
+            
+            while len(strict_results) < max_total:
+                res = await apple_crate.search_library(
+                    primary_query, APPLE_MUSIC_USER_TOKEN, limit=limit_per_req, offset=offset
+                )
+                batch = res.get("results", {}).get("library-songs", {}).get("data", [])
+                
+                if not batch: break
+                
+                for song in batch:
+                    attrs = song.get("attributes", {})
+                    
+                    # Apply Strict Filters
+                    match = True
+                    if arguments.get("artist"):
+                        if arguments.get("artist").lower() not in attrs.get("artistName", "").lower():
+                            match = False
+                    if match and arguments.get("album"):
+                         if arguments.get("album").lower() not in attrs.get("albumName", "").lower():
+                            match = False
+                    # For title in strict pass, we trust the primary query if it IS the title, 
+                    # but if we searched by artist/album and PROVIDED a title, we check it.
+                    if match and arguments.get("title") and primary_query != arguments.get("title"):
+                         if arguments.get("title").lower() not in attrs.get("name", "").lower():
+                            match = False
+                            
+                    if match:
+                        strict_results.append(song)
+                
+                offset += len(batch)
+                if len(batch) < limit_per_req: break
+                
         except Exception as e:
-            return [TextContent(type="text", text=f"Error: {e}")]
+            return [TextContent(type="text", text=f"Error in strict search: {e}")]
+
+        # --- Pass 2: Broad Title Search (Optional) ---
+        broad_results = []
+        if arguments.get("title"):
+             # We always perform the broad title search if a title is provided, 
+             # to ensure we capture "Title Only" matches even if the filtered search 
+             # (which might also use the title as the query) filtered them out due to artist/album constraints.
+             # This satisfies the requirement: "search for the song title by itself if provided... in addition"
+            try:
+                # Just fetch a small batch for the broad title match
+                # Use the provided limit for the broad search as well, or a default? 
+                # User didn't specify, but usually we want "some" results.
+                res = await apple_crate.search_library(
+                    arguments.get("title"), APPLE_MUSIC_USER_TOKEN, limit=limit_arg
+                )
+                broad_results = res.get("results", {}).get("library-songs", {}).get("data", [])
+            except Exception as e:
+                # Don't fail the whole request
+                print(f"Error in broad search: {e}")
+
+        # --- Merge & Deduplicate ---
+        # Priority: Strict results first (they matched all criteria), then Broad results
+        final_songs = []
+        seen_ids = set()
+        
+        for song in strict_results:
+            if song['id'] not in seen_ids:
+                final_songs.append(song)
+                seen_ids.add(song['id'])
+        
+        for song in broad_results:
+            if song['id'] not in seen_ids:
+                final_songs.append(song)
+                seen_ids.add(song['id'])
+                
+        # Limit
+        final_songs = final_songs[:limit_arg]
+        
+        output = "\n".join([f"Apple ID: {s['id']} | {s['attributes']['name']} - {s['attributes']['artistName']}" for s in final_songs])
+        return [TextContent(type="text", text=output or "No results")]
     
     elif name == "apple_get_track_context":
         if not apple_crate: return [TextContent(type="text", text="Apple Crate not configured")]
