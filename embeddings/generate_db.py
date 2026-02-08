@@ -305,16 +305,20 @@ def insert_tracks(con, track_data_list, source_name):
     """, track_data_list)
 
 
-def main():
+def main(limit=None):
     try:
         con = initialize_db()
         
         # Load and insert library data
         library_tracks = load_library_data()
+        if limit:
+            library_tracks = library_tracks[:limit]
         insert_tracks(con, library_tracks, "library")
         
         # Load and insert FMA data
         fma_tracks = load_fma_data()
+        if limit:
+            fma_tracks = fma_tracks[:limit]
         insert_tracks(con, fma_tracks, "FMA")
         
         # Force write to disk
@@ -343,4 +347,12 @@ def main():
 
 
 if __name__ == "__main__":
-    main()
+    import sys
+    limit = None
+    if len(sys.argv) > 1:
+        try:
+            limit = int(sys.argv[1])
+            print(f"🔬 Running in sample mode with limit={limit}")
+        except ValueError:
+            pass
+    main(limit=limit)
