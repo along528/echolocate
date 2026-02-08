@@ -709,14 +709,44 @@ Duration: {attrs.get('durationInMillis')} ms
                      final_output.append(f"Error: {data}")
                      continue
                  
-                 final_output.append(f"""
----
-Discogs Release ID: {rid}
-Title: {data.get('title')}
-Artists: {', '.join([a.get('name') for a in data.get('artists', [])])}
-Year: {data.get('year')}
-Marketplace: {record_crate.get_marketplace_url(rid)}
-""")
+                 artists = ', '.join(a.get('name', '') for a in data.get('artists', []))
+                 labels = ', '.join(f"{l.get('name', '')} ({l.get('catno', '')})" for l in data.get('labels', []))
+                 formats = ', '.join(
+                     f"{f.get('name', '')}" + (f" [{', '.join(f.get('descriptions', []))}]" if f.get('descriptions') else "")
+                     for f in data.get('formats', [])
+                 )
+                 genres = ', '.join(data.get('genres', []))
+                 styles = ', '.join(data.get('styles', []))
+                 identifiers = '\n'.join(
+                     f"  {ident.get('type', '')}: {ident.get('value', '')}"
+                     for ident in data.get('identifiers', [])
+                 )
+                 community = data.get('community', {})
+                 rating = community.get('rating', {})
+
+                 lines = [
+                     "---",
+                     f"Discogs Release ID: {rid}",
+                     f"Title: {data.get('title')}",
+                     f"Artists: {artists}",
+                     f"Year: {data.get('year')}",
+                     f"Country: {data.get('country', 'Unknown')}",
+                     f"Labels: {labels}",
+                     f"Formats: {formats}",
+                     f"Genres: {genres}",
+                     f"Styles: {styles}",
+                 ]
+                 if identifiers:
+                     lines.append(f"Identifiers:\n{identifiers}")
+                 notes = data.get('notes', '')
+                 if notes:
+                     lines.append(f"Notes: {notes}")
+                 lines += [
+                     f"Community: {community.get('have', 0)} have / {community.get('want', 0)} want / Rating: {rating.get('average', 0):.1f} ({rating.get('count', 0)} votes)",
+                     f"For Sale: {data.get('num_for_sale', 'N/A')} from {data.get('lowest_price', 'N/A')}",
+                     f"Marketplace: {record_crate.get_marketplace_url(rid)}",
+                 ]
+                 final_output.append('\n'.join(lines))
              return [TextContent(type="text", text="\n".join(final_output))]
         except Exception as e:
              return [TextContent(type="text", text=f"Error: {e}")]
