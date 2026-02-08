@@ -38,7 +38,7 @@ Run the sample generator from the project root (to ensure correct python path re
 # Use the optional argument to limit the number of files (e.g. 500)
 python3 audio_embedding/select_samples.py [limit]
 
-# 2. Generate Embeddings (uses data/sample_files.txt by default)
+# 2. Generate Embeddings (uses data/library/sample_files.txt by default)
 # Supports Resume: Skips files already in embeddings.jsonl
 python3 audio_embedding/generate_embeddings.py
 

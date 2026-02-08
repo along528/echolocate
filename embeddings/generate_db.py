@@ -4,7 +4,7 @@ import os
 import hashlib
 
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
-DATA_DIR = os.path.join(BASE_DIR, "../data")
+DATA_DIR = os.path.join(BASE_DIR, "../data/library")
 DB_PATH = os.path.join(DATA_DIR, "cloudcrate.duckdb")
 JSONL_PATH = os.path.join(DATA_DIR, "embeddings.jsonl")
 JSON_PATH = os.path.join(DATA_DIR, "embeddings.json")

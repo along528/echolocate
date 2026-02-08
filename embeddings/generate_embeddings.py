@@ -7,8 +7,8 @@ import time
 
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 PROJECT_ROOT = os.path.dirname(BASE_DIR)
-DEFAULT_OUTPUT = os.path.join(BASE_DIR, "../data/embeddings.jsonl")
-DEFAULT_FILE_LIST = os.path.join(BASE_DIR, "../data/sample_files.txt")
+DEFAULT_OUTPUT = os.path.join(BASE_DIR, "../data/library/embeddings.jsonl")
+DEFAULT_FILE_LIST = os.path.join(BASE_DIR, "../data/library/sample_files.txt")
 
 def generate_embeddings(target_input, output_file=DEFAULT_OUTPUT, limit=None):
     """
