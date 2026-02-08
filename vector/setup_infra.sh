@@ -6,7 +6,7 @@ cd "$(dirname "$0")"
 
 # Configuration
 BUCKET_NAME="cloud-crate-vector-db"
-DB_FILE="../data/library/cloudcrate.duckdb"
+DB_FILE="../data/cloudcrate.duckdb"
 REGION="us-central1"
 
 echo "Using Bucket Name: $BUCKET_NAME"
