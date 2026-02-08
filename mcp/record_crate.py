@@ -50,6 +50,9 @@ class RecordCrate:
     async def _delete(self, url: str) -> None:
         await self._request("DELETE", url)
 
+    async def _post(self, url: str, json_data: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
+        return await self._request("POST", url, json_data=json_data)
+
     async def search(self, query: str, type: str = "master", format: Optional[str] = None, limit: int = 5) -> Dict[str, Any]:
         """
         Search for releases. Defaults to searching for 'master' releases.
@@ -127,6 +130,39 @@ class RecordCrate:
         """
         url = f"{self.BASE_URL}/users/{username}/wants/{release_id}"
         await self._delete(url)
+
+    async def get_collection_folders(self, username: str) -> Dict[str, Any]:
+        """Get all folders in user's collection."""
+        url = f"{self.BASE_URL}/users/{username}/collection/folders"
+        return await self._get(url)
+
+    async def get_collection_releases(
+        self,
+        username: str,
+        folder_id: int = 0,
+        page: int = 1,
+        per_page: int = 50,
+        sort: Optional[str] = None,
+        sort_order: Optional[str] = None
+    ) -> Dict[str, Any]:
+        """Get releases in a collection folder. Folder 0 = All."""
+        url = f"{self.BASE_URL}/users/{username}/collection/folders/{folder_id}/releases"
+        params = {"page": page, "per_page": per_page}
+        if sort:
+            params["sort"] = sort
+        if sort_order:
+            params["sort_order"] = sort_order
+        return await self._get(url, params=params)
+
+    async def add_to_collection(
+        self,
+        username: str,
+        folder_id: int,
+        release_id: str
+    ) -> Dict[str, Any]:
+        """Add a release to a collection folder. Cannot add to folder 0."""
+        url = f"{self.BASE_URL}/users/{username}/collection/folders/{folder_id}/releases/{release_id}"
+        return await self._post(url)
 
     def get_marketplace_url(self, release_id: str) -> str:
         """

@@ -511,6 +511,40 @@ async def list_tools():
             "required": ["release_id"]
         }
     ))
+    tools.append(Tool(
+        name="discogs_get_collection_folders",
+        description="Get all folders in user's Discogs collection. Folder ID 0 is a special 'All' folder containing every release.",
+        inputSchema={
+            "type": "object",
+            "properties": {}
+        }
+    ))
+    tools.append(Tool(
+        name="discogs_get_collection",
+        description="Get releases from a Discogs collection folder. Use folder_id=0 for all releases.",
+        inputSchema={
+            "type": "object",
+            "properties": {
+                "folder_id": {"type": "integer", "description": "Folder ID (0 for All)"},
+                "page": {"type": "integer"},
+                "limit": {"type": "integer"},
+                "sort": {"type": "string", "description": "Sort by: label, artist, title, catno, format, rating, added, year"},
+                "sort_order": {"type": "string", "enum": ["asc", "desc"]}
+            }
+        }
+    ))
+    tools.append(Tool(
+        name="discogs_add_to_collection",
+        description="Add a release to a Discogs collection folder. IMPORTANT: Use Release ID (not Master ID). Cannot add to folder 0; use folder 1 (Uncategorized) or another folder.",
+        inputSchema={
+            "type": "object",
+            "properties": {
+                "release_id": {"type": "string", "description": "Discogs Release ID (NOT Master ID)"},
+                "folder_id": {"type": "integer", "description": "Target folder ID (default: 1)"}
+            },
+            "required": ["release_id"]
+        }
+    ))
 
     return tools
 
@@ -777,19 +811,81 @@ Duration: {attrs.get('durationInMillis')} ms
              identity = await record_crate.get_identity()
              username = identity.get("username")
              if not username: return [TextContent(type="text", text="No username found")]
-             
+
              release_id = arguments["release_id"]
              res = await record_crate.add_to_wantlist(
-                 username, 
-                 release_id, 
+                 username,
+                 release_id,
                  notes=arguments.get("notes"),
                  rating=arguments.get("rating")
              )
-             
+
              title = res.get("basic_information", {}).get("title", "Unknown Title")
              return [TextContent(type="text", text=f"Added to Wantlist: {title} (ID: {release_id})")]
         except Exception as e:
              return [TextContent(type="text", text=f"Error: {e}")]
+
+    elif name == "discogs_get_collection_folders":
+        if not record_crate: return [TextContent(type="text", text="Record Crate not configured")]
+        try:
+            identity = await record_crate.get_identity()
+            username = identity.get("username")
+            if not username: return [TextContent(type="text", text="No username found")]
+
+            data = await record_crate.get_collection_folders(username)
+            folders = data.get("folders", [])
+            output = "\n".join([f"[Folder ID: {f.get('id')}] {f.get('name')} ({f.get('count')} releases)" for f in folders])
+            return [TextContent(type="text", text=output or "No folders found")]
+        except Exception as e:
+            return [TextContent(type="text", text=f"Error: {e}")]
+
+    elif name == "discogs_get_collection":
+        if not record_crate: return [TextContent(type="text", text="Record Crate not configured")]
+        try:
+            identity = await record_crate.get_identity()
+            username = identity.get("username")
+            if not username: return [TextContent(type="text", text="No username found")]
+
+            data = await record_crate.get_collection_releases(
+                username,
+                folder_id=arguments.get("folder_id", 0),
+                page=arguments.get("page", 1),
+                per_page=arguments.get("limit", 50),
+                sort=arguments.get("sort"),
+                sort_order=arguments.get("sort_order")
+            )
+
+            releases = data.get("releases", [])
+            pagination = data.get("pagination", {})
+            output = [f"Page {pagination.get('page', 1)} of {pagination.get('pages', 1)} ({pagination.get('items', 0)} total)\n"]
+
+            for r in releases:
+                info = r.get("basic_information", {})
+                artists = ", ".join([a.get("name") for a in info.get("artists", [])])
+                output.append(f"[Discogs ID: {info.get('id')}] {info.get('title')} - {artists} ({info.get('year', '')})")
+
+            return [TextContent(type="text", text="\n".join(output) or "No releases")]
+        except Exception as e:
+            return [TextContent(type="text", text=f"Error: {e}")]
+
+    elif name == "discogs_add_to_collection":
+        if not record_crate: return [TextContent(type="text", text="Record Crate not configured")]
+        try:
+            identity = await record_crate.get_identity()
+            username = identity.get("username")
+            if not username: return [TextContent(type="text", text="No username found")]
+
+            release_id = arguments["release_id"]
+            folder_id = arguments.get("folder_id", 1)
+
+            if folder_id == 0:
+                return [TextContent(type="text", text="Cannot add to folder 0 (All). Use folder 1 or another specific folder.")]
+
+            result = await record_crate.add_to_collection(username, folder_id, release_id)
+            instance_id = result.get("instance_id")
+            return [TextContent(type="text", text=f"Added to Collection! Release ID: {release_id}, Instance ID: {instance_id}, Folder ID: {folder_id}")]
+        except Exception as e:
+            return [TextContent(type="text", text=f"Error: {e}")]
 
     # Echo Locate Handlers
     elif name.startswith("echolocate_"):
