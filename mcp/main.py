@@ -439,6 +439,28 @@ async def list_tools():
                 }
             }
         ))
+        tools.append(Tool(
+            name="echolocate_semantic_search",
+            description=(
+                "Search for music and audio by 'vibe' or acoustic description using the CLAP AI model. "
+                "IMPORTANT: Take the user's short music/sound query and expand it into a 1-sentence acoustic caption. "
+                "Focus on: Timbre (bright, dark, metallic, resonant), Environment (reverb, space, outdoors), "
+                "Action (playing, hitting, singing). Prepend with 'This is a sound of' or 'A recording of'. "
+                "Example: 'jazz sax' → 'A recording of a soulful jazz saxophone solo with warm tone in a resonant room.'"
+            ),
+            inputSchema={
+                "type": "object",
+                "properties": {
+                    "query": {
+                        "type": "string", 
+                        "description": "An expanded acoustic caption describing the audio's timbre, mood, and environment."
+                    },
+                    "service_name": {"type": "string", "description": "Vector Service Name (e.g. 'library', 'fma')", "default": "default"},
+                    "limit": {"type": "integer", "default": 10}
+                },
+                "required": ["query"]
+            }
+        ))
 
     # --- Context Tools ---
     tools.append(Tool(
@@ -781,6 +803,15 @@ Marketplace: {record_crate.get_marketplace_url(rid)}
                 )
                 output = "\n".join([f"Vector ID: {t['id']} | {t['title']} - {t['artist']}" for t in res])
                 return [TextContent(type="text", text=output or "No results")]
+
+            elif name == "echolocate_semantic_search":
+                res = await echo_locate.semantic_search(
+                    query=arguments["query"],
+                    service_name=service,
+                    limit=arguments.get("limit", 10)
+                )
+                output = "\n".join([f"Vector ID: {t['id']} | Sim: {t.get('similarity', 0):.3f} | {t['title']} - {t['artist']}" for t in res])
+                return [TextContent(type="text", text=output or "No semantic matches found")]
 
         except Exception as e:
             return [TextContent(type="text", text=f"Echo Locate Error: {e}")]

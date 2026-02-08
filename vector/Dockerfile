@@ -3,19 +3,23 @@ FROM python:3.11-slim
 WORKDIR /app
 
 # Install system dependencies
-# wget/curl needed if we were downloading extensions manually, but duckdb client handles it
 RUN apt-get update && apt-get install -y wget && rm -rf /var/lib/apt/lists/*
 
 # Install python dependencies
 COPY requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
 
+# Set cache directory that persists across build and runtime
+ENV HF_HOME=/app/.cache/huggingface
+ENV TRANSFORMERS_CACHE=/app/.cache/huggingface
+
+# Pre-download CLAP model during build (avoids HuggingFace rate limits at runtime)
+RUN python -c "from transformers import AutoProcessor, ClapModel; \
+    ClapModel.from_pretrained('laion/clap-htsat-unfused'); \
+    AutoProcessor.from_pretrained('laion/clap-htsat-unfused')"
+
 # Default to creating a writable directory for DuckDB extensions
 # Cloud Run filesystem is read-only except for /tmp (memory) or mounts.
-# DuckDB tries to install extensions to ~/.duckdb/
-# We set HOME to /tmp so it can "install" them there if needed, 
-# though ideally we bake them in. 
-# 0.10.0 might bundle some, but vss is usually separate.
 ENV HOME=/tmp
 
 # Copy app code

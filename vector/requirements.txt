@@ -5,3 +5,5 @@ pydantic
 python-multipart
 google-cloud-storage
 numpy
+torch
+transformers==4.46.0

@@ -8,6 +8,7 @@ DATA_DIR = os.path.join(BASE_DIR, "../data")
 DB_PATH = os.path.join(DATA_DIR, "cloudcrate.duckdb")
 JSONL_PATH = os.path.join(DATA_DIR, "embeddings.jsonl")
 JSON_PATH = os.path.join(DATA_DIR, "embeddings.json")
+CLAP_JSONL_PATH = os.path.join(DATA_DIR, "clap_embeddings.jsonl")
 
 def initialize_db():
     if os.path.exists(DB_PATH):
@@ -35,7 +36,8 @@ def initialize_db():
             relative_path VARCHAR,
             v_intro FLOAT[768],
             v_mid FLOAT[768],
-            v_outro FLOAT[768]
+            v_outro FLOAT[768],
+            v_clap FLOAT[512]
         );
     """)
     
@@ -63,8 +65,37 @@ def generate_track_id(artist, album, title):
     raw = f"{artist}|{album}|{title}"
     return hashlib.md5(raw.encode('utf-8')).hexdigest()
 
+def load_clap_data():
+    """Load CLAP embeddings into a dictionary keyed by relative_path."""
+    clap_map = {}
+    
+    if not os.path.exists(CLAP_JSONL_PATH):
+        print(f"Warning: CLAP embeddings not found at {CLAP_JSONL_PATH}. Using zero vectors.")
+        return clap_map
+    
+    print(f"Loading CLAP embeddings from {CLAP_JSONL_PATH}...")
+    with open(CLAP_JSONL_PATH, 'r') as f:
+        for line in f:
+            line = line.strip()
+            if line:
+                try:
+                    data = json.loads(line)
+                    rel_path = data.get('relative_path')
+                    v_clap = data.get('v_clap')
+                    if rel_path and v_clap:
+                        clap_map[rel_path] = v_clap
+                except json.JSONDecodeError:
+                    pass
+    
+    print(f"Loaded {len(clap_map)} CLAP embeddings.")
+    return clap_map
+
+
 def load_data(con):
-    # Determine which file to load
+    # Load CLAP data first for hash join
+    clap_map = load_clap_data()
+    
+    # Determine which MERT file to load
     target_path = None
     file_type = None
     
@@ -78,7 +109,7 @@ def load_data(con):
         print(f"Error: No embeddings file found (checked {JSONL_PATH} and {JSON_PATH}).")
         return
 
-    print(f"Loading data from {target_path} ({file_type})...")
+    print(f"Loading MERT data from {target_path} ({file_type})...")
     
     track_data_list = []
     
@@ -116,6 +147,9 @@ def load_data(con):
                 print(f"Skipping track with completely missing metadata: {relative_path}")
                 continue
 
+            # Hash join: lookup CLAP vector by relative_path
+            v_clap = clap_map.get(relative_path, [0.0] * 512)
+            
             track_data_list.append((
                 track_id, 
                 title, 
@@ -124,7 +158,8 @@ def load_data(con):
                 relative_path, 
                 v_intro, 
                 v_mid, 
-                v_outro
+                v_outro,
+                v_clap
             ))
 
     print(f"Inserting {len(track_data_list)} tracks...")
@@ -133,8 +168,8 @@ def load_data(con):
     # Note: for very large datasets (10k+), we might want to chunk this insert too,
     # but 10k rows is easily handled by DuckDB in one go.
     con.executemany("""
-        INSERT OR IGNORE INTO tracks (id, title, artist, album, relative_path, v_intro, v_mid, v_outro) 
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+        INSERT OR IGNORE INTO tracks (id, title, artist, album, relative_path, v_intro, v_mid, v_outro, v_clap) 
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
     """, track_data_list)
     
     # Force write to disk
