@@ -3,6 +3,8 @@ import json
 import os
 import hashlib
 import csv
+import sys
+from tqdm import tqdm
 
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 PROJECT_ROOT = os.path.dirname(BASE_DIR)
@@ -130,14 +132,12 @@ def load_library_data():
     
     track_data_list = []
     
-    with open(target_path, 'r') as f:
-        if file_type == 'json':
+    if file_type == 'json':
+        with open(target_path, 'r') as f:
             data = json.load(f)
             items = data if isinstance(data, list) else []
-        else:
-            items = (json.loads(line) for line in f if line.strip())
-
-        for info in items:
+        
+        for info in tqdm(items, desc="  Loading library", unit="tracks"):
             artist = info.get('artist', 'Unknown')
             album = info.get('album', 'Unknown')
             title = info.get('title', 'Unknown')
@@ -159,19 +159,64 @@ def load_library_data():
             
             track_data_list.append((
                 track_id,
-                'library',  # source
+                'library',
                 title,
                 artist,
                 album,
                 relative_path,
-                None,  # track_url (not available for library)
-                None,  # album_url
-                None,  # artist_url
+                None,
+                None,
+                None,
                 v_intro,
                 v_mid,
                 v_outro,
                 v_clap
             ))
+    else:
+        # JSONL: count lines first for progress bar
+        with open(target_path, 'r') as f:
+            total_lines = sum(1 for _ in f)
+        
+        with open(target_path, 'r') as f:
+            for line in tqdm(f, total=total_lines, desc="  Loading library", unit="tracks"):
+                if not line.strip():
+                    continue
+                info = json.loads(line)
+                
+                artist = info.get('artist', 'Unknown')
+                album = info.get('album', 'Unknown')
+                title = info.get('title', 'Unknown')
+                relative_path = info.get('relative_path', '')
+                
+                track_id = generate_track_id('library', artist, album, title)
+                
+                v_intro = info.get('v_intro')
+                v_mid = info.get('v_mid')
+                v_outro = info.get('v_outro')
+                
+                if not v_mid:
+                    continue
+
+                if artist == "Unknown" and album == "Unknown" and title == "Unknown":
+                    continue
+
+                v_clap = clap_map.get(relative_path, [0.0] * 512)
+                
+                track_data_list.append((
+                    track_id,
+                    'library',
+                    title,
+                    artist,
+                    album,
+                    relative_path,
+                    None,
+                    None,
+                    None,
+                    v_intro,
+                    v_mid,
+                    v_outro,
+                    v_clap
+                ))
 
     print(f"  Found {len(track_data_list)} library tracks.")
     return track_data_list
@@ -225,8 +270,12 @@ def load_fma_data():
     track_data_list = []
     no_metadata_count = 0
     
+    # Count lines for progress bar
     with open(FMA_EMBEDDINGS_PATH, 'r') as f:
-        for line in f:
+        total_lines = sum(1 for _ in f)
+    
+    with open(FMA_EMBEDDINGS_PATH, 'r') as f:
+        for line in tqdm(f, total=total_lines, desc="  Loading FMA", unit="tracks"):
             line = line.strip()
             if not line:
                 continue
@@ -291,18 +340,22 @@ def load_fma_data():
     return track_data_list
 
 
-def insert_tracks(con, track_data_list, source_name):
-    """Batch insert tracks into the database."""
+def insert_tracks(con, track_data_list, source_name, chunk_size=1000):
+    """Batch insert tracks into the database with progress tracking."""
     if not track_data_list:
         return
     
-    print(f"Inserting {len(track_data_list)} {source_name} tracks...")
+    total = len(track_data_list)
+    print(f"Inserting {total} {source_name} tracks...")
     
-    con.executemany("""
-        INSERT OR IGNORE INTO tracks 
-        (id, source, title, artist, album, relative_path, track_url, album_url, artist_url, v_intro, v_mid, v_outro, v_clap) 
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-    """, track_data_list)
+    # Insert in chunks with progress bar
+    for i in tqdm(range(0, total, chunk_size), desc=f"  Inserting {source_name}", unit="batch"):
+        chunk = track_data_list[i:i + chunk_size]
+        con.executemany("""
+            INSERT OR IGNORE INTO tracks 
+            (id, source, title, artist, album, relative_path, track_url, album_url, artist_url, v_intro, v_mid, v_outro, v_clap) 
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        """, chunk)
 
 
 def main(limit=None):
