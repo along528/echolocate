@@ -370,11 +370,12 @@ async def list_tools():
     if echo_locate:
         tools.append(Tool(
             name="echolocate_sample",
-            description="Sample tracks from a vector DB.",
+            description="Sample tracks from the vector DB. Use source='library' (default) for personal library, 'fma' for Free Music Archive, or 'all' for both.",
             inputSchema={
                 "type": "object",
                 "properties": {
-                    "service_name": {"type": "string", "description": "Vector Service Name (e.g. 'library', 'fma')", "default": "default"},
+                    "service_name": {"type": "string", "description": "Vector Service Name", "default": "default"},
+                    "source": {"type": "string", "enum": ["library", "fma", "all"], "description": "Filter by source: 'library' (default), 'fma', or 'all'", "default": "library"},
                     "limit": {"type": "integer"},
                     "offset": {"type": "integer"},
                     "random": {"type": "boolean"}
@@ -383,12 +384,13 @@ async def list_tools():
         ))
         tools.append(Tool(
             name="echolocate_similar",
-            description="Find similar tracks.",
+            description="Find similar tracks. Use source to filter results by 'library', 'fma', or 'all'.",
             inputSchema={
                 "type": "object",
                 "properties": {
                     "track_id": {"type": "string"},
                     "service_name": {"type": "string", "default": "default"},
+                    "source": {"type": "string", "enum": ["library", "fma", "all"], "description": "Filter results by source", "default": "library"},
                     "limit": {"type": "integer"}
                 },
                 "required": ["track_id"]
@@ -426,15 +428,16 @@ async def list_tools():
         ))
         tools.append(Tool(
             name="echolocate_text_search",
-            description="Search tracks by text: artist, album, or title.",
+            description="Search tracks by text: artist, album, or title. Use source to filter by 'library', 'fma', or 'all'.",
             inputSchema={
                 "type": "object",
                 "properties": {
-                    "query": {"type": "string", "description": "General search term (searches across all text fields)"},
+                    "query": {"type": "string", "description": "General search term"},
                     "artist": {"type": "string", "description": "Search by artist name"},
                     "album": {"type": "string", "description": "Search by album name"},
                     "title": {"type": "string", "description": "Search by track title"},
-                    "service_name": {"type": "string", "description": "Vector Service Name (e.g. 'library', 'fma')", "default": "default"},
+                    "service_name": {"type": "string", "default": "default"},
+                    "source": {"type": "string", "enum": ["library", "fma", "all"], "description": "Filter by source", "default": "library"},
                     "limit": {"type": "integer", "default": 20}
                 }
             }
@@ -442,20 +445,16 @@ async def list_tools():
         tools.append(Tool(
             name="echolocate_semantic_search",
             description=(
-                "Search for music and audio by 'vibe' or acoustic description using the CLAP AI model. "
-                "IMPORTANT: Take the user's short music/sound query and expand it into a 1-sentence acoustic caption. "
-                "Focus on: Timbre (bright, dark, metallic, resonant), Environment (reverb, space, outdoors), "
-                "Action (playing, hitting, singing). Prepend with 'This is a sound of' or 'A recording of'. "
-                "Example: 'jazz sax' → 'A recording of a soulful jazz saxophone solo with warm tone in a resonant room.'"
+                "Search for music by 'vibe' or acoustic description using CLAP AI. "
+                "Expand user queries into 1-sentence acoustic captions. "
+                "Use source to filter by 'library', 'fma', or 'all'."
             ),
             inputSchema={
                 "type": "object",
                 "properties": {
-                    "query": {
-                        "type": "string", 
-                        "description": "An expanded acoustic caption describing the audio's timbre, mood, and environment."
-                    },
-                    "service_name": {"type": "string", "description": "Vector Service Name (e.g. 'library', 'fma')", "default": "default"},
+                    "query": {"type": "string", "description": "Expanded acoustic caption"},
+                    "service_name": {"type": "string", "default": "default"},
+                    "source": {"type": "string", "enum": ["library", "fma", "all"], "description": "Filter by source", "default": "library"},
                     "limit": {"type": "integer", "default": 10}
                 },
                 "required": ["query"]
@@ -897,15 +896,26 @@ Duration: {attrs.get('durationInMillis')} ms
                  return [TextContent(type="text", text=f"Generated Path:\n{output}")]
 
             elif name == "echolocate_sample":
-                res = await echo_locate.sample_db(service, limit=arguments.get("limit", 20), offset=arguments.get("offset", 0), random_sample=arguments.get("random", True))
-                # Format output
-                output = "\n".join([f"Vector ID: {t['id']} | {t['title']} - {t['artist']}" for t in res])
-                return [TextContent(type="text", text=output or "Empty DB")]
+                source = arguments.get("source", "library")
+                res = await echo_locate.sample_db(service, limit=arguments.get("limit", 20), offset=arguments.get("offset", 0), random_sample=arguments.get("random", True), source=source)
+                lines = []
+                for t in res:
+                    line = f"Vector ID: {t['id']} | {t['title']} - {t['artist']}"
+                    if t.get('track_url'):
+                        line += f" | {t['track_url']}"
+                    lines.append(line)
+                return [TextContent(type="text", text="\n".join(lines) or "Empty DB")]
 
             elif name == "echolocate_similar":
-                res = await echo_locate.find_similar_tracks(arguments["track_id"], service, limit=arguments.get("limit", 5))
-                output = "\n".join([f"Vector ID: {t['id']} | Sim: {t.get('similarity', 0):.2f} | {t['title']}" for t in res])
-                return [TextContent(type="text", text=output or "No similar tracks")]
+                source = arguments.get("source", "library")
+                res = await echo_locate.find_similar_tracks(arguments["track_id"], service, limit=arguments.get("limit", 5), source=source)
+                lines = []
+                for t in res:
+                    line = f"Vector ID: {t['id']} | Sim: {t.get('similarity', 0):.2f} | {t['title']}"
+                    if t.get('track_url'):
+                        line += f" | {t['track_url']}"
+                    lines.append(line)
+                return [TextContent(type="text", text="\n".join(lines) or "No similar tracks")]
 
             elif name == "echolocate_interpolate":
                 res = await echo_locate.interpolate(
@@ -917,25 +927,39 @@ Duration: {attrs.get('durationInMillis')} ms
                 return [TextContent(type="text", text=output or "Interpolation failed")]
 
             elif name == "echolocate_text_search":
+                source = arguments.get("source", "library")
                 res = await echo_locate.text_search(
                     service_name=service,
                     query=arguments.get("query"),
                     artist=arguments.get("artist"),
                     album=arguments.get("album"),
                     title=arguments.get("title"),
-                    limit=arguments.get("limit", 20)
+                    limit=arguments.get("limit", 20),
+                    source=source
                 )
-                output = "\n".join([f"Vector ID: {t['id']} | {t['title']} - {t['artist']}" for t in res])
-                return [TextContent(type="text", text=output or "No results")]
+                lines = []
+                for t in res:
+                    line = f"Vector ID: {t['id']} | {t['title']} - {t['artist']}"
+                    if t.get('track_url'):
+                        line += f" | {t['track_url']}"
+                    lines.append(line)
+                return [TextContent(type="text", text="\n".join(lines) or "No results")]
 
             elif name == "echolocate_semantic_search":
+                source = arguments.get("source", "library")
                 res = await echo_locate.semantic_search(
                     query=arguments["query"],
                     service_name=service,
-                    limit=arguments.get("limit", 10)
+                    limit=arguments.get("limit", 10),
+                    source=source
                 )
-                output = "\n".join([f"Vector ID: {t['id']} | Sim: {t.get('similarity', 0):.3f} | {t['title']} - {t['artist']}" for t in res])
-                return [TextContent(type="text", text=output or "No semantic matches found")]
+                lines = []
+                for t in res:
+                    line = f"Vector ID: {t['id']} | Sim: {t.get('similarity', 0):.3f} | {t['title']} - {t['artist']}"
+                    if t.get('track_url'):
+                        line += f" | {t['track_url']}"
+                    lines.append(line)
+                return [TextContent(type="text", text="\n".join(lines) or "No semantic matches found")]
 
         except Exception as e:
             return [TextContent(type="text", text=f"Echo Locate Error: {e}")]

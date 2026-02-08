@@ -1,5 +1,5 @@
 import httpx
-from typing import Optional, List, Dict, Any
+from typing import Optional, List, Dict, Any, Literal
 
 class EchoLocate:
     def __init__(self, vector_service_urls: Dict[str, str]):
@@ -34,14 +34,40 @@ class EchoLocate:
                 print(f"EchoLocate Error ({service_name} -> {path}): {e}")
                 raise Exception(f"EchoLocate failed for {service_name}: {e}")
 
-    async def sample_db(self, service_name: str = "default", limit: int = 20, offset: int = 0, random_sample: bool = True):
-        return await self._request(service_name, "GET", "/tracks", params={"limit": limit, "offset": offset, "random": random_sample})
+    async def sample_db(
+        self, 
+        service_name: str = "default", 
+        limit: int = 20, 
+        offset: int = 0, 
+        random_sample: bool = True,
+        source: Literal["library", "fma", "all"] = "library"
+    ):
+        return await self._request(
+            service_name, "GET", "/tracks", 
+            params={"limit": limit, "offset": offset, "random": random_sample, "source": source}
+        )
 
-    async def find_similar_tracks(self, track_id: str, service_name: str = "default", limit: int = 5):
-        # Use endpoint /tracks/{id}/similar
-        return await self._request(service_name, "GET", f"/tracks/{track_id}/similar", params={"limit": limit})
+    async def find_similar_tracks(
+        self, 
+        track_id: str, 
+        service_name: str = "default", 
+        limit: int = 5,
+        source: Literal["library", "fma", "all"] = "library"
+    ):
+        return await self._request(
+            service_name, "GET", f"/tracks/{track_id}/similar", 
+            params={"limit": limit, "source": source}
+        )
 
-    async def interpolate(self, track_id_1: str, track_id_2: str, service_name: str = "default", limit: int = 10, method: str = "greedy_walk", steer_track_id: Optional[str] = None):
+    async def interpolate(
+        self, 
+        track_id_1: str, 
+        track_id_2: str, 
+        service_name: str = "default", 
+        limit: int = 10, 
+        method: str = "greedy_walk", 
+        steer_track_id: Optional[str] = None
+    ):
         payload = {
             "track_id_1": track_id_1,
             "track_id_2": track_id_2,
@@ -53,7 +79,13 @@ class EchoLocate:
             
         return await self._request(service_name, "POST", "/interpolate", json_body=payload)
 
-    async def generate_playlist(self, track_id_1: str, track_id_2: str, service_name: str = "default", limit: int = 20):
+    async def generate_playlist(
+        self, 
+        track_id_1: str, 
+        track_id_2: str, 
+        service_name: str = "default", 
+        limit: int = 20
+    ):
         payload = {
             "track_id_1": track_id_1,
             "track_id_2": track_id_2,
@@ -71,10 +103,11 @@ class EchoLocate:
         artist: str = None, 
         album: str = None, 
         title: str = None,
-        limit: int = 20
+        limit: int = 20,
+        source: Literal["library", "fma", "all"] = "library"
     ):
         """Text-based search by artist, album, or title."""
-        params = {"limit": limit}
+        params = {"limit": limit, "source": source}
         if query:
             params["query"] = query
         if artist:
@@ -89,7 +122,8 @@ class EchoLocate:
         self, 
         query: str, 
         service_name: str = "default", 
-        limit: int = 10
+        limit: int = 10,
+        source: Literal["library", "fma", "all"] = "library"
     ):
         """
         Search for tracks using natural language queries like 'jazz saxophone' or 'ambient rain'.
@@ -99,5 +133,5 @@ class EchoLocate:
             service_name, 
             "POST", 
             "/semantic-search", 
-            json_body={"query": query, "limit": limit}
+            json_body={"query": query, "limit": limit, "source": source}
         )
