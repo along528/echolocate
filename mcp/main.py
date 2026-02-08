@@ -341,26 +341,26 @@ async def list_tools():
     # --- Record Crate Tools ---
     tools.append(Tool(
         name="discogs_search",
-        description="Search Discogs. By default, this searches for 'Master' releases. If you need a specific 'Release' ID (e.g. for the wantlist), you should likely use 'discogs_get_versions' with the Master ID returned here.",
+        description="Search Discogs. Returns Master IDs by default. To get a specific Release ID (required for wantlist/collection), use 'discogs_get_versions' with the Master ID returned here.",
         inputSchema={
             "type": "object",
             "properties": {
-                "query": {"type": "string"},
-                "limit": {"type": "integer"},
-                "format": {"type": "string"}
+                "query": {"type": "string", "description": "Search query"},
+                "limit": {"type": "integer", "description": "Max results to return"},
+                "format": {"type": "string", "description": "Filter by format (e.g. 'Vinyl', 'CD')"}
             },
             "required": ["query"]
         }
     ))
     tools.append(Tool(
         name="discogs_get_versions",
-        description="Get specific release versions for a Discogs Master Release. Returns 'Release' IDs that can be used for the wantlist.",
+        description="Get specific release versions for a Discogs Master Release. Input: Master ID. Output: Release IDs (usable for wantlist/collection).",
         inputSchema={
             "type": "object",
             "properties": {
-                "master_id": {"type": "string"},
-                "page": {"type": "integer"},
-                "limit": {"type": "integer"}
+                "master_id": {"type": "string", "description": "Discogs Master ID (from discogs_search)"},
+                "page": {"type": "integer", "description": "Page number for pagination"},
+                "limit": {"type": "integer", "description": "Results per page"}
             },
             "required": ["master_id"]
         }
@@ -478,33 +478,33 @@ async def list_tools():
     # --- Discogs Advanced Tools ---
     tools.append(Tool(
         name="discogs_get_release",
-        description="Get specific Discogs release details.",
+        description="Get detailed info for a specific Discogs release. Input: Release ID (from discogs_get_versions, wantlist, or collection). Output: Full release details.",
         inputSchema={
             "type": "object",
             "properties": {
-                "release_id": {"type": "string"},
-                "release_ids": {"type": "array", "items": {"type": "string"}}
+                "release_id": {"type": "string", "description": "Discogs Release ID (NOT Master ID)"},
+                "release_ids": {"type": "array", "items": {"type": "string"}, "description": "Multiple Release IDs for batch lookup"}
             }
         }
     ))
     tools.append(Tool(
         name="discogs_get_wantlist",
-        description="Get user's Discogs wantlist.",
+        description="Get user's Discogs wantlist. Output: Release IDs (not Master IDs).",
         inputSchema={
             "type": "object",
             "properties": {
-                "page": {"type": "integer"},
-                "limit": {"type": "integer"}
+                "page": {"type": "integer", "description": "Page number"},
+                "limit": {"type": "integer", "description": "Results per page"}
             }
         }
     ))
     tools.append(Tool(
         name="discogs_add_to_wantlist",
-        description="Add a release to the Discogs wantlist. IMPORTANT: You must provide a specific 'Release ID', NOT a 'Master ID'. Use 'discogs_get_versions' to find a Release ID from a Master ID.",
+        description="Add a release to the Discogs wantlist. Input: Release ID (NOT Master ID). Use 'discogs_get_versions' to convert a Master ID to Release ID first.",
         inputSchema={
             "type": "object",
             "properties": {
-                "release_id": {"type": "string", "description": "Discogs Release ID (NOT Master ID)"},
+                "release_id": {"type": "string", "description": "Discogs Release ID (NOT Master ID - use discogs_get_versions to get Release IDs)"},
                 "notes": {"type": "string", "description": "Optional notes"},
                 "rating": {"type": "integer", "description": "Optional rating (1-5)"}
             },
@@ -513,7 +513,7 @@ async def list_tools():
     ))
     tools.append(Tool(
         name="discogs_get_collection_folders",
-        description="Get all folders in user's Discogs collection. Folder ID 0 is a special 'All' folder containing every release.",
+        description="Get all folders in user's Discogs collection. Output: Folder IDs. Folder ID 0 is a special 'All' folder containing every release.",
         inputSchema={
             "type": "object",
             "properties": {}
@@ -521,26 +521,26 @@ async def list_tools():
     ))
     tools.append(Tool(
         name="discogs_get_collection",
-        description="Get releases from a Discogs collection folder. Use folder_id=0 for all releases.",
+        description="Get releases from a Discogs collection folder. Input: Folder ID. Output: Release IDs (not Master IDs). Use folder_id=0 for all releases.",
         inputSchema={
             "type": "object",
             "properties": {
-                "folder_id": {"type": "integer", "description": "Folder ID (0 for All)"},
-                "page": {"type": "integer"},
-                "limit": {"type": "integer"},
+                "folder_id": {"type": "integer", "description": "Folder ID (0 for All) - get IDs from discogs_get_collection_folders"},
+                "page": {"type": "integer", "description": "Page number"},
+                "limit": {"type": "integer", "description": "Results per page"},
                 "sort": {"type": "string", "description": "Sort by: label, artist, title, catno, format, rating, added, year"},
-                "sort_order": {"type": "string", "enum": ["asc", "desc"]}
+                "sort_order": {"type": "string", "enum": ["asc", "desc"], "description": "Sort direction"}
             }
         }
     ))
     tools.append(Tool(
         name="discogs_add_to_collection",
-        description="Add a release to a Discogs collection folder. IMPORTANT: Use Release ID (not Master ID). Cannot add to folder 0; use folder 1 (Uncategorized) or another folder.",
+        description="Add a release to a Discogs collection folder. Input: Release ID (NOT Master ID) and Folder ID. Use discogs_get_versions to convert Master ID to Release ID. Cannot add to folder 0; use folder 1 (Uncategorized) or another folder.",
         inputSchema={
             "type": "object",
             "properties": {
-                "release_id": {"type": "string", "description": "Discogs Release ID (NOT Master ID)"},
-                "folder_id": {"type": "integer", "description": "Target folder ID (default: 1)"}
+                "release_id": {"type": "string", "description": "Discogs Release ID (NOT Master ID - use discogs_get_versions to get Release IDs)"},
+                "folder_id": {"type": "integer", "description": "Target folder ID (default: 1) - get IDs from discogs_get_collection_folders"}
             },
             "required": ["release_id"]
         }
@@ -703,8 +703,7 @@ Duration: {attrs.get('durationInMillis')} ms
         try:
             res = await record_crate.search(arguments["query"], limit=arguments.get("limit", 5), format=arguments.get("format"))
             results = res.get("results", [])
-            results = res.get("results", [])
-            output = "\n".join([f"Discogs ID: {r.get('id')} | {r.get('title')}" for r in results])
+            output = "\n".join([f"Master ID: {r.get('id')} | {r.get('title')}" for r in results])
             return [TextContent(type="text", text=output or "No results")]
         except Exception as e:
             return [TextContent(type="text", text=f"Error: {e}")]
@@ -714,8 +713,7 @@ Duration: {attrs.get('durationInMillis')} ms
         try:
             res = await record_crate.get_master_versions(arguments["master_id"], page=arguments.get("page", 1), per_page=arguments.get("limit", 10))
             vers = res.get("versions", [])
-            vers = res.get("versions", [])
-            output = "\n".join([f"Discogs ID: {v.get('id')} | {v.get('title')} | {v.get('format')}" for v in vers])
+            output = "\n".join([f"Release ID: {v.get('id')} | {v.get('title')} | {v.get('format')}" for v in vers])
             return [TextContent(type="text", text=output or "No versions")]
         except Exception as e:
             return [TextContent(type="text", text=f"Error: {e}")]
@@ -799,7 +797,7 @@ Duration: {attrs.get('durationInMillis')} ms
              for w in wants:
                   info = w.get("basic_information", {})
                   rid = str(info.get("id"))
-                  output.append(f"[Discogs ID: {rid}] {info.get('title')} - {', '.join([a.get('name') for a in info.get('artists', [])])}")
+                  output.append(f"[Release ID: {rid}] {info.get('title')} - {', '.join([a.get('name') for a in info.get('artists', [])])}")
              return [TextContent(type="text", text="\n".join(output) or "Wantlist empty")]
         except Exception as e:
              return [TextContent(type="text", text=f"Error: {e}")]
@@ -862,7 +860,7 @@ Duration: {attrs.get('durationInMillis')} ms
             for r in releases:
                 info = r.get("basic_information", {})
                 artists = ", ".join([a.get("name") for a in info.get("artists", [])])
-                output.append(f"[Discogs ID: {info.get('id')}] {info.get('title')} - {artists} ({info.get('year', '')})")
+                output.append(f"[Release ID: {info.get('id')}] {info.get('title')} - {artists} ({info.get('year', '')})")
 
             return [TextContent(type="text", text="\n".join(output) or "No releases")]
         except Exception as e:
