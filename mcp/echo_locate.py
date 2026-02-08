@@ -1,47 +1,90 @@
 import httpx
-from typing import Optional, List, Dict, Any
+from typing import Optional, List, Literal
 
 class EchoLocate:
-    def __init__(self, vector_service_urls: Dict[str, str]):
-        """
-        Initialize with a dictionary of vector service URLs.
-        Example: {"library": "http://vector-service:8080", "fma": "http://fma-vector-service:8080"}
-        If a simple string is passed to legacy VECTOR_SERVICE_URL env var, it will be mapped to "default".
-        """
-        self.vector_service_urls = vector_service_urls
+    """
+    Client for the Cloud Crate Vector Service.
+    
+    The vector service contains tracks from two sources:
+    - 'library': Your personal Apple Music library
+    - 'fma': Free Music Archive tracks
+    
+    Use the 'source' parameter to filter which tracks to search/return.
+    """
+    
+    def __init__(self, vector_service_url: str):
+        """Initialize with the vector service URL."""
+        self.base_url = vector_service_url.rstrip('/')
 
-    def _get_url(self, service_name: str) -> str:
-        url = self.vector_service_urls.get(service_name)
-        if not url:
-            # Fallback to default if exists
-            url = self.vector_service_urls.get("default")
-        if not url:
-             # Fallback to first available if strictly one? Or error.
-             if len(self.vector_service_urls) > 0:
-                 return list(self.vector_service_urls.values())[0]
-             raise ValueError(f"Vector service '{service_name}' not configured.")
-        return url
-
-    async def _request(self, service_name: str, method: str, path: str, json_body: dict = None, params: dict = None):
-        base_url = self._get_url(service_name)
-        url = f"{base_url}{path}"
+    async def _request(self, method: str, path: str, json_body: dict = None, params: dict = None):
+        url = f"{self.base_url}{path}"
         async with httpx.AsyncClient() as client:
             try:
                 response = await client.request(method, url, json=json_body, params=params, timeout=30.0)
                 response.raise_for_status()
                 return response.json()
             except httpx.HTTPError as e:
-                print(f"EchoLocate Error ({service_name} -> {path}): {e}")
-                raise Exception(f"EchoLocate failed for {service_name}: {e}")
+                print(f"EchoLocate Error ({path}): {e}")
+                raise Exception(f"EchoLocate request failed: {e}")
 
-    async def sample_db(self, service_name: str = "default", limit: int = 20, offset: int = 0, random_sample: bool = True):
-        return await self._request(service_name, "GET", "/tracks", params={"limit": limit, "offset": offset, "random": random_sample})
+    async def sample_db(
+        self, 
+        limit: int = 20, 
+        offset: int = 0, 
+        random_sample: bool = True,
+        source: Literal["library", "fma", "all"] = "library"
+    ):
+        """
+        Sample tracks from the vector database.
+        
+        Args:
+            limit: Maximum number of tracks to return
+            offset: Offset for pagination
+            random_sample: If True, return random tracks; if False, return in order
+            source: Filter tracks by source - 'library' (personal), 'fma' (Free Music Archive), or 'all'
+        """
+        return await self._request(
+            "GET", "/tracks", 
+            params={"limit": limit, "offset": offset, "random": random_sample, "source": source}
+        )
 
-    async def find_similar_tracks(self, track_id: str, service_name: str = "default", limit: int = 5):
-        # Use endpoint /tracks/{id}/similar
-        return await self._request(service_name, "GET", f"/tracks/{track_id}/similar", params={"limit": limit})
+    async def find_similar_tracks(
+        self, 
+        track_id: str, 
+        limit: int = 5,
+        source: Literal["library", "fma", "all"] = "library"
+    ):
+        """
+        Find tracks similar to the given track using audio embeddings.
+        
+        Args:
+            track_id: Vector ID of the reference track
+            limit: Maximum number of similar tracks to return
+            source: Filter results by source - 'library', 'fma', or 'all'
+        """
+        return await self._request(
+            "GET", f"/tracks/{track_id}/similar", 
+            params={"limit": limit, "source": source}
+        )
 
-    async def interpolate(self, track_id_1: str, track_id_2: str, service_name: str = "default", limit: int = 10, method: str = "greedy_walk", steer_track_id: Optional[str] = None):
+    async def interpolate(
+        self, 
+        track_id_1: str, 
+        track_id_2: str, 
+        limit: int = 10, 
+        method: str = "greedy_walk", 
+        steer_track_id: Optional[str] = None
+    ):
+        """
+        Find tracks that sonically bridge between two tracks.
+        
+        Args:
+            track_id_1: Vector ID of the starting track
+            track_id_2: Vector ID of the ending track
+            limit: Number of intermediate tracks to find
+            method: Interpolation method - 'greedy_walk', 'slerp', or 'linear'
+            steer_track_id: Optional track ID to steer the path toward (vibe steering)
+        """
         payload = {
             "track_id_1": track_id_1,
             "track_id_2": track_id_2,
@@ -51,30 +94,50 @@ class EchoLocate:
         if steer_track_id:
             payload["steer_track_id"] = steer_track_id
             
-        return await self._request(service_name, "POST", "/interpolate", json_body=payload)
+        return await self._request("POST", "/interpolate", json_body=payload)
 
-    async def generate_playlist(self, track_id_1: str, track_id_2: str, service_name: str = "default", limit: int = 20):
+    async def generate_playlist(
+        self, 
+        track_id_1: str, 
+        track_id_2: str, 
+        limit: int = 20
+    ):
+        """
+        Generate a full playlist path between two tracks.
+        
+        Args:
+            track_id_1: Vector ID of the starting track
+            track_id_2: Vector ID of the ending track
+            limit: Total number of tracks in the playlist
+        """
         payload = {
             "track_id_1": track_id_1,
             "track_id_2": track_id_2,
             "limit": limit
         }
-        return await self._request(service_name, "POST", "/interpolate/playlist", json_body=payload)
-    
-    async def get_available_services(self) -> List[str]:
-        return list(self.vector_service_urls.keys())
+        return await self._request("POST", "/interpolate/playlist", json_body=payload)
 
     async def text_search(
         self, 
-        service_name: str = "default", 
         query: str = None,
         artist: str = None, 
         album: str = None, 
         title: str = None,
-        limit: int = 20
+        limit: int = 20,
+        source: Literal["library", "fma", "all"] = "library"
     ):
-        """Text-based search by artist, album, or title."""
-        params = {"limit": limit}
+        """
+        Search tracks by text metadata (artist, album, title).
+        
+        Args:
+            query: General search term
+            artist: Filter by artist name
+            album: Filter by album name
+            title: Filter by track title
+            limit: Maximum results to return
+            source: Filter by source - 'library', 'fma', or 'all'
+        """
+        params = {"limit": limit, "source": source}
         if query:
             params["query"] = query
         if artist:
@@ -83,21 +146,27 @@ class EchoLocate:
             params["album"] = album
         if title:
             params["title"] = title
-        return await self._request(service_name, "GET", "/search", params=params)
+        return await self._request("GET", "/search", params=params)
 
     async def semantic_search(
         self, 
         query: str, 
-        service_name: str = "default", 
-        limit: int = 10
+        limit: int = 10,
+        source: Literal["library", "fma", "all"] = "library"
     ):
         """
-        Search for tracks using natural language queries like 'jazz saxophone' or 'ambient rain'.
-        Uses CLAP AI model to match audio content to text descriptions.
+        Search for tracks using natural language descriptions.
+        
+        Uses CLAP AI to match audio content to text descriptions like
+        'jazz saxophone' or 'ambient rain sounds'.
+        
+        Args:
+            query: Natural language description of desired sound
+            limit: Maximum results to return
+            source: Filter by source - 'library', 'fma', or 'all'
         """
         return await self._request(
-            service_name, 
             "POST", 
             "/semantic-search", 
-            json_body={"query": query, "limit": limit}
+            json_body={"query": query, "limit": limit, "source": source}
         )

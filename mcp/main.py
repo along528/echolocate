@@ -55,15 +55,7 @@ MCP_CLIENT_ID = get_secret("MCP_CLIENT_ID")
 MCP_CLIENT_SECRET = get_secret("MCP_CLIENT_SECRET")
 
 # Vector Service Configuration
-# EchoLocate supports multiple independent vector services
-VECTOR_URLS = {}
-if os.getenv("LIBRARY_VECTOR_URL"):
-    VECTOR_URLS["library"] = os.getenv("LIBRARY_VECTOR_URL")
-if os.getenv("FMA_VECTOR_URL"):
-    VECTOR_URLS["fma"] = os.getenv("FMA_VECTOR_URL")
-# Fallback/Legacy
-if not VECTOR_URLS and get_secret("VECTOR_SERVICE_URL"):
-     VECTOR_URLS["default"] = get_secret("VECTOR_SERVICE_URL")
+VECTOR_SERVICE_URL = os.getenv("VECTOR_SERVICE_URL") or get_secret("VECTOR_SERVICE_URL")
 
 # Apple Music Secrets
 APPLE_TEAM_ID = get_secret("APPLE_TEAM_ID")
@@ -99,11 +91,11 @@ else:
     print("Warning: DISCOGS_TOKEN not found. Discogs tools will be disabled.")
 
 echo_locate = None
-if VECTOR_URLS:
-    echo_locate = EchoLocate(VECTOR_URLS)
-    print(f"Echo Locate initialized with services: {list(VECTOR_URLS.keys())}")
+if VECTOR_SERVICE_URL:
+    echo_locate = EchoLocate(VECTOR_SERVICE_URL)
+    print(f"Echo Locate initialized with URL: {VECTOR_SERVICE_URL}")
 else:
-    print("Warning: No Vector Service URLs found. Vector tools will be disabled.")
+    print("Warning: VECTOR_SERVICE_URL not found. Vector tools will be disabled.")
 
 
 ALGORITHM = "HS256"
@@ -370,93 +362,102 @@ async def list_tools():
     if echo_locate:
         tools.append(Tool(
             name="echolocate_sample",
-            description="Sample tracks from a vector DB.",
+            description="Sample tracks from the vector database. Use source='library' (default) for personal library, 'fma' for Free Music Archive, or 'all' for both.",
             inputSchema={
                 "type": "object",
                 "properties": {
-                    "service_name": {"type": "string", "description": "Vector Service Name (e.g. 'library', 'fma')", "default": "default"},
-                    "limit": {"type": "integer"},
-                    "offset": {"type": "integer"},
-                    "random": {"type": "boolean"}
+                    "source": {
+                        "type": "string", 
+                        "enum": ["library", "fma", "all"], 
+                        "description": "Which tracks to sample: 'library' = personal Apple Music library, 'fma' = Free Music Archive, 'all' = both sources", 
+                        "default": "library"
+                    },
+                    "limit": {"type": "integer", "description": "Max tracks to return", "default": 20},
+                    "offset": {"type": "integer", "description": "Offset for pagination"},
+                    "random": {"type": "boolean", "description": "Return random tracks", "default": True}
                 }
             }
         ))
         tools.append(Tool(
             name="echolocate_similar",
-            description="Find similar tracks.",
+            description="Find tracks with similar audio characteristics to a given track. Use 'source' to filter results: 'library', 'fma', or 'all'.",
             inputSchema={
                 "type": "object",
                 "properties": {
-                    "track_id": {"type": "string"},
-                    "service_name": {"type": "string", "default": "default"},
-                    "limit": {"type": "integer"}
+                    "track_id": {"type": "string", "description": "Vector ID of the reference track"},
+                    "source": {
+                        "type": "string", 
+                        "enum": ["library", "fma", "all"], 
+                        "description": "Which tracks to search: 'library' = personal library, 'fma' = Free Music Archive, 'all' = both", 
+                        "default": "library"
+                    },
+                    "limit": {"type": "integer", "description": "Max similar tracks to return", "default": 5}
                 },
                 "required": ["track_id"]
             }
         ))
         tools.append(Tool(
             name="echolocate_interpolate",
-            description="Interpolate between two tracks. Returns Vector IDs. When creating playlists, search for these tracks in the Apple Music Library first (apple_search_library), not the Catalog.",
+            description="Find tracks that sonically bridge between two tracks. Returns Vector IDs. When creating Apple Music playlists, search for these tracks in the library first (apple_search_library).",
             inputSchema={
                 "type": "object",
                 "properties": {
-                    "track_id_1": {"type": "string"},
-                    "track_id_2": {"type": "string"},
-                    "service_name": {"type": "string", "default": "default"},
-                    "limit": {"type": "integer"},
-                    "method": {"type": "string", "enum": ["greedy_walk", "slerp", "linear"]},
-                    "steer_track_id": {"type": "string"}
+                    "track_id_1": {"type": "string", "description": "Vector ID of starting track"},
+                    "track_id_2": {"type": "string", "description": "Vector ID of ending track"},
+                    "limit": {"type": "integer", "description": "Number of intermediate tracks", "default": 10},
+                    "method": {"type": "string", "enum": ["greedy_walk", "slerp", "linear"], "description": "Interpolation method", "default": "greedy_walk"},
+                    "steer_track_id": {"type": "string", "description": "Optional track ID to steer the path toward (vibe steering)"}
                 },
                 "required": ["track_id_1", "track_id_2"]
             }
         ))
         tools.append(Tool(
             name="echolocate_generate_playlist",
-            description="Generate a full playlist path between two tracks. Returns Vector IDs. When adding to Apple Music, search for these tracks in the Apple Music Library first (apple_search_library), not the Catalog.",
+            description="Generate a complete playlist path between two tracks. Returns Vector IDs. When adding to Apple Music, search for these tracks in the library first (apple_search_library).",
             inputSchema={
                 "type": "object",
                 "properties": {
-                    "track_id_1": {"type": "string"},
-                    "track_id_2": {"type": "string"},
-                    "service_name": {"type": "string", "default": "default"},
-                    "limit": {"type": "integer"}
+                    "track_id_1": {"type": "string", "description": "Vector ID of starting track"},
+                    "track_id_2": {"type": "string", "description": "Vector ID of ending track"},
+                    "limit": {"type": "integer", "description": "Total tracks in playlist", "default": 20}
                 },
                 "required": ["track_id_1", "track_id_2"]
             }
         ))
         tools.append(Tool(
             name="echolocate_text_search",
-            description="Search tracks by text: artist, album, or title.",
+            description="Search tracks by metadata: artist, album, or title. Use 'source' to filter: 'library', 'fma', or 'all'.",
             inputSchema={
                 "type": "object",
                 "properties": {
-                    "query": {"type": "string", "description": "General search term (searches across all text fields)"},
+                    "query": {"type": "string", "description": "General search term"},
                     "artist": {"type": "string", "description": "Search by artist name"},
                     "album": {"type": "string", "description": "Search by album name"},
                     "title": {"type": "string", "description": "Search by track title"},
-                    "service_name": {"type": "string", "description": "Vector Service Name (e.g. 'library', 'fma')", "default": "default"},
-                    "limit": {"type": "integer", "default": 20}
+                    "source": {
+                        "type": "string", 
+                        "enum": ["library", "fma", "all"], 
+                        "description": "Which tracks to search: 'library' = personal library, 'fma' = Free Music Archive, 'all' = both", 
+                        "default": "library"
+                    },
+                    "limit": {"type": "integer", "description": "Max results", "default": 20}
                 }
             }
         ))
         tools.append(Tool(
             name="echolocate_semantic_search",
-            description=(
-                "Search for music and audio by 'vibe' or acoustic description using the CLAP AI model. "
-                "IMPORTANT: Take the user's short music/sound query and expand it into a 1-sentence acoustic caption. "
-                "Focus on: Timbre (bright, dark, metallic, resonant), Environment (reverb, space, outdoors), "
-                "Action (playing, hitting, singing). Prepend with 'This is a sound of' or 'A recording of'. "
-                "Example: 'jazz sax' → 'A recording of a soulful jazz saxophone solo with warm tone in a resonant room.'"
-            ),
+            description="Search for music by 'vibe' or acoustic description using CLAP AI. Use 'source' to filter: 'library', 'fma', or 'all'. Expand user queries into descriptive acoustic captions for best results. Examples: 'warm analog synths', 'aggressive drums with distorted guitar', 'calm piano with rain sounds'.",
             inputSchema={
                 "type": "object",
                 "properties": {
-                    "query": {
+                    "query": {"type": "string", "description": "Natural language description of desired sound"},
+                    "source": {
                         "type": "string", 
-                        "description": "An expanded acoustic caption describing the audio's timbre, mood, and environment."
+                        "enum": ["library", "fma", "all"], 
+                        "description": "Which tracks to search: 'library' = personal library, 'fma' = Free Music Archive, 'all' = both", 
+                        "default": "library"
                     },
-                    "service_name": {"type": "string", "description": "Vector Service Name (e.g. 'library', 'fma')", "default": "default"},
-                    "limit": {"type": "integer", "default": 10}
+                    "limit": {"type": "integer", "description": "Max results", "default": 10}
                 },
                 "required": ["query"]
             }
@@ -889,28 +890,50 @@ Duration: {attrs.get('durationInMillis')} ms
     elif name.startswith("echolocate_"):
         if not echo_locate: return [TextContent(type="text", text="Echo Locate not configured")]
         try:
-            service = arguments.get("service_name", "default")
-            
             if name == "echolocate_generate_playlist":
-                 res = await echo_locate.generate_playlist(arguments["track_id_1"], arguments["track_id_2"], service, limit=arguments.get("limit", 20))
+                 res = await echo_locate.generate_playlist(
+                     arguments["track_id_1"], 
+                     arguments["track_id_2"], 
+                     limit=arguments.get("limit", 20)
+                 )
                  output = "\n".join([f"- {t['title']} by {t['artist']} (Vector ID: {t['id']})" for t in res])
                  return [TextContent(type="text", text=f"Generated Path:\n{output}")]
 
             elif name == "echolocate_sample":
-                res = await echo_locate.sample_db(service, limit=arguments.get("limit", 20), offset=arguments.get("offset", 0), random_sample=arguments.get("random", True))
-                # Format output
-                output = "\n".join([f"Vector ID: {t['id']} | {t['title']} - {t['artist']}" for t in res])
-                return [TextContent(type="text", text=output or "Empty DB")]
+                res = await echo_locate.sample_db(
+                    limit=arguments.get("limit", 20), 
+                    offset=arguments.get("offset", 0), 
+                    random_sample=arguments.get("random", True), 
+                    source=arguments.get("source", "library")
+                )
+                lines = []
+                for t in res:
+                    line = f"Vector ID: {t['id']} | {t['title']} - {t['artist']}"
+                    if t.get('track_url'):
+                        line += f" | {t['track_url']}"
+                    lines.append(line)
+                return [TextContent(type="text", text="\n".join(lines) or "Empty DB")]
 
             elif name == "echolocate_similar":
-                res = await echo_locate.find_similar_tracks(arguments["track_id"], service, limit=arguments.get("limit", 5))
-                output = "\n".join([f"Vector ID: {t['id']} | Sim: {t.get('similarity', 0):.2f} | {t['title']}" for t in res])
-                return [TextContent(type="text", text=output or "No similar tracks")]
+                res = await echo_locate.find_similar_tracks(
+                    arguments["track_id"], 
+                    limit=arguments.get("limit", 5), 
+                    source=arguments.get("source", "library")
+                )
+                lines = []
+                for t in res:
+                    line = f"Vector ID: {t['id']} | Sim: {t.get('similarity', 0):.2f} | {t['title']}"
+                    if t.get('track_url'):
+                        line += f" | {t['track_url']}"
+                    lines.append(line)
+                return [TextContent(type="text", text="\n".join(lines) or "No similar tracks")]
 
             elif name == "echolocate_interpolate":
                 res = await echo_locate.interpolate(
-                    arguments["track_id_1"], arguments["track_id_2"], service,
-                    limit=arguments.get("limit", 10), method=arguments.get("method", "greedy_walk"),
+                    arguments["track_id_1"], 
+                    arguments["track_id_2"],
+                    limit=arguments.get("limit", 10), 
+                    method=arguments.get("method", "greedy_walk"),
                     steer_track_id=arguments.get("steer_track_id")
                 )
                 output = "\n".join([f"Vector ID: {t['id']} | {t['title']}" for t in res])
@@ -918,24 +941,34 @@ Duration: {attrs.get('durationInMillis')} ms
 
             elif name == "echolocate_text_search":
                 res = await echo_locate.text_search(
-                    service_name=service,
                     query=arguments.get("query"),
                     artist=arguments.get("artist"),
                     album=arguments.get("album"),
                     title=arguments.get("title"),
-                    limit=arguments.get("limit", 20)
+                    limit=arguments.get("limit", 20),
+                    source=arguments.get("source", "library")
                 )
-                output = "\n".join([f"Vector ID: {t['id']} | {t['title']} - {t['artist']}" for t in res])
-                return [TextContent(type="text", text=output or "No results")]
+                lines = []
+                for t in res:
+                    line = f"Vector ID: {t['id']} | {t['title']} - {t['artist']}"
+                    if t.get('track_url'):
+                        line += f" | {t['track_url']}"
+                    lines.append(line)
+                return [TextContent(type="text", text="\n".join(lines) or "No results")]
 
             elif name == "echolocate_semantic_search":
                 res = await echo_locate.semantic_search(
                     query=arguments["query"],
-                    service_name=service,
-                    limit=arguments.get("limit", 10)
+                    limit=arguments.get("limit", 10),
+                    source=arguments.get("source", "library")
                 )
-                output = "\n".join([f"Vector ID: {t['id']} | Sim: {t.get('similarity', 0):.3f} | {t['title']} - {t['artist']}" for t in res])
-                return [TextContent(type="text", text=output or "No semantic matches found")]
+                lines = []
+                for t in res:
+                    line = f"Vector ID: {t['id']} | Sim: {t.get('similarity', 0):.3f} | {t['title']} - {t['artist']}"
+                    if t.get('track_url'):
+                        line += f" | {t['track_url']}"
+                    lines.append(line)
+                return [TextContent(type="text", text="\n".join(lines) or "No semantic matches found")]
 
         except Exception as e:
             return [TextContent(type="text", text=f"Echo Locate Error: {e}")]

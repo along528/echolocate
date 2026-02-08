@@ -78,21 +78,30 @@ DB_PATH = os.getenv("DB_PATH", "cloudcrate.duckdb")
 class SearchRequest(BaseModel):
     vector: List[float]
     limit: Optional[int] = 10
+    source: Optional[Literal["library", "fma", "all"]] = "library"
 
 class SearchResult(BaseModel):
     id: str
+    source: Optional[str] = None
     title: str
     artist: str
     album: str
     relative_path: str
     similarity: float
+    track_url: Optional[str] = None
+    album_url: Optional[str] = None
+    artist_url: Optional[str] = None
 
 class TrackResponse(BaseModel):
     id: str
+    source: Optional[str] = None
     title: str
     artist: str
     album: str
     relative_path: str
+    track_url: Optional[str] = None
+    album_url: Optional[str] = None
+    artist_url: Optional[str] = None
 
 class InterpolationRequest(BaseModel):
     track_id_1: str
@@ -103,6 +112,7 @@ class InterpolationRequest(BaseModel):
 class SemanticSearchRequest(BaseModel):
     query: str
     limit: Optional[int] = 10
+    source: Optional[Literal["library", "fma", "all"]] = "library"
 
 # CLAP Model (lazy-loaded on first semantic search request)
 clap_model = None
@@ -148,15 +158,17 @@ def health_check():
     return {"status": "ok", "service": "cloudcrate-vector"}
 
 @app.get("/tracks", response_model=List[TrackResponse])
-def list_tracks(limit: int = 50, offset: int = 0, random: bool = True):
+def list_tracks(limit: int = 50, offset: int = 0, random: bool = True, source: Literal["library", "fma", "all"] = "library"):
     try:
         con = get_db_connection()
+        source_filter = "" if source == "all" else f"WHERE source = '{source}'"
+        
         if random:
-            # Efficient random sampling
-            query = "SELECT id, title, artist, album, relative_path FROM tracks ORDER BY RANDOM() LIMIT ?"
+            query = f"SELECT id, source, title, artist, album, relative_path, track_url, album_url, artist_url FROM tracks {source_filter} ORDER BY RANDOM() LIMIT ?"
             results = con.execute(query, [limit]).fetchall()
         else:
-            query = "SELECT id, title, artist, album, relative_path FROM tracks LIMIT ? OFFSET ?"
+            where_or_and = "WHERE" if source == "all" else "AND"
+            query = f"SELECT id, source, title, artist, album, relative_path, track_url, album_url, artist_url FROM tracks {source_filter} ORDER BY id LIMIT ? OFFSET ?"
             results = con.execute(query, [limit, offset]).fetchall()
         con.close()
         
@@ -164,10 +176,14 @@ def list_tracks(limit: int = 50, offset: int = 0, random: bool = True):
         for row in results:
             response.append(TrackResponse(
                 id=row[0],
-                title=row[1],
-                artist=row[2],
-                album=row[3],
-                relative_path=row[4]
+                source=row[1],
+                title=row[2],
+                artist=row[3],
+                album=row[4],
+                relative_path=row[5],
+                track_url=row[6],
+                album_url=row[7],
+                artist_url=row[8]
             ))
         return response
     except Exception as e:
@@ -175,13 +191,12 @@ def list_tracks(limit: int = 50, offset: int = 0, random: bool = True):
         raise HTTPException(status_code=500, detail=str(e))
 
 @app.get("/tracks/{track_id}/similar", response_model=List[SearchResult])
-def find_similar(track_id: str, limit: int = 10):
+def find_similar(track_id: str, limit: int = 10, source: Literal["library", "fma", "all"] = "library"):
     try:
         con = get_db_connection()
         
         # 1. Get the vector for the target track
-        # We use v_mid as the default representation
-        vector_query = "SELECT v_mid FROM tracks WHERE id = ?"
+        vector_query = "SELECT v_mid, source FROM tracks WHERE id = ?"
         vector_result = con.execute(vector_query, [track_id]).fetchone()
         
         if not vector_result:
@@ -191,10 +206,12 @@ def find_similar(track_id: str, limit: int = 10):
         target_vector = vector_result[0]
         
         # 2. Search for similar tracks, excluding the track itself
-        query = """
-            SELECT id, title, artist, album, relative_path, array_cosine_similarity(v_mid, ?::FLOAT[768]) as similarity
+        source_filter = "" if source == "all" else f"AND source = '{source}'"
+        query = f"""
+            SELECT id, source, title, artist, album, relative_path, track_url, album_url, artist_url,
+                   array_cosine_similarity(v_mid, ?::FLOAT[768]) as similarity
             FROM tracks
-            WHERE id != ?
+            WHERE id != ? {source_filter}
             ORDER BY similarity DESC
             LIMIT ?
         """
@@ -206,11 +223,15 @@ def find_similar(track_id: str, limit: int = 10):
         for row in results:
             response.append(SearchResult(
                 id=row[0],
-                title=row[1],
-                artist=row[2],
-                album=row[3],
-                relative_path=row[4],
-                similarity=row[5]
+                source=row[1],
+                title=row[2],
+                artist=row[3],
+                album=row[4],
+                relative_path=row[5],
+                track_url=row[6],
+                album_url=row[7],
+                artist_url=row[8],
+                similarity=row[9]
             ))
             
         return response
@@ -226,7 +247,8 @@ def search_tracks_text(
     artist: Optional[str] = None,
     album: Optional[str] = None,
     title: Optional[str] = None,
-    limit: int = 20
+    limit: int = 20,
+    source: Literal["library", "fma", "all"] = "library"
 ):
     """Text-based search by artist, album, or title."""
     try:
@@ -236,8 +258,12 @@ def search_tracks_text(
         conditions = []
         params = []
         
+        # Add source filter first
+        if source != "all":
+            conditions.append("source = ?")
+            params.append(source)
+        
         if query:
-            # General search across all text fields
             conditions.append("(title ILIKE ? OR artist ILIKE ? OR album ILIKE ?)")
             search_term = f"%{query}%"
             params.extend([search_term, search_term, search_term])
@@ -251,12 +277,14 @@ def search_tracks_text(
             conditions.append("title ILIKE ?")
             params.append(f"%{title}%")
         
-        if not conditions:
+        # Need at least one search term (besides source)
+        search_conditions = len([c for c in [query, artist, album, title] if c])
+        if search_conditions == 0:
             con.close()
             raise HTTPException(status_code=400, detail="At least one search parameter required: query, artist, album, or title")
         
         where_clause = " AND ".join(conditions)
-        sql = f"SELECT id, title, artist, album, relative_path FROM tracks WHERE {where_clause} LIMIT ?"
+        sql = f"SELECT id, source, title, artist, album, relative_path, track_url, album_url, artist_url FROM tracks WHERE {where_clause} LIMIT ?"
         params.append(limit)
         
         results = con.execute(sql, params).fetchall()
@@ -266,10 +294,14 @@ def search_tracks_text(
         for row in results:
             response.append(TrackResponse(
                 id=row[0],
-                title=row[1],
-                artist=row[2],
-                album=row[3],
-                relative_path=row[4]
+                source=row[1],
+                title=row[2],
+                artist=row[3],
+                album=row[4],
+                relative_path=row[5],
+                track_url=row[6],
+                album_url=row[7],
+                artist_url=row[8]
             ))
         return response
         
@@ -284,34 +316,36 @@ def vector_search_tracks(request: SearchRequest):
     try:
         con = get_db_connection()
         
-        # Ensure vector is correct dimension (optional check, but DB will throw if wrong)
         if len(request.vector) != 768:
             raise HTTPException(status_code=400, detail=f"Vector must be 768 dimensions, got {len(request.vector)}")
 
-        # Perform Query
-        # Using v_mid as the default representation for search
+        source_filter = "" if request.source == "all" else f"WHERE source = '{request.source}'"
         
-        query = """
-            SELECT id, title, artist, album, relative_path, array_cosine_similarity(v_mid, ?::FLOAT[768]) as similarity
+        query = f"""
+            SELECT id, source, title, artist, album, relative_path, track_url, album_url, artist_url,
+                   array_cosine_similarity(v_mid, ?::FLOAT[768]) as similarity
             FROM tracks
+            {source_filter}
             ORDER BY similarity DESC
             LIMIT ?
         """
         
         results = con.execute(query, [request.vector, request.limit]).fetchall()
-        
         con.close()
         
-        # Format results
         response = []
         for row in results:
             response.append(SearchResult(
                 id=row[0],
-                title=row[1],
-                artist=row[2],
-                album=row[3],
-                relative_path=row[4],
-                similarity=row[5]
+                source=row[1],
+                title=row[2],
+                artist=row[3],
+                album=row[4],
+                relative_path=row[5],
+                track_url=row[6],
+                album_url=row[7],
+                artist_url=row[8],
+                similarity=row[9]
             ))
             
         return response
@@ -327,26 +361,25 @@ def semantic_search(request: SemanticSearchRequest):
     Uses CLAP model to generate text embeddings and matches against v_clap audio embeddings.
     """
     try:
-        # Lazy-load CLAP model on first request
         model, processor = get_clap_model()
         
-        # 1. Generate text embedding from query
         text_inputs = processor(text=[request.query], padding=True, return_tensors="pt")
         
         with torch.no_grad():
             text_features = model.get_text_features(**text_inputs)
-            # L2 normalize
             text_features = text_features / text_features.norm(dim=-1, keepdim=True)
         
         query_vector = text_features.squeeze(0).cpu().numpy().tolist()
         
-        # 2. Search v_clap column
         con = get_db_connection()
         
-        query = """
-            SELECT id, title, artist, album, relative_path, array_cosine_similarity(v_clap, ?::FLOAT[512]) as similarity
+        source_filter = "AND source = '" + request.source + "'" if request.source != "all" else ""
+        
+        query = f"""
+            SELECT id, source, title, artist, album, relative_path, track_url, album_url, artist_url,
+                   array_cosine_similarity(v_clap, ?::FLOAT[512]) as similarity
             FROM tracks
-            WHERE v_clap IS NOT NULL
+            WHERE v_clap IS NOT NULL {source_filter}
             ORDER BY similarity DESC
             LIMIT ?
         """
@@ -354,16 +387,19 @@ def semantic_search(request: SemanticSearchRequest):
         results = con.execute(query, [query_vector, request.limit]).fetchall()
         con.close()
         
-        # 3. Format results
         response = []
         for row in results:
             response.append(SearchResult(
                 id=row[0],
-                title=row[1],
-                artist=row[2],
-                album=row[3],
-                relative_path=row[4],
-                similarity=row[5]
+                source=row[1],
+                title=row[2],
+                artist=row[3],
+                album=row[4],
+                relative_path=row[5],
+                track_url=row[6],
+                album_url=row[7],
+                artist_url=row[8],
+                similarity=row[9]
             ))
         
         return response

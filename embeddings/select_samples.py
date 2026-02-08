@@ -4,7 +4,7 @@ import glob
 
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 PROJECT_ROOT = os.path.dirname(BASE_DIR)
-DATA_DIR = os.path.join(PROJECT_ROOT, "data")
+DATA_DIR = os.path.join(PROJECT_ROOT, "data", "library")
 SEARCH_DIR = os.path.join(PROJECT_ROOT, "crate", "Apple")
 OUTPUT_FILE = os.path.join(DATA_DIR, "sample_files.txt")
 
