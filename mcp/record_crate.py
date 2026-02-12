@@ -164,6 +164,40 @@ class RecordCrate:
         url = f"{self.BASE_URL}/users/{username}/collection/folders/{folder_id}/releases/{release_id}"
         return await self._post(url)
 
+    async def get_instance_info(self, username: str, release_id: str) -> Optional[Dict[str, Any]]:
+        """
+        Finds the instance ID and current folder for a release ID.
+        Uses GET /users/{username}/collection/releases/{release_id}
+        Returns dict with 'instance_id' and 'folder_id' of the first instance found, else None.
+        """
+        url = f"{self.BASE_URL}/users/{username}/collection/releases/{release_id}"
+        try:
+            data = await self._get(url)
+            releases = data.get("releases", [])
+            if not releases:
+                return None
+            
+            # Return the first instance found
+            first = releases[0]
+            return {
+                "instance_id": first.get("instance_id"),
+                "folder_id": first.get("folder_id")
+            }
+        except Exception as e:
+            # 404 might mean not in collection
+            print(f"Error fetching instance info: {e}")
+            return None
+
+    async def move_release_instance(self, username: str, folder_id: int, release_id: str, instance_id: int, new_folder_id: int) -> bool:
+        """
+        Move a release instance to a new folder.
+        POST /users/{username}/collection/folders/{folder_id}/releases/{release_id}/instances/{instance_id}
+        Body: {"folder_id": new_folder_id}
+        """
+        url = f"{self.BASE_URL}/users/{username}/collection/folders/{folder_id}/releases/{release_id}/instances/{instance_id}"
+        await self._post(url, json_data={"folder_id": new_folder_id})
+        return True
+
     def get_marketplace_url(self, release_id: str) -> str:
         """
         Returns the simplified marketplace URL for a given release ID.

@@ -546,6 +546,18 @@ async def list_tools():
             "required": ["release_id"]
         }
     ))
+    tools.append(Tool(
+        name="discogs_move_release",
+        description="Move a release from one Discogs collection folder to another. Input: Release ID (NOT Master ID) and New Folder ID.",
+        inputSchema={
+            "type": "object",
+            "properties": {
+                "release_id": {"type": "string", "description": "Discogs Release ID"},
+                "new_folder_id": {"type": "integer", "description": "Destination Folder ID"}
+            },
+            "required": ["release_id", "new_folder_id"]
+        }
+    ))
 
     return tools
 
@@ -883,6 +895,33 @@ Duration: {attrs.get('durationInMillis')} ms
             result = await record_crate.add_to_collection(username, folder_id, release_id)
             instance_id = result.get("instance_id")
             return [TextContent(type="text", text=f"Added to Collection! Release ID: {release_id}, Instance ID: {instance_id}, Folder ID: {folder_id}")]
+        except Exception as e:
+            return [TextContent(type="text", text=f"Error: {e}")]
+
+    elif name == "discogs_move_release":
+        if not record_crate: return [TextContent(type="text", text="Record Crate not configured")]
+        try:
+            identity = await record_crate.get_identity()
+            username = identity.get("username")
+            if not username: return [TextContent(type="text", text="No username found")]
+
+            release_id = arguments["release_id"]
+            new_folder_id = arguments["new_folder_id"]
+
+            # Find the instance
+            info = await record_crate.get_instance_info(username, release_id)
+            if not info:
+                return [TextContent(type="text", text=f"Release {release_id} not found in collection (checked first 1000 items).")]
+            
+            instance_id = info["instance_id"]
+            current_folder_id = info["folder_id"]
+
+            if current_folder_id == new_folder_id:
+                return [TextContent(type="text", text=f"Release {release_id} is already in folder {new_folder_id}.")]
+
+            await record_crate.move_release_instance(username, current_folder_id, release_id, instance_id, new_folder_id)
+            return [TextContent(type="text", text=f"Moved release {release_id} from folder {current_folder_id} to {new_folder_id}.")]
+
         except Exception as e:
             return [TextContent(type="text", text=f"Error: {e}")]
 
