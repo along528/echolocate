@@ -241,6 +241,58 @@ def find_similar(track_id: str, limit: int = 10, source: Literal["library", "fma
         print(f"Error finding similar tracks: {e}")
         raise HTTPException(status_code=500, detail=str(e))
 
+@app.get("/tracks/{track_id}/dissimilar", response_model=List[SearchResult])
+def find_dissimilar(track_id: str, limit: int = 10, source: Literal["library", "fma", "all"] = "library"):
+    try:
+        con = get_db_connection()
+        
+        # 1. Get the vector for the target track
+        vector_query = "SELECT v_mid, source FROM tracks WHERE id = ?"
+        vector_result = con.execute(vector_query, [track_id]).fetchone()
+        
+        if not vector_result:
+            con.close()
+            raise HTTPException(status_code=404, detail="Track not found")
+            
+        target_vector = vector_result[0]
+        
+        # 2. Search for DISSIMILAR tracks, excluding the track itself
+        # We use ORDER BY similarity ASC to find the ones with lowest cosine similarity
+        source_filter = "" if source == "all" else f"AND source = '{source}'"
+        query = f"""
+            SELECT id, source, title, artist, album, relative_path, track_url, album_url, artist_url,
+                   array_cosine_similarity(v_mid, ?::FLOAT[768]) as similarity
+            FROM tracks
+            WHERE id != ? {source_filter}
+            ORDER BY similarity ASC
+            LIMIT ?
+        """
+        
+        results = con.execute(query, [target_vector, track_id, limit]).fetchall()
+        con.close()
+        
+        response = []
+        for row in results:
+            response.append(SearchResult(
+                id=row[0],
+                source=row[1],
+                title=row[2],
+                artist=row[3],
+                album=row[4],
+                relative_path=row[5],
+                track_url=row[6],
+                album_url=row[7],
+                artist_url=row[8],
+                similarity=row[9]
+            ))
+            
+        return response
+    except HTTPException:
+        raise
+    except Exception as e:
+        print(f"Error finding dissimilar tracks: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
 @app.get("/search", response_model=List[TrackResponse])
 def search_tracks_text(
     query: Optional[str] = None,
