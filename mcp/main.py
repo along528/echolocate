@@ -457,7 +457,8 @@ async def list_tools():
                         "description": "Which tracks to search: 'library' = personal library, 'fma' = Free Music Archive, 'all' = both", 
                         "default": "library"
                     },
-                    "limit": {"type": "integer", "description": "Max results", "default": 10}
+                    "limit": {"type": "integer", "description": "Max results", "default": 10},
+                    "enhance": {"type": "boolean", "description": "Use AI agent to expand query", "default": True}
                 },
                 "required": ["query"]
             }
@@ -999,7 +1000,8 @@ Duration: {attrs.get('durationInMillis')} ms
                 res = await echo_locate.semantic_search(
                     query=arguments["query"],
                     limit=arguments.get("limit", 10),
-                    source=arguments.get("source", "library")
+                    source=arguments.get("source", "library"),
+                    enhance=arguments.get("enhance", True)
                 )
                 
                 # Handle new response format (dict vs list)
