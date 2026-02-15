@@ -1001,13 +1001,25 @@ Duration: {attrs.get('durationInMillis')} ms
                     limit=arguments.get("limit", 10),
                     source=arguments.get("source", "library")
                 )
+                
+                # Handle new response format (dict vs list)
+                results_list = res
+                enhanced_text = ""
+                
+                if isinstance(res, dict):
+                    results_list = res.get("results", [])
+                    if res.get("enhanced_query"):
+                        enhanced_text = f"🤖 Enhanced Query: '{res.get('enhanced_query')}'\n\n"
+                
                 lines = []
-                for t in res:
+                for t in results_list:
                     line = f"Vector ID: {t['id']} | Sim: {t.get('similarity', 0):.3f} | {t['title']} - {t['artist']}"
                     if t.get('track_url'):
                         line += f" | {t['track_url']}"
                     lines.append(line)
-                return [TextContent(type="text", text="\n".join(lines) or "No semantic matches found")]
+                
+                output = enhanced_text + ("\n".join(lines) or "No semantic matches found")
+                return [TextContent(type="text", text=output)]
 
         except Exception as e:
             return [TextContent(type="text", text=f"Echo Locate Error: {e}")]
