@@ -2,7 +2,11 @@ import duckdb
 from fastapi import FastAPI, HTTPException
 from pydantic import BaseModel
 from typing import List, Optional, Literal
+from typing import List, Optional, Literal
 import os
+import uvicorn
+import vertexai
+from vertexai.generative_models import GenerativeModel, GenerationConfig
 import numpy as np
 import math
 import torch
@@ -73,6 +77,11 @@ app = FastAPI()
 
 # Configuration
 DB_PATH = os.getenv("DB_PATH", "cloudcrate.duckdb")
+PROJECT_ID = os.getenv("GCP_PROJECT_ID")
+LOCATION = os.getenv("GCP_LOCATION", "us-central1")
+
+# Global models
+gemini_model = None
 
 # Pydantic Models
 class SearchRequest(BaseModel):
@@ -113,11 +122,40 @@ class SemanticSearchRequest(BaseModel):
     query: str
     limit: Optional[int] = 10
     source: Optional[Literal["library", "fma", "all"]] = "library"
+    enhance: Optional[bool] = False  # Toggle for the agent
+
+# Wrapper for the full response
+class SemanticSearchResponse(BaseModel):
+    results: List[SearchResult]
+    enhanced_query: Optional[str] = None
+    original_query: str
 
 # CLAP Model (lazy-loaded on first semantic search request)
 clap_model = None
 clap_processor = None
 CLAP_MODEL_NAME = "laion/clap-htsat-unfused"
+
+def run_agent_enhancement(raw_query: str) -> str:
+    """Runs the Gemini Agent to expand the query."""
+    if not gemini_model:
+        return raw_query
+
+    try:
+        # We don't need to send the system prompt here; it's baked into the model init
+        response = gemini_model.generate_content(
+            f"Input: '{raw_query}'",
+            generation_config=GenerationConfig(
+                temperature=0.3, # Low temp = more consistent/technical results
+                max_output_tokens=60,
+                candidate_count=1
+            )
+        )
+        expanded = response.text.strip()
+        print(f"🤖 Agent: '{raw_query}' -> '{expanded}'")
+        return expanded
+    except Exception as e:
+        print(f"❌ Agent Error: {e}")
+        return raw_query
 
 def get_clap_model():
     """
@@ -138,9 +176,29 @@ def get_clap_model():
 
 @app.on_event("startup")
 async def startup_event():
-    # Verify DB exists
+    # 1. Initialize Vertex AI (The Agent)
+    global gemini_model
+    if PROJECT_ID:
+        try:
+            vertexai.init(project=PROJECT_ID, location=LOCATION)
+            
+            # Define the Agent's Persona here
+            system_instruction = """You are an expert audio engineer. Convert short user queries into detailed audio captions for a LAION-CLAP model. 
+            Describe instrumentation, mood, and texture in a single technical sentence under 30 words. Output ONLY the caption."""
+            
+            gemini_model = GenerativeModel(
+                "gemini-2.0-flash-001",
+                system_instruction=[system_instruction]
+            )
+            print(f"✅ Vertex AI Agent initialized: {PROJECT_ID}")
+        except Exception as e:
+            print(f"⚠️ Vertex AI failed to initialize: {e}")
+    else:
+        print("ℹ️ GCP_PROJECT_ID not set. Enhanced search disabled.")
+
+    # 2. Verify DB
     if not os.path.exists(DB_PATH):
-        print(f"WARNING: Database file not found at {DB_PATH}")
+        print(f"⚠️ WARNING: Database file not found at {DB_PATH}")
     else:
         print(f"Database found at {DB_PATH}")
     
@@ -406,28 +464,36 @@ def vector_search_tracks(request: SearchRequest):
         print(f"Error during search: {e}")
         raise HTTPException(status_code=500, detail=str(e))
 
-@app.post("/semantic-search", response_model=List[SearchResult])
+@app.post("/semantic-search", response_model=SemanticSearchResponse)
 def semantic_search(request: SemanticSearchRequest):
-    """
-    Search tracks using natural language queries like 'jazz saxophone' or 'ambient rain'.
-    Uses CLAP model to generate text embeddings and matches against v_clap audio embeddings.
-    """
     try:
+        # 1. Agent Layer (Query Expansion)
+        final_search_text = request.query
+        enhanced_query_text = None
+
+        if request.enhance:
+            enhanced_query_text = run_agent_enhancement(request.query)
+            final_search_text = enhanced_query_text
+
+        # 2. Vectorization Layer (CLAP)
         model, processor = get_clap_model()
         
-        text_inputs = processor(text=[request.query], padding=True, return_tensors="pt")
+        # Tokenize
+        text_inputs = processor(text=[final_search_text], padding=True, return_tensors="pt")
         
+        # Embed & Normalize
         with torch.no_grad():
             text_features = model.get_text_features(**text_inputs)
             text_features = text_features / text_features.norm(dim=-1, keepdim=True)
         
         query_vector = text_features.squeeze(0).cpu().numpy().tolist()
         
+        # 3. Retrieval Layer (DuckDB)
         con = get_db_connection()
-        
         source_filter = "AND source = '" + request.source + "'" if request.source != "all" else ""
         
-        query = f"""
+        # Ensure dimensions match your DB (likely 512 for HTSAT-unfused)
+        query_sql = f"""
             SELECT id, source, title, artist, album, relative_path, track_url, album_url, artist_url,
                    array_cosine_similarity(v_clap, ?::FLOAT[512]) as similarity
             FROM tracks
@@ -436,28 +502,24 @@ def semantic_search(request: SemanticSearchRequest):
             LIMIT ?
         """
         
-        results = con.execute(query, [query_vector, request.limit]).fetchall()
+        results = con.execute(query_sql, [query_vector, request.limit]).fetchall()
         con.close()
         
-        response = []
+        # 4. Response Construction
+        track_results = []
         for row in results:
-            response.append(SearchResult(
-                id=row[0],
-                source=row[1],
-                title=row[2],
-                artist=row[3],
-                album=row[4],
-                relative_path=row[5],
-                track_url=row[6],
-                album_url=row[7],
-                artist_url=row[8],
-                similarity=row[9]
+            track_results.append(SearchResult(
+                id=row[0], source=row[1], title=row[2], artist=row[3],
+                album=row[4], relative_path=row[5], track_url=row[6],
+                album_url=row[7], artist_url=row[8], similarity=row[9]
             ))
         
-        return response
+        return SemanticSearchResponse(
+            results=track_results,
+            original_query=request.query,
+            enhanced_query=enhanced_query_text # Returns the agent's "thought"
+        )
     
-    except HTTPException:
-        raise
     except Exception as e:
         print(f"Error during semantic search: {e}")
         raise HTTPException(status_code=500, detail=str(e))
@@ -835,3 +897,7 @@ def interpolate_playlist(request: InterpolationPlaylistRequest):
     except Exception as e:
         print(f"Error generating playlist: {e}")
         raise HTTPException(status_code=500, detail=str(e))
+
+if __name__ == "__main__":
+    port = int(os.getenv("PORT", 8001))
+    uvicorn.run(app, host="0.0.0.0", port=port)

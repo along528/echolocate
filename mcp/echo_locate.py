@@ -152,7 +152,8 @@ class EchoLocate:
         self, 
         query: str, 
         limit: int = 10,
-        source: Literal["library", "fma", "all"] = "library"
+        source: Literal["library", "fma", "all"] = "library",
+        enhance: bool = True
     ):
         """
         Search for tracks using natural language descriptions.
@@ -164,9 +165,10 @@ class EchoLocate:
             query: Natural language description of desired sound
             limit: Maximum results to return
             source: Filter by source - 'library', 'fma', or 'all'
+            enhance: Whether to use Gemini Agent to expand the query
         """
         return await self._request(
             "POST", 
             "/semantic-search", 
-            json_body={"query": query, "limit": limit, "source": source}
+            json_body={"query": query, "limit": limit, "source": source, "enhance": enhance}
         )

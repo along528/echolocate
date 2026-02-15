@@ -61,21 +61,29 @@ def get_vector_service_url(use_local: bool = False) -> str:
     return "http://localhost:8001"
 
 
-def semantic_search(query: str, service_url: str, limit: int = 10):
+def semantic_search(query: str, service_url: str, limit: int = 10, enhance: bool = False):
     """
     Send a semantic search query to the vector service.
     """
     url = f"{service_url}/semantic-search"
-    payload = {"query": query, "limit": limit}
+    payload = {"query": query, "limit": limit, "enhance": enhance}
     
-    print(f"🔍 Query: \"{query}\"")
+    print(f"🔍 Query: \"{query}\" {'(Enhanced)' if enhance else ''}")
     print(f"📡 Service: {url}")
     print("-" * 60)
     
     try:
         response = requests.post(url, json=payload, timeout=30)
         response.raise_for_status()
-        results = response.json()
+        # Updated to handle dict response with results list
+        results = []
+        if isinstance(response.json(), list):
+            results = response.json()
+        elif isinstance(response.json(), dict):
+            data = response.json()
+            results = data.get('results', [])
+            if data.get('enhanced_query'):
+               print(f"🤖 Enhanced Query: \"{data.get('enhanced_query')}\"\n")
         
         if not results:
             print("No results found.")
@@ -118,6 +126,8 @@ def semantic_search(query: str, service_url: str, limit: int = 10):
             print("   CLAP model may not be loaded. Check service logs.")
         sys.exit(1)
     except Exception as e:
+        import traceback
+        traceback.print_exc()
         print(f"❌ Error: {e}")
         sys.exit(1)
 
@@ -126,10 +136,15 @@ def main():
     # Parse args
     args = sys.argv[1:]
     use_local = False
+    enhance = False
     
     if "--local" in args:
         use_local = True
         args.remove("--local")
+        
+    if "--enhance" in args:
+        enhance = True
+        args.remove("--enhance")
     
     if not args:
         print(__doc__)
@@ -137,6 +152,7 @@ def main():
         print('  python verify_semantic.py "alien singing"')
         print('  python verify_semantic.py "A recording of warm jazz piano in a smoky club"')
         print('  python verify_semantic.py --local "heavy distorted guitar with fast drums"')
+        print('  python verify_semantic.py --enhance "scary monster sounds"')
         sys.exit(1)
     
     query = args[0]
@@ -145,7 +161,7 @@ def main():
     # Get service URL
     service_url = get_vector_service_url(use_local)
     
-    semantic_search(query, service_url, limit)
+    semantic_search(query, service_url, limit, enhance=enhance)
 
 
 if __name__ == "__main__":
