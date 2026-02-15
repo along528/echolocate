@@ -4,6 +4,7 @@ from pydantic import BaseModel
 from typing import List, Optional, Literal
 from typing import List, Optional, Literal
 import os
+import uvicorn
 import vertexai
 from vertexai.generative_models import GenerativeModel, GenerationConfig
 import numpy as np
@@ -186,7 +187,7 @@ async def startup_event():
             Describe instrumentation, mood, and texture in a single technical sentence under 30 words. Output ONLY the caption."""
             
             gemini_model = GenerativeModel(
-                "gemini-1.5-flash-001",
+                "gemini-2.0-flash-001",
                 system_instruction=[system_instruction]
             )
             print(f"✅ Vertex AI Agent initialized: {PROJECT_ID}")
@@ -896,3 +897,7 @@ def interpolate_playlist(request: InterpolationPlaylistRequest):
     except Exception as e:
         print(f"Error generating playlist: {e}")
         raise HTTPException(status_code=500, detail=str(e))
+
+if __name__ == "__main__":
+    port = int(os.getenv("PORT", 8001))
+    uvicorn.run(app, host="0.0.0.0", port=port)
