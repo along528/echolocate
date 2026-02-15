@@ -9,9 +9,11 @@ const App = {
     pinnedTrack: null,
 
     // Interpolation Builder State
-    startTrack: null,
-    middleTrack: null,
-    endTrack: null,
+    slots: {
+        start: { id: 'start', track: null, query: '', results: [], currentIndex: -1, enhancedQuery: null },
+        middle: { id: 'middle', track: null, query: '', results: [], currentIndex: -1, enhancedQuery: null },
+        end: { id: 'end', track: null, query: '', results: [], currentIndex: -1, enhancedQuery: null }
+    },
     generatedPlaylist: [],
 
     init() {
@@ -50,9 +52,7 @@ const App = {
 
         // Builder controls
         document.getElementById('clear-builder').addEventListener('click', () => {
-            this.startTrack = null;
-            this.middleTrack = null;
-            this.endTrack = null;
+            this.resetSlots();
             this.generatedPlaylist = [];
             Player.playlist = [];
             this.renderBuilder();
@@ -75,15 +75,62 @@ const App = {
         document.getElementById('random-btn').addEventListener('click', () => this.loadInitialTracks());
         document.getElementById('clear-results').addEventListener('click', () => this.clearResults());
 
-        // Slot clearing
-        const clearMidBtn = document.querySelector('#slot-middle .clear-slot-btn');
-        if (clearMidBtn) {
-            clearMidBtn.addEventListener('click', (e) => {
-                e.stopPropagation();
-                this.middleTrack = null;
+        // Setup listeners for each slot
+        this.setupSlotListeners('start');
+        this.setupSlotListeners('middle');
+        this.setupSlotListeners('end');
+    },
+
+    setupSlotListeners(slotName) {
+        const container = document.querySelector(`.slot-container[data-slot="${slotName}"]`);
+        if (!container) return;
+
+        const input = container.querySelector('.slot-search-input');
+        const prevBtn = container.querySelector('.slot-nav-btn.prev');
+        const nextBtn = container.querySelector('.slot-nav-btn.next');
+        const clearBtn = container.querySelector('.clear-slot-btn-main'); // For middle slot
+
+        if (input) {
+            input.addEventListener('keypress', (e) => {
+                if (e.key === 'Enter') {
+                    this.handleSlotSearch(slotName, input.value);
+                }
+            });
+            // Update query state on blur or input
+            input.addEventListener('input', (e) => {
+                this.slots[slotName].query = e.target.value;
+            });
+        }
+
+        if (prevBtn) {
+            prevBtn.addEventListener('click', () => this.navigateSlot(slotName, -1));
+        }
+
+        if (nextBtn) {
+            nextBtn.addEventListener('click', () => this.navigateSlot(slotName, 1));
+        }
+
+        if (clearBtn) {
+            clearBtn.addEventListener('click', () => {
+                this.resetSlot(slotName);
                 this.renderBuilder();
             });
         }
+    },
+
+    resetSlots() {
+        ['start', 'middle', 'end'].forEach(slot => this.resetSlot(slot));
+    },
+
+    resetSlot(slotName) {
+        this.slots[slotName] = {
+            id: slotName,
+            track: null,
+            query: '',
+            results: [],
+            currentIndex: -1,
+            enhancedQuery: null
+        };
     },
 
     updateUIState() {
@@ -112,14 +159,12 @@ const App = {
     },
 
     setupDragAndDrop() {
-        const slots = {
-            'slot-start': 'setStartTrack',
-            'slot-middle': 'setMiddleTrack',
-            'slot-end': 'setEndTrack'
-        };
+        // Map slot IDs (container IDs or drop zones) to logic
+        const slots = ['start', 'middle', 'end'];
 
-        Object.entries(slots).forEach(([id, method]) => {
-            const el = document.getElementById(id);
+        slots.forEach(slotName => {
+            // The drop zone is the track-slot div
+            const el = document.querySelector(`.slot-container[data-slot="${slotName}"] .track-slot`);
             if (!el) return;
 
             el.addEventListener('dragover', (e) => {
@@ -138,8 +183,7 @@ const App = {
                 try {
                     const track = JSON.parse(e.dataTransfer.getData('text/plain'));
                     if (track && track.id) {
-                        // Use the setter method to ensure side effects (like removal from results) happen
-                        this[method](track);
+                        this.setSlotTrack(slotName, track);
                     }
                 } catch (err) {
                     console.error('Drop failed:', err);
@@ -154,18 +198,16 @@ const App = {
         // 2. If End is empty -> Set End
         // 3. If both set -> Shift: Start(keeps), End->Middle, New->End
 
-        if (!this.startTrack) {
-            this.startTrack = track;
-        } else if (!this.endTrack) {
-            this.endTrack = track;
+        if (!this.slots.start.track) {
+            this.setSlotTrack('start', track);
+        } else if (!this.slots.end.track) {
+            this.setSlotTrack('end', track);
         } else {
-            // Both start and end are set.
-            // Move current End to Middle (replacing whatever was there)
-            this.middleTrack = this.endTrack;
+            // Move current End to Middle
+            this.setSlotTrack('middle', this.slots.end.track);
             // Set new track as End
-            this.endTrack = track;
+            this.setSlotTrack('end', track);
         }
-        this.renderBuilder();
     },
 
     async loadInitialTracks() {
@@ -281,38 +323,88 @@ const App = {
         }
     },
 
-    setStartTrack(track) {
-        // If replacing, put old one back
-        if (this.startTrack) {
-            this.addTrackToResults(this.startTrack);
+    setSlotTrack(slotName, track) {
+        const slot = this.slots[slotName];
+        if (slot.track) {
+            this.addTrackToResults(slot.track);
         }
+        slot.track = track;
+        // Optimization: When explicitly setting a track (drag/drop), should we clear the query?
+        // User requirements say "This information [query] should be retained...".
+        // But if I drag a track, the query might not match the track. 
+        // Let's keep the query if it exists, but maybe update the input placeholder?
+        // For now, we won't clear the query, but we might hide it visually or it just sits there.
 
-        this.startTrack = track;
         this.removeTrackFromResults(track.id);
         this.renderBuilder();
     },
 
-    setMiddleTrack(track) {
-        if (this.middleTrack) {
-            this.addTrackToResults(this.middleTrack);
+    async handleSlotSearch(slotName, query) {
+        if (!query) return;
+        const slot = this.slots[slotName];
+        slot.query = query;
+
+        // Visual feedback (loading?) - for now just rely on speed
+        const container = document.querySelector(`.slot-container[data-slot="${slotName}"]`);
+        const input = container.querySelector('.slot-search-input');
+        input.disabled = true;
+
+        try {
+            // Always use semantic with enhancement for slots? Or follow global mode?
+            // "flow... support specifying a semantic search query directly... optionally fetch"
+            // Let's use semantic search by default for slots as implied by "semantic search query"
+            const source = this.getSelectedSource();
+            // We'll ask for fewer results for slots, maybe 10?
+            const response = await API.semanticSearch(query, source, 10, true);
+
+            let tracks = [];
+            if (response.results) {
+                tracks = response.results;
+                slot.enhancedQuery = response.enhanced_query;
+            } else {
+                tracks = response;
+                slot.enhancedQuery = null;
+            }
+
+            if (tracks.length > 0) {
+                slot.results = tracks;
+                slot.currentIndex = 0;
+                slot.track = tracks[0];
+                // Do NOT remove this local result from the global results list automatically
+                // But we should probably not remove it from the slot's own results list either.
+            } else {
+                slot.results = [];
+                slot.track = null;
+            }
+        } catch (e) {
+            console.error(`Search for slot ${slotName} failed:`, e);
+        } finally {
+            input.disabled = false;
+            input.focus();
+            this.renderBuilder();
         }
-        this.middleTrack = track;
-        this.removeTrackFromResults(track.id);
-        this.renderBuilder();
     },
 
-    setEndTrack(track) {
-        if (this.endTrack) {
-            this.addTrackToResults(this.endTrack);
-        }
-        this.endTrack = track;
-        this.removeTrackFromResults(track.id);
+    navigateSlot(slotName, direction) {
+        const slot = this.slots[slotName];
+        if (!slot.results || slot.results.length === 0) return;
+
+        let newIndex = slot.currentIndex + direction;
+        if (newIndex < 0) newIndex = slot.results.length - 1;
+        if (newIndex >= slot.results.length) newIndex = 0;
+
+        slot.currentIndex = newIndex;
+        slot.track = slot.results[newIndex];
         this.renderBuilder();
     },
 
     async interpolate() {
-        if (!this.startTrack || !this.endTrack) {
-            alert('Please select both a Start and End track.');
+        // Check if we have tracks or pending queries
+        const startReady = this.slots.start.track || this.slots.start.query;
+        const endReady = this.slots.end.track || this.slots.end.query;
+
+        if (!startReady || !endReady) {
+            alert('Please select both a Start and End track (or enter a query).');
             return;
         }
 
@@ -322,12 +414,34 @@ const App = {
         btn.textContent = 'Generating...';
 
         try {
+            // Resolve Deferred Searches
+            const resolveSlot = async (slotName) => {
+                const slot = this.slots[slotName];
+                if (!slot.track && slot.query) {
+                    // Perform deferred search
+                    console.log(`Resolving deferred search for ${slotName}: ${slot.query}`);
+                    await this.handleSlotSearch(slotName, slot.query);
+                    if (!slot.track) throw new Error(`Could not find track for query: "${slot.query}"`);
+                }
+                return slot.track;
+            };
+
+            const startTrack = await resolveSlot('start');
+            const endTrack = await resolveSlot('end');
+
+            // Middle is optional
+            let middleTrack = this.slots.middle.track;
+            if (!middleTrack && this.slots.middle.query) {
+                await this.handleSlotSearch('middle', this.slots.middle.query);
+                middleTrack = this.slots.middle.track;
+            }
+
             const source = this.getSelectedSource();
-            const steerId = this.middleTrack ? this.middleTrack.id : null;
+            const steerId = middleTrack ? middleTrack.id : null;
 
             const tracks = await API.interpolatePlaylist(
-                this.startTrack.id,
-                this.endTrack.id,
+                startTrack.id,
+                endTrack.id,
                 10,
                 'greedy_walk',
                 source,
@@ -343,6 +457,10 @@ const App = {
                 if (mid) mid.isMiddle = true;
             }
 
+            // Add query info to the result display if meaningful?
+            // "This information should be retained when generating the playlist but is display only"
+            // We'll leave it in the builder view state.
+
             this.generatedPlaylist = tracks;
             Player.playlist = tracks;
             this.renderPlaylist();
@@ -353,7 +471,7 @@ const App = {
 
         } catch (error) {
             console.error('Interpolation failed:', error);
-            alert('Failed to generate playlist. See console for details.');
+            alert(`Failed to generate: ${error.message}`);
         } finally {
             btn.disabled = false;
             btn.textContent = originalText;
@@ -385,57 +503,78 @@ const App = {
     },
 
     renderBuilder() {
-        const renderSlot = (track, elementId) => {
-            const el = document.getElementById(elementId);
-            if (track) {
-                el.classList.remove('empty');
-                el.classList.add('filled');
-                el.innerHTML = '';
-                // Use minimal: true to show Play/Link but hide Add/Remove
-                // ShowActions: true is needed to show Play/Link
-                el.appendChild(Components.renderTrack(track, { showActions: true, minimal: true }));
+        ['start', 'middle', 'end'].forEach(slotName => {
+            const slot = this.slots[slotName];
+            const container = document.querySelector(`.slot-container[data-slot="${slotName}"]`);
+            if (!container) return;
 
-                if (elementId === 'slot-middle') {
-                    const btn = document.createElement('button');
-                    btn.className = 'clear-slot-btn';
-                    btn.textContent = '×';
-                    btn.onclick = (e) => {
-                        e.stopPropagation();
-                        this.middleTrack = null;
-                        this.renderBuilder();
-                    };
-                    el.appendChild(btn);
-                }
-            } else {
-                el.classList.add('empty');
-                el.classList.remove('filled');
-                const placeholder = elementId === 'slot-start' ? 'Select a track and click "Set Start"' :
-                    elementId === 'slot-middle' ? 'Select a track and click "Set Mid"' :
-                        'Select a track and click "Set End"';
-                el.innerHTML = `<span class=\"placeholder\">${placeholder}</span>`;
+            // UI Elements
+            const input = container.querySelector('.slot-search-input');
+            const navControls = container.querySelector('.slot-nav-controls');
+            const navCount = container.querySelector('.slot-nav-count');
+            const enhancedDisplay = container.querySelector('.slot-enhanced-query');
+            const trackSlot = container.querySelector('.track-slot');
+            const prevBtn = container.querySelector('.slot-nav-btn.prev');
+            const nextBtn = container.querySelector('.slot-nav-btn.next');
+            const clearBtn = container.querySelector('.clear-slot-btn-main'); // Middle slot only
 
-                if (elementId === 'slot-middle') {
-                    const btn = document.createElement('button');
-                    btn.className = 'clear-slot-btn';
-                    btn.textContent = '×';
-                    btn.onclick = (e) => {
-                        e.stopPropagation();
-                        this.middleTrack = null;
-                        this.renderBuilder();
-                    };
-                    el.appendChild(btn);
-                }
+            // Update Input Value if it differs?
+            // Only if input is not focused to avoid messing up typing?
+            // Actually, we want the input to reflect the state 'query'.
+            if (document.activeElement !== input) {
+                input.value = slot.query;
             }
-        };
 
-        renderSlot(this.startTrack, 'slot-start');
-        renderSlot(this.middleTrack, 'slot-middle');
-        renderSlot(this.endTrack, 'slot-end');
+            // Update Enhanced Query Display
+            if (slot.enhancedQuery) {
+                enhancedDisplay.style.display = 'block';
+                enhancedDisplay.textContent = `✨ ${slot.enhancedQuery}`;
+                enhancedDisplay.title = slot.enhancedQuery;
+            } else {
+                enhancedDisplay.style.display = 'none';
+            }
 
-        // Enable interpolate button if we have start and end
+            // Update Nav Controls
+            if (slot.results.length > 1) {
+                navControls.style.display = 'flex';
+                navCount.textContent = `${slot.currentIndex + 1}/${slot.results.length}`;
+                prevBtn.disabled = false; // Circular nav
+                nextBtn.disabled = false;
+            } else {
+                navControls.style.display = 'none';
+            }
+
+            // Middle slot clear button
+            if (clearBtn) {
+                clearBtn.style.display = (slot.track || slot.query) ? 'block' : 'none';
+            }
+
+            // Render Track Slot
+            if (slot.track) {
+                trackSlot.classList.remove('empty');
+                trackSlot.classList.add('filled');
+                trackSlot.innerHTML = '';
+                // Render with 'minimal' + 'showActions'
+                trackSlot.appendChild(Components.renderTrack(slot.track, { showActions: true, minimal: true }));
+
+                // We removed the inner 'X' button in HTML, relying on main clear button or just replacing
+            } else {
+                trackSlot.classList.add('empty');
+                trackSlot.classList.remove('filled');
+                const placeholder = slotName === 'start' ? 'Drag track here or type above' :
+                    slotName === 'middle' ? 'Drag track here or type above' :
+                        'Drag track here or type above';
+                trackSlot.innerHTML = `<span class=\"placeholder\">${placeholder}</span>`;
+            }
+        });
+
+        // Enable interpolate button
         const interpolateBtn = document.getElementById('interpolate-btn');
         if (interpolateBtn) {
-            interpolateBtn.disabled = !(this.startTrack && this.endTrack);
+            // Enabled if start/end have track OR query
+            const startReady = this.slots.start.track || this.slots.start.query;
+            const endReady = this.slots.end.track || this.slots.end.query;
+            interpolateBtn.disabled = !(startReady && endReady);
         }
     },
 
