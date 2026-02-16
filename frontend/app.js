@@ -87,6 +87,7 @@ const App = {
         const prevBtn = container.querySelector('.slot-nav-btn.prev');
         const nextBtn = container.querySelector('.slot-nav-btn.next');
         const clearBtn = container.querySelector('.clear-slot-btn-main');
+        const randomizeBtn = container.querySelector('.slot-randomize-btn');
 
         if (input) {
             input.addEventListener('keypress', (e) => {
@@ -98,6 +99,10 @@ const App = {
                 const slot = this.getSlot(slotName);
                 if (slot) slot.query = e.target.value;
             });
+        }
+
+        if (randomizeBtn) {
+            randomizeBtn.addEventListener('click', () => this.handleSlotRandomize(slotName));
         }
 
         if (prevBtn) {
@@ -249,8 +254,9 @@ const App = {
             ${slot?.isInterpolated ? '' : `
             <div class="slot-mode-edit" style="display: none;">
                 <div class="slot-input-wrapper">
-                    <input type="text" class="slot-search-input" placeholder="Search or drag track..."
+                    <input type="text" class="slot-search-input" placeholder="Describe a vibe..."
                         autocomplete="off">
+                    <button class="slot-randomize-btn" title="Pick a random track">🎲</button>
                 </div>
             </div>
             `}
@@ -259,11 +265,6 @@ const App = {
                     <!-- Configured in renderSlot -->
                 </div>
             </div>
-            ${slot?.isInterpolated ? '' : `
-            <div class="track-slot empty" style="display: none;">
-                    <span class="placeholder">Drag track here or click to search</span>
-            </div>
-            `}
         `;
 
         return div;
@@ -535,6 +536,33 @@ const App = {
             if (input) input.disabled = false;
             // Focus if still in edit mode?
             this.renderBuilder();
+        }
+    },
+
+    async handleSlotRandomize(slotName) {
+        const slot = this.getSlot(slotName);
+        if (!slot) return;
+
+        const container = document.querySelector(`.slot-container[data-slot="${slotName}"]`);
+        const randomizeBtn = container?.querySelector('.slot-randomize-btn');
+        if (randomizeBtn) {
+            randomizeBtn.disabled = true;
+            randomizeBtn.classList.add('loading');
+        }
+
+        try {
+            const source = this.getSelectedSource();
+            const tracks = await API.getTracks(1, source);
+            if (tracks.length > 0) {
+                this.setSlotTrack(slotName, tracks[0]);
+            }
+        } catch (e) {
+            console.error(`Randomize for slot ${slotName} failed:`, e);
+        } finally {
+            if (randomizeBtn) {
+                randomizeBtn.disabled = false;
+                randomizeBtn.classList.remove('loading');
+            }
         }
     },
 
@@ -812,14 +840,12 @@ const App = {
                 </div>
                 <div class="slot-mode-edit" style="display: none;">
                     <div class="slot-input-wrapper">
-                        <input type="text" class="slot-search-input" placeholder="Search or drag track..." autocomplete="off">
+                        <input type="text" class="slot-search-input" placeholder="Describe a vibe..." autocomplete="off">
+                        <button class="slot-randomize-btn" title="Pick a random track">🎲</button>
                     </div>
                 </div>
                 <div class="slot-mode-view" style="display: none;">
                     <div class="track-slot filled"></div>
-                </div>
-                <div class="track-slot empty" style="display: none;">
-                     <span class="placeholder">Drag track here or click to search</span>
                 </div>
             `;
             // Re-bind listeners for new elements
@@ -867,17 +893,9 @@ const App = {
 
         // --- Logic to determine state ---
         if (!slot.track && !slot.isEditing) {
-            // Show Empty
-            if (editModeDiv) editModeDiv.style.display = 'none';
+            // No track selected — show edit mode so user can search or randomize
+            if (editModeDiv) editModeDiv.style.display = 'block';
             if (viewModeDiv) viewModeDiv.style.display = 'none';
-            if (emptyModeDiv) {
-                emptyModeDiv.style.display = 'flex';
-                // Click to edit
-                emptyModeDiv.onclick = () => {
-                    slot.isEditing = true;
-                    this.renderSlot(slotName);
-                };
-            }
         } else if (slot.isEditing) {
             // Show Edit Input
             if (editModeDiv) editModeDiv.style.display = 'block';

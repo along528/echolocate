@@ -5,7 +5,7 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>EchoLocate - FMA Explorer</title>
-    <link rel="stylesheet" href="style.css?v=26">
+    <link rel="stylesheet" href="style.css?v=27">
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
@@ -91,15 +91,13 @@
                             <label>Start Track</label>
                             <div class="slot-mode-edit">
                                 <div class="slot-input-wrapper">
-                                    <input type="text" class="slot-search-input" placeholder="Search or drag track..."
+                                    <input type="text" class="slot-search-input" placeholder="Describe a vibe..."
                                         autocomplete="off">
+                                    <button class="slot-randomize-btn" title="Pick a random track">🎲</button>
                                 </div>
                             </div>
                             <div class="slot-mode-view" style="display: none;">
                                 <div class="track-slot filled"></div>
-                            </div>
-                            <div class="track-slot empty" style="display: none;">
-                                <span class="placeholder">Drag track here or click to search</span>
                             </div>
                         </div>
 
@@ -111,15 +109,13 @@
                             <label>End Track</label>
                             <div class="slot-mode-edit">
                                 <div class="slot-input-wrapper">
-                                    <input type="text" class="slot-search-input" placeholder="Search or drag track..."
+                                    <input type="text" class="slot-search-input" placeholder="Describe a vibe..."
                                         autocomplete="off">
+                                    <button class="slot-randomize-btn" title="Pick a random track">🎲</button>
                                 </div>
                             </div>
                             <div class="slot-mode-view" style="display: none;">
                                 <div class="track-slot filled"></div>
-                            </div>
-                            <div class="track-slot empty" style="display: none;">
-                                <span class="placeholder">Drag track here or click to search</span>
                             </div>
                         </div>
                     </div>
@@ -158,10 +154,10 @@
             ? 'http://localhost:8001'
             : '/api';
     </script>
-    <script src="api.js?v=7"></script>
-    <script src="player.js?v=7"></script>
-    <script src="components.js?v=7"></script>
-    <script src="app.js?v=7"></script>
+    <script src="api.js?v=8"></script>
+    <script src="player.js?v=8"></script>
+    <script src="components.js?v=8"></script>
+    <script src="app.js?v=8"></script>
 </body>
 
 </html>
