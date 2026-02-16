@@ -514,7 +514,13 @@ const App = {
 
         const container = document.querySelector(`.slot-container[data-slot="${slotName}"]`);
         const input = container.querySelector('.slot-search-input');
+        const searchBtn = container.querySelector('.slot-search-btn');
         input.disabled = true;
+        input.classList.add('loading');
+        if (searchBtn) {
+            searchBtn.disabled = true;
+            searchBtn.classList.add('loading');
+        }
 
         try {
             const source = this.getSelectedSource();
@@ -542,8 +548,14 @@ const App = {
         } catch (e) {
             console.error(`Search for slot ${slotName} failed:`, e);
         } finally {
-            if (input) input.disabled = false;
-            // Focus if still in edit mode?
+            if (input) {
+                input.disabled = false;
+                input.classList.remove('loading');
+            }
+            if (searchBtn) {
+                searchBtn.disabled = false;
+                searchBtn.classList.remove('loading');
+            }
             this.renderBuilder();
         }
     },

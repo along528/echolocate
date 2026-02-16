@@ -1188,6 +1188,31 @@ input:checked+.slider:before {
     color: var(--text-primary);
 }
 
+.slot-search-btn.loading {
+    cursor: wait;
+    opacity: 0.5;
+    animation: spin 0.6s linear infinite;
+}
+
+.slot-search-input.loading {
+    border-color: var(--accent-primary);
+    animation: searchPulse 1.2s ease-in-out infinite;
+}
+
+@keyframes searchPulse {
+
+    0%,
+    100% {
+        border-color: var(--accent-primary);
+        opacity: 0.7;
+    }
+
+    50% {
+        border-color: var(--accent-secondary, #818cf8);
+        opacity: 1;
+    }
+}
+
 .slot-randomize-btn:hover {
     background: rgba(99, 102, 241, 0.15);
     border-color: var(--accent-primary);
