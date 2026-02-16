@@ -23,7 +23,8 @@ echo "Deploying $SERVICE_NAME using bucket $BUCKET_NAME..."
 gcloud run deploy $SERVICE_NAME \
     --source . \
     --region $REGION \
-    --allow-unauthenticated \
+    --no-allow-unauthenticated \
+    --ingress internal-and-cloud-load-balancing \
     --execution-environment=gen2 \
     --memory=4Gi \
     --cpu=2 \

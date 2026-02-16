@@ -176,9 +176,9 @@
 
     <!-- Configuration - set your vector service URL here -->
     <script>
-        // Local development: vector service on port 8001
-        // Production: set to your deployed vector service URL
-        window.VECTOR_API_URL = 'http://localhost:8001';
+        // Production: relative path routed through shared load balancer
+        // Local development: override with window.VECTOR_API_URL = 'http://localhost:8001'
+        window.VECTOR_API_URL = '/api';
     </script>
     <script src="api.js?v=6"></script>
     <script src="player.js?v=6"></script>

@@ -22,5 +22,11 @@ export VECTOR_SERVICE_URL=$VECTOR_URL
 ./deploy.sh
 cd ..
 
+# 3. Deploy Frontend
+echo "📦 Deploying Frontend..."
+cd frontend
+./deploy.sh
+cd ..
+
 echo "✅ All services deployed!"
 echo "Cloud Crate MCP: $(gcloud run services describe cloud-crate-mcp --region us-central1 --format 'value(status.url)')"
