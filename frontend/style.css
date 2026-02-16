@@ -800,6 +800,80 @@ input:checked+.slider:before {
     font-size: 0.9rem;
 }
 
+/* Slot Header & Nav */
+.slot-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 0.5rem;
+    height: 16px;
+}
+
+.header-nav-controls {
+    display: flex;
+    gap: 4px;
+}
+
+.header-nav-btn {
+    width: 20px;
+    height: 20px;
+    border-radius: 4px;
+    background: var(--bg-tertiary);
+    border: 1px solid var(--border-color);
+    color: var(--text-secondary);
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 0.75rem;
+    padding: 0;
+}
+
+.header-nav-btn:hover {
+    background: var(--bg-primary);
+    color: var(--text-primary);
+    border-color: var(--accent-primary);
+}
+
+/* Footer Tools */
+.footer-tools {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    width: 100%;
+}
+
+.footer-icon-btn {
+    background: transparent;
+    border: none;
+    color: var(--text-secondary);
+    cursor: pointer;
+    font-size: 1.1rem;
+    padding: 0;
+    display: flex;
+    align-items: center;
+    transition: color 0.2s;
+}
+
+.footer-icon-btn:hover {
+    color: var(--accent-primary);
+}
+
+/* Remove Steer Btn */
+/* Edit mode remove button override */
+.slot-input-wrapper .remove-steer-btn-edit {
+    position: absolute;
+    right: 8px;
+    top: 50%;
+    transform: translateY(-50%);
+    z-index: 10;
+    opacity: 0.6;
+}
+
+.slot-input-wrapper .remove-steer-btn-edit:hover {
+    opacity: 1;
+}
+
 /* Remove button inside steer slot */
 .remove-steer-btn {
     position: absolute;

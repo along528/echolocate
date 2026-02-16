@@ -186,10 +186,17 @@ const App = {
             `;
         } else {
             div.innerHTML = `
+                <div class="slot-header" style="display: flex; justify-content: flex-end; align-items: center; margin-bottom: 0.5rem; height: 16px;">
+                    <div class="header-nav-controls" style="display: none; gap: 4px;">
+                         <button class="header-nav-btn prev" title="Previous result">←</button>
+                         <button class="header-nav-btn next" title="Next result">→</button>
+                    </div>
+                </div>
                 <div class="slot-mode-edit" style="display: none;">
                     <div class="slot-input-wrapper">
                         <input type="text" class="slot-search-input" placeholder="Search or drag track..."
                             autocomplete="off">
+                        <button class="remove-steer-btn remove-steer-btn-edit" title="Remove" style="position: absolute; right: 8px; top: 50%; transform: translateY(-50%); z-index: 10;">×</button>
                     </div>
                 </div>
                 <div class="slot-mode-view" style="display: none;">
@@ -278,7 +285,8 @@ const App = {
     },
 
     setupSlotDragDrop(slotName) {
-        const el = document.querySelector(`.slot-container[data-slot="${slotName}"] .track-slot`);
+        // Target the container itself to ensure drop works in both edit and view modes
+        const el = document.querySelector(`.slot-container[data-slot="${slotName}"]`);
         if (!el) return;
 
         el.addEventListener('dragover', (e) => {
@@ -764,16 +772,16 @@ const App = {
         const viewModeDiv = container.querySelector('.slot-mode-view');
         const emptyModeDiv = container.querySelector('.track-slot.empty');
 
-        // For standard start/end slots which aren't created via addSteerSlot typically,
-        // we might need to ensure the DOM structure exists if it was hardcoded in index.html.
-        // NOTE: index.html has hardcoded structure for start/end. We need to match that or update index.html.
-        // For this plan, we will assume we updated index.html OR we dynamically update it here?
-        // Let's check index.html. It has valid structure. We should probably update index.html to match the pattern
-        // or update it via JS if missing.
-        // To be safe, let's inject the structure if it's the old one.
+        // For standard start/end slots, ensure DOM structure exists
         if (!editModeDiv && (slotName === 'start' || slotName === 'end')) {
             container.innerHTML = `
-                <label>${slotName === 'start' ? 'Start Track' : 'End Track'}</label>
+                <div class="slot-header" style="display: flex; justify-content: flex-end; align-items: center; margin-bottom: 0.5rem; height: 16px;">
+                    <label style="margin-bottom: 0; margin-right: auto;">${slotName === 'start' ? 'Start Track' : 'End Track'}</label>
+                    <div class="header-nav-controls" style="display: none; gap: 4px;">
+                         <button class="header-nav-btn prev" title="Previous result">←</button>
+                         <button class="header-nav-btn next" title="Next result">→</button>
+                    </div>
+                </div>
                 <div class="slot-mode-edit" style="display: none;">
                     <div class="slot-input-wrapper">
                         <input type="text" class="slot-search-input" placeholder="Search or drag track..." autocomplete="off">
@@ -794,13 +802,29 @@ const App = {
 
         const input = container.querySelector('.slot-search-input');
 
-        // --- Logic to determine state ---
-        // 1. Editing: isEditing = true. Show input.
-        // 2. Viewed: has track AND isEditing = false. Show card (with footer).
-        // 3. Empty: no track AND isEditing = false? 
-        //    Actually, if no track, we usually want to be in "empty" state (placeholder) or "edit" state.
-        //    Let's say: if no track, show Empty. Clicking empty -> Edit.
+        // Handle Header Nav Controls
+        const headerNav = container.querySelector('.header-nav-controls');
+        const prevBtn = container.querySelector('.header-nav-btn.prev');
+        const nextBtn = container.querySelector('.header-nav-btn.next');
 
+        if (headerNav) {
+            if (slot.results && slot.results.length > 1 && !slot.isEditing && slot.track) {
+                headerNav.style.display = 'flex';
+                if (prevBtn) {
+                    // Remove old listeners to avoid stacking? 
+                    // Cloning node is a cheap way to wipe listeners, or just set onclick.
+                    // onclick is safer here since renderSlot is called often.
+                    prevBtn.onclick = (e) => { e.stopPropagation(); this.navigateSlot(slotName, -1); };
+                }
+                if (nextBtn) {
+                    nextBtn.onclick = (e) => { e.stopPropagation(); this.navigateSlot(slotName, 1); };
+                }
+            } else {
+                headerNav.style.display = 'none';
+            }
+        }
+
+        // --- Logic to determine state ---
         if (!slot.track && !slot.isEditing) {
             // Show Empty
             if (editModeDiv) editModeDiv.style.display = 'none';
@@ -812,17 +836,6 @@ const App = {
                     slot.isEditing = true;
                     this.renderSlot(slotName);
                 };
-
-                // Add remove btn for steer slots
-                if (slotName.startsWith('steer-')) {
-                    if (!emptyModeDiv.querySelector('.remove-steer-btn')) {
-                        const rb = document.createElement('button');
-                        rb.className = 'remove-steer-btn';
-                        rb.innerHTML = '×';
-                        rb.onclick = (e) => { e.stopPropagation(); this.removeSteerSlot(slotName); };
-                        emptyModeDiv.appendChild(rb);
-                    }
-                }
             }
         } else if (slot.isEditing) {
             // Show Edit Input
@@ -846,57 +859,55 @@ const App = {
             // Render Track
             const card = Components.renderTrack(slot.track, { showActions: true, minimal: true });
 
-            // Add Edit button
-            const editBtn = document.createElement('button');
-            editBtn.className = 'action-btn edit-action-btn';
-            editBtn.title = 'Edit / Search';
-            editBtn.innerHTML = '✎';
-            editBtn.addEventListener('click', (e) => {
+            // Note: pencil moved to footer below.
+
+            // Always create footer to hold pencil if verified track (view mode)
+            const footer = document.createElement('div');
+            footer.className = 'track-card-footer';
+
+            const footerTools = document.createElement('div');
+            footerTools.className = 'footer-tools';
+            footerTools.style.display = 'flex';
+            footerTools.style.alignItems = 'center';
+            footerTools.style.gap = '8px';
+            footerTools.style.width = '100%';
+
+            // Add Pencil to footer tools
+            const footerEditBtn = document.createElement('button');
+            footerEditBtn.className = 'footer-icon-btn';
+            footerEditBtn.innerHTML = '✎';
+            footerEditBtn.title = 'Edit';
+            footerEditBtn.style.background = 'transparent';
+            footerEditBtn.style.border = 'none';
+            footerEditBtn.style.color = 'var(--text-secondary)';
+            footerEditBtn.style.cursor = 'pointer';
+            footerEditBtn.style.fontSize = '1.1rem';
+            footerEditBtn.style.padding = '0';
+            footerEditBtn.style.display = 'flex';
+            footerEditBtn.style.alignItems = 'center';
+
+            footerEditBtn.onmouseover = () => footerEditBtn.style.color = 'var(--accent-primary)';
+            footerEditBtn.onmouseout = () => footerEditBtn.style.color = 'var(--text-secondary)';
+
+            footerEditBtn.onclick = (e) => {
                 e.stopPropagation();
                 slot.isEditing = true;
                 this.renderSlot(slotName);
-            });
+            };
+            footerTools.appendChild(footerEditBtn);
 
-            // Append edit button to actions
-            const actions = card.querySelector('.track-actions');
-            if (actions) actions.insertBefore(editBtn, actions.firstChild);
-
-            // --- Footer: Enhanced Text + Nav ---
-            if (slot.enhancedQuery || slot.results.length > 1) {
-                const footer = document.createElement('div');
-                footer.className = 'track-card-footer';
-
-                // Enhanced Text
-                if (slot.enhancedQuery) {
-                    const text = document.createElement('div');
-                    text.className = 'footer-enhanced-text';
-                    text.innerHTML = `✨ ${slot.enhancedQuery}`;
-                    text.title = slot.enhancedQuery;
-                    footer.appendChild(text);
-                }
-
-                // Nav Controls
-                if (slot.results.length > 1) {
-                    const nav = document.createElement('div');
-                    nav.className = 'footer-nav-controls';
-
-                    const prev = document.createElement('button');
-                    prev.className = 'footer-nav-btn';
-                    prev.innerHTML = '←';
-                    prev.onclick = (e) => { e.stopPropagation(); this.navigateSlot(slotName, -1); };
-
-                    const next = document.createElement('button');
-                    next.className = 'footer-nav-btn';
-                    next.innerHTML = '→';
-                    next.onclick = (e) => { e.stopPropagation(); this.navigateSlot(slotName, 1); };
-
-                    nav.appendChild(prev);
-                    nav.appendChild(next);
-                    footer.appendChild(nav);
-                }
-
-                card.appendChild(footer);
+            // Enhanced Text
+            if (slot.enhancedQuery) {
+                const text = document.createElement('div');
+                text.className = 'footer-enhanced-text';
+                text.innerHTML = `✨ ${slot.enhancedQuery}`;
+                text.title = slot.enhancedQuery;
+                text.style.marginLeft = '8px'; // gap
+                footerTools.appendChild(text);
             }
+
+            footer.appendChild(footerTools);
+            card.appendChild(footer);
 
             filledSlot.appendChild(card);
 
