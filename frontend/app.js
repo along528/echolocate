@@ -612,6 +612,25 @@ const App = {
             const endReady = this.slots.end.track || this.slots.end.query;
             interpolateBtn.disabled = !(startReady && endReady);
         }
+
+        // Sync Player Context if we are currently playing a track from the builder
+        if (Player.currentTrack) {
+            const builderTracks = this.getBuilderTrackList();
+
+            console.log('Sync Check:', {
+                currentId: Player.currentTrack.id,
+                builderCount: builderTracks.length,
+                builderIds: builderTracks.map(t => t.id)
+            });
+
+            // Only sync if the currently playing track is in the builder list
+            const isPlayingFromBuilder = builderTracks.some(t => String(t.id) === String(Player.currentTrack.id));
+            console.log('Is Playing From Builder?', isPlayingFromBuilder);
+
+            if (isPlayingFromBuilder) {
+                Player.updatePlaylist(builderTracks);
+            }
+        }
     },
 
     renderInsertButtons() {

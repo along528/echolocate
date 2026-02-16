@@ -143,6 +143,38 @@ const Player = {
         return false;
     },
 
+    /**
+     * Updates the current playlist without interrupting playback.
+     * Useful for dynamic lists like the Builder.
+     */
+    updatePlaylist(newTracks) {
+        if (!newTracks || newTracks.length === 0) return;
+
+        // Check if we are currently playing a track from this list
+        // (naive check: is the current track ID present in the new list?)
+        if (this.currentTrack) {
+            const newIndex = newTracks.findIndex(t => String(t.id) === String(this.currentTrack.id));
+            if (newIndex !== -1) {
+                // Yes, current track is still here. Safe to update.
+                console.log('Syncing playlist. Current track moved to index:', newIndex);
+                this.playlist = newTracks;
+                this.currentIndex = newIndex;
+            } else {
+                // Current track not in new list. 
+                // Decision: Do we update anyway? 
+                // If we do, currentIndex becomes invalid (-1), next user action will restart.
+                // This seems correct for "Builder changed significantly".
+                console.log('Syncing playlist. Current track not found in new list.');
+                this.playlist = newTracks;
+                this.currentIndex = -1;
+            }
+        } else {
+            // Not playing, just update
+            this.playlist = newTracks;
+            this.currentIndex = -1;
+        }
+    },
+
     clearPlaylist() {
         this.playlist = [];
         this.currentIndex = -1;
