@@ -406,7 +406,6 @@ async def list_tools():
                     "track_id_2": {"type": "string", "description": "Vector ID of ending track"},
                     "limit": {"type": "integer", "description": "Number of intermediate tracks", "default": 10},
                     "method": {"type": "string", "enum": ["greedy_walk", "slerp", "linear"], "description": "Interpolation method", "default": "greedy_walk"},
-                    "steer_track_id": {"type": "string", "description": "Optional track ID to steer the path toward (vibe steering)"},
                     "steer_track_ids": {"type": "array", "items": {"type": "string"}, "description": "Optional list of track IDs for multi-point vibe steering"}
                 },
                 "required": ["track_id_1", "track_id_2"]
@@ -977,7 +976,6 @@ Duration: {attrs.get('durationInMillis')} ms
                     arguments["track_id_2"],
                     limit=arguments.get("limit", 10),
                     method=arguments.get("method", "greedy_walk"),
-                    steer_track_id=arguments.get("steer_track_id"),
                     steer_track_ids=arguments.get("steer_track_ids")
                 )
                 output = "\n".join([f"Vector ID: {t['id']} | {t['title']}" for t in res])

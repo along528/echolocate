@@ -73,7 +73,6 @@ class EchoLocate:
         track_id_2: str,
         limit: int = 10,
         method: str = "greedy_walk",
-        steer_track_id: Optional[str] = None,
         steer_track_ids: Optional[List[str]] = None
     ):
         """
@@ -84,7 +83,6 @@ class EchoLocate:
             track_id_2: Vector ID of the ending track
             limit: Number of intermediate tracks to find
             method: Interpolation method - 'greedy_walk', 'slerp', or 'linear'
-            steer_track_id: Optional single track ID to steer the path toward (backward compat)
             steer_track_ids: Optional list of track IDs for multi-point steering
         """
         payload = {
@@ -95,8 +93,6 @@ class EchoLocate:
         }
         if steer_track_ids:
             payload["steer_track_ids"] = steer_track_ids
-        elif steer_track_id:
-            payload["steer_track_id"] = steer_track_id
 
         return await self._request("POST", "/interpolate", json_body=payload)
 
@@ -105,7 +101,6 @@ class EchoLocate:
         track_id_1: str,
         track_id_2: str,
         limit: int = 20,
-        steer_track_id: Optional[str] = None,
         steer_track_ids: Optional[List[str]] = None
     ):
         """
@@ -115,7 +110,6 @@ class EchoLocate:
             track_id_1: Vector ID of the starting track
             track_id_2: Vector ID of the ending track
             limit: Total number of tracks in the playlist
-            steer_track_id: Optional single track ID for steering (backward compat)
             steer_track_ids: Optional list of track IDs for multi-point steering
         """
         payload = {
@@ -125,8 +119,6 @@ class EchoLocate:
         }
         if steer_track_ids:
             payload["steer_track_ids"] = steer_track_ids
-        elif steer_track_id:
-            payload["steer_track_id"] = steer_track_id
         return await self._request("POST", "/interpolate/playlist", json_body=payload)
 
     async def text_search(

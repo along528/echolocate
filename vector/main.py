@@ -645,8 +645,7 @@ class InterpolationPlaylistRequest(BaseModel):
     track_id_2: str
     limit: Optional[int] = 10
     method: Optional[Literal["slerp", "linear", "greedy_walk"]] = "greedy_walk"
-    steer_track_id: Optional[str] = None  # Backward compat: single steer track
-    steer_track_ids: Optional[List[str]] = None  # Multiple steering tracks
+    steer_track_ids: Optional[List[str]] = None
     source: Optional[Literal["library", "fma", "all"]] = "all"
 
 
@@ -872,13 +871,8 @@ def interpolate_playlist(request: InterpolationPlaylistRequest):
         vec_start = start_row[1]
         vec_end = end_row[1]
 
-        # 1.5 Resolve steering tracks: merge steer_track_id and steer_track_ids into one list
-        steer_ids = []
-        if request.steer_track_ids:
-            steer_ids = list(request.steer_track_ids)
-        elif request.steer_track_id:
-            steer_ids = [request.steer_track_id]
-
+        # 1.5 Fetch steering tracks if requested
+        steer_ids = list(request.steer_track_ids) if request.steer_track_ids else []
         steer_rows = []
         if steer_ids:
             placeholders = ", ".join(["?"] * len(steer_ids))
