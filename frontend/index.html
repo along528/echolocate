@@ -97,19 +97,17 @@
                         <!-- Start Track -->
                         <div class="slot-container" data-slot="start">
                             <label>Start Track</label>
-                            <div class="slot-input-wrapper">
-                                <input type="text" class="slot-search-input" placeholder="Search or drag track..."
-                                    autocomplete="off">
-                                <div class="slot-nav-controls" style="display: none;">
-                                    <button class="slot-nav-btn prev" title="Previous result">←</button>
-                                    <span class="slot-nav-count"></span>
-                                    <button class="slot-nav-btn next" title="Next result">→</button>
+                            <div class="slot-mode-edit">
+                                <div class="slot-input-wrapper">
+                                    <input type="text" class="slot-search-input" placeholder="Search or drag track..."
+                                        autocomplete="off">
                                 </div>
                             </div>
-                            <div class="slot-enhanced-query" style="display: none;"></div>
-
-                            <div id="slot-start" class="track-slot empty">
-                                <span class="placeholder">Drag track here or type above</span>
+                            <div class="slot-mode-view" style="display: none;">
+                                <div class="track-slot filled"></div>
+                            </div>
+                            <div class="track-slot empty" style="display: none;">
+                                <span class="placeholder">Drag track here or click to search</span>
                             </div>
                         </div>
 
@@ -119,19 +117,17 @@
                         <!-- End Track -->
                         <div class="slot-container" data-slot="end">
                             <label>End Track</label>
-                            <div class="slot-input-wrapper">
-                                <input type="text" class="slot-search-input" placeholder="Search or drag track..."
-                                    autocomplete="off">
-                                <div class="slot-nav-controls" style="display: none;">
-                                    <button class="slot-nav-btn prev" title="Previous result">←</button>
-                                    <span class="slot-nav-count"></span>
-                                    <button class="slot-nav-btn next" title="Next result">→</button>
+                            <div class="slot-mode-edit">
+                                <div class="slot-input-wrapper">
+                                    <input type="text" class="slot-search-input" placeholder="Search or drag track..."
+                                        autocomplete="off">
                                 </div>
                             </div>
-                            <div class="slot-enhanced-query" style="display: none;"></div>
-
-                            <div id="slot-end" class="track-slot empty">
-                                <span class="placeholder">Drag track here or type above</span>
+                            <div class="slot-mode-view" style="display: none;">
+                                <div class="track-slot filled"></div>
+                            </div>
+                            <div class="track-slot empty" style="display: none;">
+                                <span class="placeholder">Drag track here or click to search</span>
                             </div>
                         </div>
                     </div>

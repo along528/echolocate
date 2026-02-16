@@ -10,8 +10,8 @@ const App = {
 
     // Interpolation Builder State
     slots: {
-        start: { id: 'start', track: null, query: '', results: [], currentIndex: -1, enhancedQuery: null },
-        end: { id: 'end', track: null, query: '', results: [], currentIndex: -1, enhancedQuery: null }
+        start: { id: 'start', track: null, query: '', results: [], currentIndex: -1, enhancedQuery: null, isEditing: false },
+        end: { id: 'end', track: null, query: '', results: [], currentIndex: -1, enhancedQuery: null, isEditing: false }
     },
     steerSlots: [],
     steerCounter: 0,
@@ -135,7 +135,8 @@ const App = {
             results: [],
             currentIndex: -1,
             enhancedQuery: null,
-            isInterpolated
+            isInterpolated,
+            isEditing: !track // If no track, start in edit mode
         };
 
         // Insert at position or append
@@ -179,25 +180,26 @@ const App = {
 
         if (slot?.isInterpolated) {
             div.innerHTML = `
-                <div class="track-slot empty">
-                    <button class="remove-steer-btn" title="Remove">×</button>
+                <div class="track-slot filled">
+                    <!-- Configured in renderSlot -->
                 </div>
             `;
         } else {
             div.innerHTML = `
-                <div class="slot-input-wrapper">
-                    <input type="text" class="slot-search-input" placeholder="Search or drag track..."
-                        autocomplete="off">
-                    <div class="slot-nav-controls" style="display: none;">
-                        <button class="slot-nav-btn prev" title="Previous result">←</button>
-                        <span class="slot-nav-count"></span>
-                        <button class="slot-nav-btn next" title="Next result">→</button>
+                <div class="slot-mode-edit" style="display: none;">
+                    <div class="slot-input-wrapper">
+                        <input type="text" class="slot-search-input" placeholder="Search or drag track..."
+                            autocomplete="off">
                     </div>
                 </div>
-                <div class="slot-enhanced-query" style="display: none;"></div>
-                <div class="track-slot empty">
-                    <span class="placeholder">Drag track here or type above</span>
-                    <button class="remove-steer-btn" title="Remove">×</button>
+                <div class="slot-mode-view" style="display: none;">
+                    <div class="track-slot filled">
+                        <!-- Configured in renderSlot -->
+                    </div>
+                </div>
+                <div class="track-slot empty" style="display: none;">
+                     <span class="placeholder">Drag track here or click to search</span>
+                     <button class="remove-steer-btn" title="Remove">×</button>
                 </div>
             `;
         }
@@ -246,6 +248,7 @@ const App = {
         slot.results = [];
         slot.currentIndex = -1;
         slot.enhancedQuery = null;
+        slot.isEditing = true;
     },
 
     updateUIState() {
@@ -430,6 +433,7 @@ const App = {
             this.addTrackToResults(slot.track);
         }
         slot.track = track;
+        slot.isEditing = false; // Switch to view mode
         this.removeTrackFromResults(track.id);
         this.renderBuilder();
     },
@@ -461,15 +465,17 @@ const App = {
                 slot.results = tracks;
                 slot.currentIndex = 0;
                 slot.track = tracks[0];
+                slot.isEditing = false; // Switch to view mode on successful search
             } else {
                 slot.results = [];
                 slot.track = null;
+                // Stay in edit mode if no results
             }
         } catch (e) {
             console.error(`Search for slot ${slotName} failed:`, e);
         } finally {
-            input.disabled = false;
-            input.focus();
+            if (input) input.disabled = false;
+            // Focus if still in edit mode?
             this.renderBuilder();
         }
     },
@@ -694,91 +700,213 @@ const App = {
         const container = document.querySelector(`.slot-container[data-slot="${slotName}"]`);
         if (!container || !slot) return;
 
-        const trackSlot = container.querySelector('.track-slot');
-
-        // Interpolated slots: minimal render — just the track card + remove button
+        // --- Render Interpolated Slot ---
         if (slot.isInterpolated) {
+            const trackSlot = container.querySelector('.track-slot');
+            if (!trackSlot) return; // Should be there
+
             if (slot.track) {
                 trackSlot.classList.remove('empty');
                 trackSlot.classList.add('filled');
                 trackSlot.innerHTML = '';
-                trackSlot.appendChild(Components.renderTrack(slot.track, { showActions: true, minimal: true }));
+
+                // Render track card
+                const card = Components.renderTrack(slot.track, { showActions: true, minimal: true });
+
+                // Add explicit "Edit" button for interpolation slots to convert them
+                const editBtn = document.createElement('button');
+                editBtn.className = 'action-btn edit-action-btn';
+                editBtn.title = 'Edit';
+                editBtn.innerHTML = '✎';
+                editBtn.addEventListener('click', (e) => {
+                    e.stopPropagation();
+                    // Convert to manual steer slot
+                    slot.isInterpolated = false;
+                    slot.isEditing = true;
+                    // Re-create the DOM element for this slot to support full editing
+                    // We need to replace the container with a full one. 
+                    // Simplest is to remove current container and let renderBuilder re-create it?
+                    // But renderBuilder re-uses existing if ID matches.
+                    // So we manually remove it first.
+                    container.remove();
+                    this.renderBuilder();
+                });
+
+                // Append edit button to actions
+                const actions = card.querySelector('.track-actions');
+                if (actions) actions.insertBefore(editBtn, actions.firstChild);
+
+                trackSlot.appendChild(card);
             } else {
+                // Should not really happen for interpolated, but fallback
                 trackSlot.classList.add('empty');
                 trackSlot.classList.remove('filled');
-                trackSlot.innerHTML = `<span class="placeholder">Drag track here</span>`;
+                trackSlot.innerHTML = `<span class="placeholder">Interpolated</span>`;
             }
+
+            // Add remove button overlay
             const removeBtn = document.createElement('button');
             removeBtn.className = 'remove-steer-btn';
             removeBtn.title = 'Remove';
-            removeBtn.textContent = '×';
+            removeBtn.innerHTML = '×';
             removeBtn.addEventListener('click', (e) => {
                 e.stopPropagation();
                 this.removeSteerSlot(slotName);
             });
             trackSlot.appendChild(removeBtn);
+
             return;
         }
 
-        // Normal slot rendering (start, end, non-interpolated steer)
+        // --- Render Standard Slot (Start, End, Manual Steer) ---
+        // Areas
+        const editModeDiv = container.querySelector('.slot-mode-edit');
+        const viewModeDiv = container.querySelector('.slot-mode-view');
+        const emptyModeDiv = container.querySelector('.track-slot.empty');
+
+        // For standard start/end slots which aren't created via addSteerSlot typically,
+        // we might need to ensure the DOM structure exists if it was hardcoded in index.html.
+        // NOTE: index.html has hardcoded structure for start/end. We need to match that or update index.html.
+        // For this plan, we will assume we updated index.html OR we dynamically update it here?
+        // Let's check index.html. It has valid structure. We should probably update index.html to match the pattern
+        // or update it via JS if missing.
+        // To be safe, let's inject the structure if it's the old one.
+        if (!editModeDiv && (slotName === 'start' || slotName === 'end')) {
+            container.innerHTML = `
+                <label>${slotName === 'start' ? 'Start Track' : 'End Track'}</label>
+                <div class="slot-mode-edit" style="display: none;">
+                    <div class="slot-input-wrapper">
+                        <input type="text" class="slot-search-input" placeholder="Search or drag track..." autocomplete="off">
+                    </div>
+                </div>
+                <div class="slot-mode-view" style="display: none;">
+                    <div class="track-slot filled"></div>
+                </div>
+                <div class="track-slot empty" style="display: none;">
+                     <span class="placeholder">Drag track here or click to search</span>
+                </div>
+            `;
+            // Re-bind listeners for new elements
+            this.setupSlotListeners(slotName);
+            this.setupSlotDragDrop(slotName);
+            return this.renderSlot(slotName); // Retry
+        }
+
         const input = container.querySelector('.slot-search-input');
-        const navControls = container.querySelector('.slot-nav-controls');
-        const navCount = container.querySelector('.slot-nav-count');
-        const enhancedDisplay = container.querySelector('.slot-enhanced-query');
-        const prevBtn = container.querySelector('.slot-nav-btn.prev');
-        const nextBtn = container.querySelector('.slot-nav-btn.next');
 
-        if (document.activeElement !== input) {
-            input.value = slot.query;
-        }
+        // --- Logic to determine state ---
+        // 1. Editing: isEditing = true. Show input.
+        // 2. Viewed: has track AND isEditing = false. Show card (with footer).
+        // 3. Empty: no track AND isEditing = false? 
+        //    Actually, if no track, we usually want to be in "empty" state (placeholder) or "edit" state.
+        //    Let's say: if no track, show Empty. Clicking empty -> Edit.
 
-        if (slot.enhancedQuery) {
-            enhancedDisplay.style.display = 'block';
-            enhancedDisplay.textContent = `✨ ${slot.enhancedQuery}`;
-            enhancedDisplay.title = slot.enhancedQuery;
-        } else {
-            enhancedDisplay.style.display = 'none';
-        }
+        if (!slot.track && !slot.isEditing) {
+            // Show Empty
+            if (editModeDiv) editModeDiv.style.display = 'none';
+            if (viewModeDiv) viewModeDiv.style.display = 'none';
+            if (emptyModeDiv) {
+                emptyModeDiv.style.display = 'flex';
+                // Click to edit
+                emptyModeDiv.onclick = () => {
+                    slot.isEditing = true;
+                    this.renderSlot(slotName);
+                };
 
-        if (slot.results.length > 1) {
-            navControls.style.display = 'flex';
-            navCount.textContent = `${slot.currentIndex + 1}/${slot.results.length}`;
-            prevBtn.disabled = false;
-            nextBtn.disabled = false;
-        } else {
-            navControls.style.display = 'none';
-        }
+                // Add remove btn for steer slots
+                if (slotName.startsWith('steer-')) {
+                    if (!emptyModeDiv.querySelector('.remove-steer-btn')) {
+                        const rb = document.createElement('button');
+                        rb.className = 'remove-steer-btn';
+                        rb.innerHTML = '×';
+                        rb.onclick = (e) => { e.stopPropagation(); this.removeSteerSlot(slotName); };
+                        emptyModeDiv.appendChild(rb);
+                    }
+                }
+            }
+        } else if (slot.isEditing) {
+            // Show Edit Input
+            if (editModeDiv) editModeDiv.style.display = 'block';
+            if (viewModeDiv) viewModeDiv.style.display = 'none';
+            if (emptyModeDiv) emptyModeDiv.style.display = 'none';
 
-        if (slot.track) {
-            trackSlot.classList.remove('empty');
-            trackSlot.classList.add('filled');
-            trackSlot.innerHTML = '';
-            trackSlot.appendChild(Components.renderTrack(slot.track, { showActions: true, minimal: true }));
-            if (slotName.startsWith('steer-')) {
-                const removeBtn = document.createElement('button');
-                removeBtn.className = 'remove-steer-btn';
-                removeBtn.title = 'Remove';
-                removeBtn.textContent = '×';
-                removeBtn.addEventListener('click', (e) => {
-                    e.stopPropagation();
-                    this.removeSteerSlot(slotName);
-                });
-                trackSlot.appendChild(removeBtn);
+            if (input) {
+                input.value = slot.query;
+                input.focus();
             }
         } else {
-            trackSlot.classList.add('empty');
-            trackSlot.classList.remove('filled');
-            let html = `<span class="placeholder">Drag track here or type above</span>`;
-            if (slotName.startsWith('steer-')) {
-                html += `<button class="remove-steer-btn" title="Remove">×</button>`;
+            // Show View (Track Card)
+            if (editModeDiv) editModeDiv.style.display = 'none';
+            if (viewModeDiv) viewModeDiv.style.display = 'block';
+            if (emptyModeDiv) emptyModeDiv.style.display = 'none';
+
+            const filledSlot = viewModeDiv.querySelector('.track-slot.filled');
+            filledSlot.innerHTML = '';
+
+            // Render Track
+            const card = Components.renderTrack(slot.track, { showActions: true, minimal: true });
+
+            // Add Edit button
+            const editBtn = document.createElement('button');
+            editBtn.className = 'action-btn edit-action-btn';
+            editBtn.title = 'Edit / Search';
+            editBtn.innerHTML = '✎';
+            editBtn.addEventListener('click', (e) => {
+                e.stopPropagation();
+                slot.isEditing = true;
+                this.renderSlot(slotName);
+            });
+
+            // Append edit button to actions
+            const actions = card.querySelector('.track-actions');
+            if (actions) actions.insertBefore(editBtn, actions.firstChild);
+
+            // --- Footer: Enhanced Text + Nav ---
+            if (slot.enhancedQuery || slot.results.length > 1) {
+                const footer = document.createElement('div');
+                footer.className = 'track-card-footer';
+
+                // Enhanced Text
+                if (slot.enhancedQuery) {
+                    const text = document.createElement('div');
+                    text.className = 'footer-enhanced-text';
+                    text.innerHTML = `✨ ${slot.enhancedQuery}`;
+                    text.title = slot.enhancedQuery;
+                    footer.appendChild(text);
+                }
+
+                // Nav Controls
+                if (slot.results.length > 1) {
+                    const nav = document.createElement('div');
+                    nav.className = 'footer-nav-controls';
+
+                    const prev = document.createElement('button');
+                    prev.className = 'footer-nav-btn';
+                    prev.innerHTML = '←';
+                    prev.onclick = (e) => { e.stopPropagation(); this.navigateSlot(slotName, -1); };
+
+                    const next = document.createElement('button');
+                    next.className = 'footer-nav-btn';
+                    next.innerHTML = '→';
+                    next.onclick = (e) => { e.stopPropagation(); this.navigateSlot(slotName, 1); };
+
+                    nav.appendChild(prev);
+                    nav.appendChild(next);
+                    footer.appendChild(nav);
+                }
+
+                card.appendChild(footer);
             }
-            trackSlot.innerHTML = html;
-            const removeBtn = trackSlot.querySelector('.remove-steer-btn');
-            if (removeBtn) {
-                removeBtn.addEventListener('click', (e) => {
-                    e.stopPropagation();
-                    this.removeSteerSlot(slotName);
-                });
+
+            filledSlot.appendChild(card);
+
+            // Add remove btn for steer slots
+            if (slotName.startsWith('steer-')) {
+                const rb = document.createElement('button');
+                rb.className = 'remove-steer-btn';
+                rb.innerHTML = '×';
+                rb.onclick = (e) => { e.stopPropagation(); this.removeSteerSlot(slotName); };
+                filledSlot.appendChild(rb);
             }
         }
     },
