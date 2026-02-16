@@ -3,7 +3,7 @@ set -e
 
 # Shared Load Balancer + IAP Setup
 # Routes /* to frontend, /api/* to vector service (with path rewrite)
-# Replaces the old single-service frontend/setup_iap.sh
+# Idempotent — safe to re-run if a previous attempt failed partway through.
 
 PROJECT_ID="cloud-crate-485418"
 REGION="us-central1"
@@ -21,6 +21,20 @@ fi
 echo "Setting up shared LB + IAP for Cloud Crate..."
 echo "Authorized user: ${USER_EMAIL}"
 
+# Helper: create a resource only if it doesn't already exist.
+# Usage: create_if_missing <describe_cmd> <create_cmd>
+create_if_missing() {
+    local name="$1"; shift
+    local describe_cmd="$1"; shift
+    # remaining args are the create command
+    if eval "$describe_cmd" &>/dev/null; then
+        echo "  Already exists: ${name}"
+    else
+        echo "  Creating: ${name}"
+        "$@"
+    fi
+}
+
 # ============================================================
 # 0. Tear down old frontend-only LB resources (if they exist)
 # ============================================================
@@ -31,25 +45,19 @@ OLD_PREFIX="${FRONTEND_SERVICE}"
 # Delete in reverse dependency order; ignore errors if resources don't exist
 gcloud compute forwarding-rules delete ${OLD_PREFIX}-forwarding \
     --global --project=${PROJECT_ID} --quiet 2>/dev/null || true
-
 gcloud compute target-https-proxies delete ${OLD_PREFIX}-https-proxy \
     --project=${PROJECT_ID} --quiet 2>/dev/null || true
-
 gcloud compute ssl-certificates delete ${OLD_PREFIX}-cert \
     --global --project=${PROJECT_ID} --quiet 2>/dev/null || true
-
 gcloud compute url-maps delete ${OLD_PREFIX}-urlmap \
     --project=${PROJECT_ID} --quiet 2>/dev/null || true
-
 gcloud compute backend-services remove-backend ${OLD_PREFIX}-backend \
     --global \
     --network-endpoint-group=${OLD_PREFIX}-neg \
     --network-endpoint-group-region=${REGION} \
     --project=${PROJECT_ID} --quiet 2>/dev/null || true
-
 gcloud compute backend-services delete ${OLD_PREFIX}-backend \
     --global --project=${PROJECT_ID} --quiet 2>/dev/null || true
-
 gcloud compute network-endpoint-groups delete ${OLD_PREFIX}-neg \
     --region=${REGION} --project=${PROJECT_ID} --quiet 2>/dev/null || true
 
@@ -78,136 +86,171 @@ IP=$(gcloud compute addresses describe ${IP_NAME} \
 echo "Static IP: ${IP}"
 
 # ============================================================
-# 2. Serverless NEGs
+# 2. Serverless NEGs (idempotent)
 # ============================================================
 echo ""
-echo "Creating serverless NEGs..."
+echo "Setting up serverless NEGs..."
 
-gcloud compute network-endpoint-groups create ${LB_PREFIX}-frontend-neg \
-    --region=${REGION} \
-    --network-endpoint-type=serverless \
-    --cloud-run-service=${FRONTEND_SERVICE} \
-    --project=${PROJECT_ID}
+if ! gcloud compute network-endpoint-groups describe ${LB_PREFIX}-frontend-neg --region=${REGION} --project=${PROJECT_ID} &>/dev/null; then
+    gcloud compute network-endpoint-groups create ${LB_PREFIX}-frontend-neg \
+        --region=${REGION} \
+        --network-endpoint-type=serverless \
+        --cloud-run-service=${FRONTEND_SERVICE} \
+        --project=${PROJECT_ID}
+    echo "  Created: ${LB_PREFIX}-frontend-neg"
+else
+    echo "  Already exists: ${LB_PREFIX}-frontend-neg"
+fi
 
-gcloud compute network-endpoint-groups create ${LB_PREFIX}-vector-neg \
-    --region=${REGION} \
-    --network-endpoint-type=serverless \
-    --cloud-run-service=${VECTOR_SERVICE} \
-    --project=${PROJECT_ID}
+if ! gcloud compute network-endpoint-groups describe ${LB_PREFIX}-vector-neg --region=${REGION} --project=${PROJECT_ID} &>/dev/null; then
+    gcloud compute network-endpoint-groups create ${LB_PREFIX}-vector-neg \
+        --region=${REGION} \
+        --network-endpoint-type=serverless \
+        --cloud-run-service=${VECTOR_SERVICE} \
+        --project=${PROJECT_ID}
+    echo "  Created: ${LB_PREFIX}-vector-neg"
+else
+    echo "  Already exists: ${LB_PREFIX}-vector-neg"
+fi
 
 # ============================================================
-# 3. Backend services
+# 3. Backend services (idempotent)
 # ============================================================
 echo ""
-echo "Creating backend services..."
+echo "Setting up backend services..."
 
 # Frontend backend
-gcloud compute backend-services create ${LB_PREFIX}-frontend-backend \
-    --global \
-    --project=${PROJECT_ID}
+if ! gcloud compute backend-services describe ${LB_PREFIX}-frontend-backend --global --project=${PROJECT_ID} &>/dev/null; then
+    gcloud compute backend-services create ${LB_PREFIX}-frontend-backend \
+        --global \
+        --project=${PROJECT_ID}
+    echo "  Created: ${LB_PREFIX}-frontend-backend"
+else
+    echo "  Already exists: ${LB_PREFIX}-frontend-backend"
+fi
 
+# Add NEG to frontend backend (idempotent — add-backend is a no-op if already attached)
 gcloud compute backend-services add-backend ${LB_PREFIX}-frontend-backend \
     --global \
     --network-endpoint-group=${LB_PREFIX}-frontend-neg \
     --network-endpoint-group-region=${REGION} \
-    --project=${PROJECT_ID}
+    --project=${PROJECT_ID} 2>/dev/null || true
 
 # Vector backend
-gcloud compute backend-services create ${LB_PREFIX}-vector-backend \
-    --global \
-    --project=${PROJECT_ID}
+if ! gcloud compute backend-services describe ${LB_PREFIX}-vector-backend --global --project=${PROJECT_ID} &>/dev/null; then
+    gcloud compute backend-services create ${LB_PREFIX}-vector-backend \
+        --global \
+        --project=${PROJECT_ID}
+    echo "  Created: ${LB_PREFIX}-vector-backend"
+else
+    echo "  Already exists: ${LB_PREFIX}-vector-backend"
+fi
 
 gcloud compute backend-services add-backend ${LB_PREFIX}-vector-backend \
     --global \
     --network-endpoint-group=${LB_PREFIX}-vector-neg \
     --network-endpoint-group-region=${REGION} \
-    --project=${PROJECT_ID}
+    --project=${PROJECT_ID} 2>/dev/null || true
 
 # ============================================================
-# 4. URL map with path-based routing
+# 4. URL map with path-based routing + path rewrite
 # ============================================================
 echo ""
-echo "Creating URL map with path-based routing..."
+echo "Setting up URL map with path-based routing..."
 
-# Create the base URL map with frontend as default
-gcloud compute url-maps create ${LB_PREFIX}-urlmap \
-    --default-service=${LB_PREFIX}-frontend-backend \
-    --project=${PROJECT_ID}
+# Build the complete URL map as JSON and import it in one shot.
+# This is idempotent — import replaces the existing URL map if present.
+URLMAP_FILE="/tmp/cloud-crate-urlmap.json"
 
-# Add path matcher: /api/* -> vector backend with path prefix rewrite
-# The vector service sees /tracks, not /api/tracks
-gcloud compute url-maps add-path-matcher ${LB_PREFIX}-urlmap \
-    --path-matcher-name=api-matcher \
-    --default-service=${LB_PREFIX}-frontend-backend \
-    --path-rules="/api/*=${LB_PREFIX}-vector-backend" \
-    --new-hosts="*" \
-    --project=${PROJECT_ID}
+cat > "${URLMAP_FILE}" <<JSONEOF
+{
+  "name": "${LB_PREFIX}-urlmap",
+  "defaultService": "projects/${PROJECT_ID}/global/backendServices/${LB_PREFIX}-frontend-backend",
+  "hostRules": [
+    {
+      "hosts": ["*"],
+      "pathMatcher": "api-matcher"
+    }
+  ],
+  "pathMatchers": [
+    {
+      "name": "api-matcher",
+      "defaultService": "projects/${PROJECT_ID}/global/backendServices/${LB_PREFIX}-frontend-backend",
+      "pathRules": [
+        {
+          "paths": ["/api/*"],
+          "service": "projects/${PROJECT_ID}/global/backendServices/${LB_PREFIX}-vector-backend",
+          "routeAction": {
+            "urlRewrite": {
+              "pathPrefixRewrite": "/"
+            }
+          }
+        }
+      ]
+    }
+  ]
+}
+JSONEOF
 
-# Add path prefix rewrite so /api/tracks -> /tracks
-# This requires importing a YAML config since gcloud CLI doesn't support
-# pathPrefixRewrite directly in add-path-matcher
-echo "Applying path rewrite rule..."
-gcloud compute url-maps export ${LB_PREFIX}-urlmap \
-    --project=${PROJECT_ID} \
-    --destination=/tmp/cloud-crate-urlmap.yaml
+# Create the URL map if it doesn't exist yet (import --quiet only updates existing)
+if ! gcloud compute url-maps describe ${LB_PREFIX}-urlmap --project=${PROJECT_ID} &>/dev/null; then
+    gcloud compute url-maps create ${LB_PREFIX}-urlmap \
+        --default-service=${LB_PREFIX}-frontend-backend \
+        --project=${PROJECT_ID}
+    echo "  Created base URL map"
+fi
 
-# Patch the YAML to add routeAction with urlRewrite
-python3 -c "
-import yaml, sys
-
-with open('/tmp/cloud-crate-urlmap.yaml', 'r') as f:
-    config = yaml.safe_load(f)
-
-# Find the path matcher and update the /api/* rule with a rewrite
-for pm in config.get('pathMatchers', []):
-    if pm.get('name') == 'api-matcher':
-        for rule in pm.get('pathRules', []):
-            if '/api/*' in rule.get('paths', []):
-                rule['routeAction'] = {
-                    'urlRewrite': {
-                        'pathPrefixRewrite': '/'
-                    }
-                }
-                break
-
-with open('/tmp/cloud-crate-urlmap.yaml', 'w') as f:
-    yaml.dump(config, f, default_flow_style=False)
-"
-
+# Import the full config (updates in place)
 gcloud compute url-maps import ${LB_PREFIX}-urlmap \
-    --source=/tmp/cloud-crate-urlmap.yaml \
+    --source="${URLMAP_FILE}" \
     --project=${PROJECT_ID} \
     --quiet
+echo "  URL map configured with /api/* -> vector (pathPrefixRewrite: /)"
 
 # ============================================================
-# 5. SSL certificate (nip.io domain)
+# 5. SSL certificate (nip.io domain, idempotent)
 # ============================================================
 DOMAIN="${IP//./-}.nip.io"
 echo ""
-echo "Creating SSL certificate for ${DOMAIN}..."
+echo "Setting up SSL certificate for ${DOMAIN}..."
 
-gcloud compute ssl-certificates create ${LB_PREFIX}-cert \
-    --domains=${DOMAIN} \
-    --global \
-    --project=${PROJECT_ID}
+if ! gcloud compute ssl-certificates describe ${LB_PREFIX}-cert --global --project=${PROJECT_ID} &>/dev/null; then
+    gcloud compute ssl-certificates create ${LB_PREFIX}-cert \
+        --domains=${DOMAIN} \
+        --global \
+        --project=${PROJECT_ID}
+    echo "  Created: ${LB_PREFIX}-cert"
+else
+    echo "  Already exists: ${LB_PREFIX}-cert"
+fi
 
 # ============================================================
-# 6. HTTPS proxy + forwarding rule
+# 6. HTTPS proxy + forwarding rule (idempotent)
 # ============================================================
 echo ""
-echo "Creating HTTPS proxy and forwarding rule..."
+echo "Setting up HTTPS proxy and forwarding rule..."
 
-gcloud compute target-https-proxies create ${LB_PREFIX}-https-proxy \
-    --ssl-certificates=${LB_PREFIX}-cert \
-    --url-map=${LB_PREFIX}-urlmap \
-    --project=${PROJECT_ID}
+if ! gcloud compute target-https-proxies describe ${LB_PREFIX}-https-proxy --project=${PROJECT_ID} &>/dev/null; then
+    gcloud compute target-https-proxies create ${LB_PREFIX}-https-proxy \
+        --ssl-certificates=${LB_PREFIX}-cert \
+        --url-map=${LB_PREFIX}-urlmap \
+        --project=${PROJECT_ID}
+    echo "  Created: ${LB_PREFIX}-https-proxy"
+else
+    echo "  Already exists: ${LB_PREFIX}-https-proxy"
+fi
 
-gcloud compute forwarding-rules create ${LB_PREFIX}-forwarding \
-    --global \
-    --target-https-proxy=${LB_PREFIX}-https-proxy \
-    --address=${IP_NAME} \
-    --ports=443 \
-    --project=${PROJECT_ID}
+if ! gcloud compute forwarding-rules describe ${LB_PREFIX}-forwarding --global --project=${PROJECT_ID} &>/dev/null; then
+    gcloud compute forwarding-rules create ${LB_PREFIX}-forwarding \
+        --global \
+        --target-https-proxy=${LB_PREFIX}-https-proxy \
+        --address=${IP_NAME} \
+        --ports=443 \
+        --project=${PROJECT_ID}
+    echo "  Created: ${LB_PREFIX}-forwarding"
+else
+    echo "  Already exists: ${LB_PREFIX}-forwarding"
+fi
 
 # ============================================================
 # 7. Enable IAP on both backend services
