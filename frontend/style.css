@@ -763,10 +763,18 @@ input:checked+.slider:before {
     align-items: center;
     justify-content: center;
     gap: 6px;
-    margin: -4px auto;
-    /* Negative margin to pull them closer */
+    margin: -2px auto;
+    /* Very slight negative margin */
     position: relative;
-    z-index: 5;
+    z-index: 10;
+    height: 0;
+    overflow: visible;
+}
+
+/* Ensure tracks don't clip the buttons if they have overflow:hidden */
+.track-slot,
+.slot-container {
+    overflow: visible;
 }
 
 .insert-steer-btn {
