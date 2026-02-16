@@ -79,7 +79,7 @@ app = FastAPI()
 
 # Configuration
 DB_PATH = os.getenv("DB_PATH", "cloudcrate.duckdb")
-PROJECT_ID = os.getenv("GCP_PROJECT_ID")
+PROJECT_ID = os.getenv("GCP_PROJECT_ID") or os.getenv("GOOGLE_CLOUD_PROJECT")
 LOCATION = os.getenv("GCP_LOCATION", "us-central1")
 
 # Global models
