@@ -1,8 +1,9 @@
 import duckdb
 from fastapi import FastAPI, HTTPException
+from fastapi.responses import RedirectResponse, StreamingResponse
 from pydantic import BaseModel
 from typing import List, Optional, Literal
-from typing import List, Optional, Literal
+from datetime import timedelta
 import os
 import uvicorn
 import vertexai
@@ -11,6 +12,11 @@ import numpy as np
 import math
 import torch
 from transformers import AutoProcessor, ClapModel
+from google.cloud import storage
+
+# GCS Configuration for audio streaming
+GCS_BUCKET_NAME = os.getenv("GCS_BUCKET_NAME", "cloud-crate-vector-db")
+GCS_AUDIO_PREFIX = os.getenv("GCS_AUDIO_PREFIX", "fma/fma_full/fma_full")
 
 # SLERP Utility
 def slerp(v0, v1, t=0.5):
@@ -74,6 +80,16 @@ def get_midpoint(vec_a, vec_b, method="slerp"):
 
 
 app = FastAPI()
+
+# CORS middleware - allow frontend to call API from different origin
+from fastapi.middleware.cors import CORSMiddleware
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"],  # In production, restrict to frontend domain
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
 
 # Configuration
 DB_PATH = os.getenv("DB_PATH", "cloudcrate.duckdb")
@@ -213,7 +229,53 @@ def get_db_connection():
 
 @app.get("/")
 def health_check():
+    """API health check."""
     return {"status": "ok", "service": "cloudcrate-vector"}
+
+@app.get("/stream/{track_id}")
+def stream_audio(track_id: str):
+    """
+    Stream audio from GCS by proxying the bytes.
+    Maps track_id (e.g., 'fma_50833') to GCS path.
+    """
+    try:
+        # Extract numeric ID: fma_50833 -> 50833
+        num_id = track_id.replace("fma_", "")
+        padded = num_id.zfill(6)
+        prefix = padded[:3]
+        
+        # Build GCS path: fma/fma_full/fma_full/050/050833.mp3
+        blob_path = f"{GCS_AUDIO_PREFIX}/{prefix}/{padded}.mp3"
+        
+        client = storage.Client()
+        bucket = client.bucket(GCS_BUCKET_NAME)
+        blob = bucket.blob(blob_path)
+        
+        if not blob.exists():
+            raise HTTPException(status_code=404, detail=f"Audio file not found: {blob_path}")
+        
+        # Reload metadata to get file size for Content-Length header
+        blob.reload()
+        
+        def stream_blob():
+            with blob.open("rb") as f:
+                while chunk := f.read(8192):
+                    yield chunk
+        
+        return StreamingResponse(
+            stream_blob(),
+            media_type="audio/mpeg",
+            headers={
+                "Accept-Ranges": "bytes",
+                "Content-Length": str(blob.size),
+            }
+        )
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        print(f"Error streaming audio for {track_id}: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
 
 @app.get("/tracks", response_model=List[TrackResponse])
 def list_tracks(limit: int = 50, offset: int = 0, random: bool = True, source: Literal["library", "fma", "all"] = "library"):
@@ -588,6 +650,7 @@ class InterpolationPlaylistRequest(BaseModel):
     limit: Optional[int] = 10
     method: Optional[Literal["slerp", "linear", "greedy_walk"]] = "greedy_walk"
     steer_track_id: Optional[str] = None # New optional field
+    source: Optional[Literal["library", "fma", "all"]] = "all"
 
 
 def bezier_interpolation(con, vec_start, vec_control, vec_end, exclude_ids, limit=10):
@@ -629,7 +692,7 @@ def bezier_interpolation(con, vec_start, vec_control, vec_end, exclude_ids, limi
             
     return path
 
-def greedy_walk_interpolation(con, start_vec, end_vec, start_id, end_id, start_artist, end_artist, limit=10):
+def greedy_walk_interpolation(con, start_vec, end_vec, start_id, end_id, start_artist, end_artist, limit=10, source="all"):
     current_vec = start_vec
     path = []
     
@@ -637,6 +700,13 @@ def greedy_walk_interpolation(con, start_vec, end_vec, start_id, end_id, start_a
     visited_ids = {start_id, end_id}
     visited_artists = {start_artist, end_artist}
     
+    # Pre-calculate source filter clause
+    source_filter = ""
+    source_param = []
+    if source != "all":
+        source_filter = "AND source = ?"
+        source_param = [source]
+
     # We loop up to 'limit' times to generate intermediate tracks
     for _ in range(limit):
         
@@ -648,15 +718,16 @@ def greedy_walk_interpolation(con, start_vec, end_vec, start_id, end_id, start_a
         # Passing string lists to UNNEST in DuckDB python client can sometimes be finicky with quoting, 
         # so let's try fetch-and-filter for robustness + simplicity given the small N (limit 50).
         
-        query = """
+        query = f"""
             WITH neighborhood AS (
-                SELECT id, title, artist, album, relative_path, v_mid,
+                SELECT id, title, artist, album, relative_path, v_mid, source, track_url, album_url, artist_url,
                        array_cosine_similarity(v_mid, ?::FLOAT[768]) as sim_to_current
                 FROM tracks
+                WHERE 1=1 {source_filter}
                 ORDER BY sim_to_current DESC
                 LIMIT 50
             )
-            SELECT id, title, artist, album, relative_path, v_mid,
+            SELECT id, title, artist, album, relative_path, v_mid, source, track_url, album_url, artist_url,
                    array_cosine_similarity(v_mid, ?::FLOAT[768]) as sim_to_target
             FROM neighborhood
             WHERE id NOT IN (SELECT UNNEST(?)) 
@@ -666,8 +737,9 @@ def greedy_walk_interpolation(con, start_vec, end_vec, start_id, end_id, start_a
         # Convert set to list for DuckDB binding
         visited_list = list(visited_ids)
         
-        # Execute query: [current_pos, target_pos, exclude_list]
-        candidates = con.execute(query, [current_vec, end_vec, visited_list]).fetchall()
+        # Execute query: [current_pos, source_param(if any), target_pos, exclude_list]
+        params = [current_vec] + source_param + [end_vec, visited_list]
+        candidates = con.execute(query, params).fetchall()
         
         best_next = None
         for cand in candidates:
@@ -691,8 +763,12 @@ def greedy_walk_interpolation(con, start_vec, end_vec, start_id, end_id, start_a
             title=best_next[1], 
             artist=best_next[2], 
             album=best_next[3], 
-            relative_path=best_next[4], 
-            similarity=best_next[6] # Similarity to TARGET
+            relative_path=best_next[4],
+            source=best_next[6],
+            track_url=best_next[7],
+            album_url=best_next[8],
+            artist_url=best_next[9],
+            similarity=best_next[10] # Similarity to TARGET
         )
         
         path.append(next_track)
@@ -701,7 +777,7 @@ def greedy_walk_interpolation(con, start_vec, end_vec, start_id, end_id, start_a
         current_vec = best_next[5] # Move our position to this new song
         
         # Optimization: Early exit if we are extremely close to the target
-        if best_next[6] > 0.98:
+        if best_next[10] > 0.98:
             break
             
     return path
@@ -773,7 +849,7 @@ def interpolate_playlist(request: InterpolationPlaylistRequest):
         con = get_db_connection()
         
         # 1. Get start and end vectors
-        query_vectors = "SELECT id, v_mid, title, artist, album, relative_path FROM tracks WHERE id IN (?, ?)"
+        query_vectors = "SELECT id, v_mid, title, artist, album, relative_path, source, track_url, album_url, artist_url FROM tracks WHERE id IN (?, ?)"
         results = con.execute(query_vectors, [request.track_id_1, request.track_id_2]).fetchall()
         
         if len(results) != 2:
@@ -795,7 +871,7 @@ def interpolate_playlist(request: InterpolationPlaylistRequest):
         vec_steer = None
         steer_row = None
         if request.steer_track_id:
-            query_steer = "SELECT id, v_mid, title, artist, album, relative_path FROM tracks WHERE id = ?"
+            query_steer = "SELECT id, v_mid, title, artist, album, relative_path, source, track_url, album_url, artist_url FROM tracks WHERE id = ?"
             steer_row = con.execute(query_steer, [request.steer_track_id]).fetchone()
             if not steer_row:
                  # If steer track not found, fail or ignore? Let's fail for clarity.
@@ -818,20 +894,25 @@ def interpolate_playlist(request: InterpolationPlaylistRequest):
                 path_a = greedy_walk_interpolation(
                     con, vec_start, vec_steer, 
                     start_row[0], steer_row[0], 
-                    start_row[2], steer_row[2], limit=limit_a
+                    start_row[2], steer_row[2], limit=limit_a,
+                    source=request.source
                 )
                 
                 # Part 2: Steer -> End
                 path_b = greedy_walk_interpolation(
                     con, vec_steer, vec_end, 
                     steer_row[0], end_row[0], 
-                    steer_row[2], end_row[2], limit=limit_b
+                    steer_row[2], end_row[2], limit=limit_b,
+                    source=request.source
                 )
                 
                 # Construct: Start + Path A + [Steer] + Path B + End
                 steer_obj = SearchResult(
                     id=steer_row[0], title=steer_row[2], artist=steer_row[3], 
-                    album=steer_row[4], relative_path=steer_row[5], similarity=1.0
+                    album=steer_row[4], relative_path=steer_row[5], 
+                    source=steer_row[6], track_url=steer_row[7], 
+                    album_url=steer_row[8], artist_url=steer_row[9],
+                    similarity=1.0
                 )
                 
                 # Note: path_a excludes start/end of its segment. 
@@ -844,7 +925,8 @@ def interpolate_playlist(request: InterpolationPlaylistRequest):
                 path = greedy_walk_interpolation(
                     con, vec_start, vec_end, 
                     start_row[0], end_row[0], 
-                    start_row[2], end_row[2], limit=walk_limit
+                    start_row[2], end_row[2], limit=walk_limit,
+                    source=request.source
                 )
 
         # --- STRATEGY B: GEOMETRIC (SLERP/Linear) ---
@@ -885,11 +967,17 @@ def interpolate_playlist(request: InterpolationPlaylistRequest):
         
         start_obj = SearchResult(
             id=start_row[0], title=start_row[2], artist=start_row[3], 
-            album=start_row[4], relative_path=start_row[5], similarity=1.0
+            album=start_row[4], relative_path=start_row[5], 
+            source=start_row[6], track_url=start_row[7],
+            album_url=start_row[8], artist_url=start_row[9],
+            similarity=1.0
         )
         end_obj = SearchResult(
             id=end_row[0], title=end_row[2], artist=end_row[3], 
-            album=end_row[4], relative_path=end_row[5], similarity=1.0
+            album=end_row[4], relative_path=end_row[5], 
+            source=end_row[6], track_url=end_row[7],
+            album_url=end_row[8], artist_url=end_row[9],
+            similarity=1.0
         )
         
         return [start_obj] + path + [end_obj]

@@ -1,0 +1,177 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>EchoLocate - FMA Explorer</title>
+    <link rel="stylesheet" href="style.css?v=5">
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+</head>
+
+<body>
+    <div class="app-container">
+        <!-- Header -->
+        <header class="header">
+            <h1 class="logo">🎵 EchoLocate</h1>
+            <p class="tagline">Explore 100k+ FMA tracks with AI-powered search</p>
+        </header>
+
+        <!-- Main Content -->
+        <main class="main-content">
+            <!-- Left Panel: Search & Results -->
+            <section class="results-panel">
+                <h2>Search & Explore</h2>
+
+                <div class="search-controls">
+                    <div class="search-header-row">
+                        <div class="search-tabs">
+                            <button class="tab" data-tab="text">Text Search</button>
+                            <button class="tab active" data-tab="semantic">Semantic Search</button>
+                        </div>
+                        <div class="search-options" id="semantic-options" style="display: block;">
+                            <label class="toggle-switch">
+                                <input type="checkbox" id="enhance-toggle" checked>
+                                <span class="slider round"></span>
+                                <span class="toggle-label">Enhanced Query</span>
+                            </label>
+                        </div>
+                    </div>
+
+                    <div class="search-container">
+                        <input type="text" id="search-input" placeholder="Search by artist, title, or album...">
+                        <button id="search-btn" class="btn-primary">Search</button>
+                        <button id="random-btn" class="btn-secondary" title="Surprise me with random tracks">🎲
+                            Random</button>
+                    </div>
+
+                    <div id="enhanced-query-display" class="enhanced-query"></div>
+
+                    <div class="search-filters">
+                        <label><input type="radio" name="source" value="fma" checked> FMA Only</label>
+                        <label><input type="radio" name="source" value="all"> All Sources</label>
+                    </div>
+                </div>
+
+                <div class="playlist-controls"
+                    style="justify-content: space-between; margin-bottom: 1rem; margin-top: 1rem;">
+                    <h3>Results <span id="result-count"></span></h3>
+                    <button id="clear-results" class="btn-secondary" title="Clear search results">Clear</button>
+                </div>
+                <!-- Alignment Spacer: Matches "Start Track" label height in builder -->
+                <div style="height: 17px;"></div>
+                <div id="results-list" class="track-list"></div>
+            </section>
+
+            <!-- Interpolation Builder Panel -->
+            <section class="playlist-panel">
+                <div class="panel-header"
+                    style="height: 38px; display: flex; align-items: center; margin-bottom: 0.75rem;">
+                    <h2>Interpolation Builder</h2>
+                </div>
+
+                <!-- Spacer to match Left Panel Search Tabs (calculated 32px) -->
+                <div style="height: 32px;"></div>
+
+                <!-- View 1: Builder Inputs -->
+                <div id="builder-view" style="display: flex; flex-direction: column; flex: 1;">
+
+                    <!-- Control Row (matches Left Panel Search Input row) -->
+                    <div style="display: flex; gap: 0.5rem; margin-bottom: 0.75rem; align-items: center;">
+                        <button id="interpolate-btn" class="btn-primary" style="flex: 1;" disabled>✨ Generate
+                            Playlist</button>
+                    </div>
+
+                    <!-- Spacer to match Left Panel Filters (calculated 38px) -->
+                    <div style="height: 38px;"></div>
+
+                    <div class="playlist-controls"
+                        style="justify-content: space-between; margin-bottom: 1rem; margin-top: 1rem; min-height: 27px;">
+                        <h3>Builder Slots</h3>
+                        <button id="clear-builder" class="btn-secondary" title="Clear builder">Clear</button>
+                    </div>
+
+                    <div class="builder-slots" style="flex: 1; overflow-y: auto;">
+                        <!-- Start Track -->
+                        <div class="slot-container">
+                            <label>Start Track</label>
+                            <div id="slot-start" class="track-slot empty">
+                                <span class="placeholder">Select a track and click "Set Start"</span>
+                            </div>
+                        </div>
+
+                        <!-- Middle Track -->
+                        <div class="slot-container">
+                            <label>Middle Track (Optional)</label>
+                            <div id="slot-middle" class="track-slot empty">
+                                <span class="placeholder">Select a track and click "Set Mid"</span>
+                                <button class="clear-slot-btn" title="Clear slot">×</button>
+                            </div>
+                        </div>
+
+                        <!-- End Track -->
+                        <div class="slot-container">
+                            <label>End Track</label>
+                            <div id="slot-end" class="track-slot empty">
+                                <span class="placeholder">Select a track and click "Set End"</span>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- View 2: Generated Playlist (Initially Hidden) -->
+                <div id="playlist-view" style="display: none; flex-direction: column; flex: 1;">
+                    <!-- Control Row match -->
+                    <div style="display: flex; gap: 0.5rem; margin-bottom: 0.75rem; align-items: center;">
+                        <button id="reset-builder" class="btn-secondary" style="flex: 1;">Back to Builder</button>
+                    </div>
+
+                    <!-- Spacer to match Left Panel Filters (calculated 38px) -->
+                    <div style="height: 38px;"></div>
+
+                    <!-- Header match -->
+                    <div class="playlist-controls"
+                        style="justify-content: space-between; margin-bottom: 1rem; margin-top: 1rem; min-height: 27px;">
+                        <h3>Generated Playlist</h3>
+                    </div>
+
+                    <div id="playlist" class="track-list"></div>
+                </div>
+            </section>
+        </main>
+
+        <!-- Audio Player -->
+        <footer class="player-bar">
+            <div class="now-playing">
+                <span id="now-playing-title">No track playing</span>
+                <span id="now-playing-artist"></span>
+            </div>
+            <div class="player-controls">
+                <button id="prev-btn" class="player-btn">⏮</button>
+                <button id="play-btn" class="player-btn">▶</button>
+                <button id="next-btn" class="player-btn">⏭</button>
+            </div>
+            <div class="progress-container">
+                <span id="current-time">0:00</span>
+                <input type="range" id="progress-bar" value="0" max="100">
+                <span id="duration">0:00</span>
+            </div>
+            <audio id="audio-player"></audio>
+        </footer>
+    </div>
+
+    <!-- Configuration - set your vector service URL here -->
+    <script>
+        // Local development: vector service on port 8001
+        // Production: set to your deployed vector service URL
+        window.VECTOR_API_URL = 'http://localhost:8001';
+    </script>
+    <script src="api.js?v=5"></script>
+    <script src="player.js?v=5"></script>
+    <script src="components.js?v=5"></script>
+    <script src="app.js?v=5"></script>
+</body>
+
+</html>
