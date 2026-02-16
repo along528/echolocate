@@ -621,6 +621,16 @@ input:checked+.slider:before {
     flex-wrap: wrap;
 }
 
+.track-slot .track-item.playing {
+    background: rgba(99, 102, 241, 0.35) !important;
+    border-radius: 7px;
+    padding: 0.5rem;
+    margin: -0.5rem;
+    width: calc(100% + 1rem);
+    box-shadow: 0 0 15px rgba(99, 102, 241, 0.2);
+    /* Fill the box completely */
+}
+
 .track-slot .track-item .track-info {
     flex: 1 1 auto;
     min-width: 0;
