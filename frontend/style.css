@@ -1164,6 +1164,30 @@ input:checked+.slider:before {
     width: 38px;
 }
 
+.slot-search-btn {
+    background: transparent;
+    border: 1px solid var(--border-color);
+    border-radius: 6px;
+    color: var(--text-secondary);
+    cursor: pointer;
+    font-size: 1.1rem;
+    padding: 4px 8px;
+    margin-left: 6px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    transition: all 0.2s ease;
+    flex-shrink: 0;
+    height: 34px;
+    width: 38px;
+}
+
+.slot-search-btn:hover {
+    background: rgba(99, 102, 241, 0.15);
+    border-color: var(--accent-primary);
+    color: var(--text-primary);
+}
+
 .slot-randomize-btn:hover {
     background: rgba(99, 102, 241, 0.15);
     border-color: var(--accent-primary);
@@ -1331,8 +1355,9 @@ input:checked+.slider:before {
         /* Reset nav-controls padding since they won't be here in edit mode */
     }
 
-    /* Randomize Button: match control button size, stay in-flow next to search box */
-    .slot-randomize-btn {
+    /* Randomize & Search Buttons: match control button size, in-flow next to search box */
+    .slot-randomize-btn,
+    .slot-search-btn {
         width: 48px !important;
         height: 48px !important;
         font-size: 1.3rem !important;

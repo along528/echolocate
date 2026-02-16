@@ -88,6 +88,7 @@ const App = {
         const nextBtn = container.querySelector('.slot-nav-btn.next');
         const clearBtn = container.querySelector('.clear-slot-btn-main');
         const randomizeBtn = container.querySelector('.slot-randomize-btn');
+        const searchBtn = container.querySelector('.slot-search-btn');
 
         if (input) {
             input.addEventListener('keypress', (e) => {
@@ -98,6 +99,13 @@ const App = {
             input.addEventListener('input', (e) => {
                 const slot = this.getSlot(slotName);
                 if (slot) slot.query = e.target.value;
+            });
+        }
+
+        if (searchBtn) {
+            searchBtn.addEventListener('click', () => {
+                const slot = this.getSlot(slotName);
+                if (slot && slot.query) this.handleSlotSearch(slotName, slot.query);
             });
         }
 
@@ -256,6 +264,7 @@ const App = {
                 <div class="slot-input-wrapper">
                     <input type="text" class="slot-search-input" placeholder="Describe a vibe..."
                         autocomplete="off">
+                    <button class="slot-search-btn" title="Search">🔍</button>
                     <button class="slot-randomize-btn" title="Pick a random track">🎲</button>
                 </div>
             </div>
@@ -847,6 +856,7 @@ const App = {
                 <div class="slot-mode-edit" style="display: none;">
                     <div class="slot-input-wrapper">
                         <input type="text" class="slot-search-input" placeholder="Describe a vibe..." autocomplete="off">
+                        <button class="slot-search-btn" title="Search">🔍</button>
                         <button class="slot-randomize-btn" title="Pick a random track">🎲</button>
                     </div>
                 </div>
