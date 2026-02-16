@@ -11,9 +11,10 @@ const App = {
     // Interpolation Builder State
     slots: {
         start: { id: 'start', track: null, query: '', results: [], currentIndex: -1, enhancedQuery: null },
-        middle: { id: 'middle', track: null, query: '', results: [], currentIndex: -1, enhancedQuery: null },
         end: { id: 'end', track: null, query: '', results: [], currentIndex: -1, enhancedQuery: null }
     },
+    steerSlots: [],
+    steerCounter: 0,
     generatedPlaylist: [],
 
     init() {
@@ -21,7 +22,13 @@ const App = {
         this.setupEventListeners();
         this.setupDragAndDrop();
         this.loadInitialTracks();
-        this.updateUIState(); // Ensure initial state is correct
+        this.updateUIState();
+        this.renderBuilder();
+    },
+
+    getSlot(name) {
+        if (this.slots[name]) return this.slots[name];
+        return this.steerSlots.find(s => s.id === name) || null;
     },
 
     setupEventListeners() {
@@ -56,7 +63,6 @@ const App = {
             this.generatedPlaylist = [];
             Player.playlist = [];
             this.renderBuilder();
-            // Ensure we are in builder view
             document.getElementById('builder-view').style.display = 'block';
             document.getElementById('playlist-view').style.display = 'none';
         });
@@ -75,10 +81,11 @@ const App = {
         document.getElementById('random-btn').addEventListener('click', () => this.loadInitialTracks());
         document.getElementById('clear-results').addEventListener('click', () => this.clearResults());
 
-        // Setup listeners for each slot
+        // Setup listeners for fixed slots
         this.setupSlotListeners('start');
-        this.setupSlotListeners('middle');
         this.setupSlotListeners('end');
+
+        // Initial insert buttons rendered on first renderBuilder call
     },
 
     setupSlotListeners(slotName) {
@@ -88,7 +95,7 @@ const App = {
         const input = container.querySelector('.slot-search-input');
         const prevBtn = container.querySelector('.slot-nav-btn.prev');
         const nextBtn = container.querySelector('.slot-nav-btn.next');
-        const clearBtn = container.querySelector('.clear-slot-btn-main'); // For middle slot
+        const clearBtn = container.querySelector('.clear-slot-btn-main');
 
         if (input) {
             input.addEventListener('keypress', (e) => {
@@ -96,9 +103,9 @@ const App = {
                     this.handleSlotSearch(slotName, input.value);
                 }
             });
-            // Update query state on blur or input
             input.addEventListener('input', (e) => {
-                this.slots[slotName].query = e.target.value;
+                const slot = this.getSlot(slotName);
+                if (slot) slot.query = e.target.value;
             });
         }
 
@@ -118,29 +125,120 @@ const App = {
         }
     },
 
-    resetSlots() {
-        ['start', 'middle', 'end'].forEach(slot => this.resetSlot(slot));
-    },
-
-    resetSlot(slotName) {
-        this.slots[slotName] = {
-            id: slotName,
-            track: null,
+    addSteerSlot(track = null, insertIndex = -1) {
+        const slotId = `steer-${this.steerCounter++}`;
+        const slotState = {
+            id: slotId,
+            track: track || null,
             query: '',
             results: [],
             currentIndex: -1,
             enhancedQuery: null
         };
+
+        // Insert at position or append
+        if (insertIndex >= 0 && insertIndex < this.steerSlots.length) {
+            this.steerSlots.splice(insertIndex, 0, slotState);
+        } else {
+            this.steerSlots.push(slotState);
+        }
+
+        // Build DOM element and insert at correct position in container
+        const el = this.createSteerSlotElement(slotId);
+        const container = document.getElementById('steer-slots-container');
+        const existingSlots = container.querySelectorAll('.slot-container');
+        const domIndex = this.steerSlots.findIndex(s => s.id === slotId);
+        if (domIndex < existingSlots.length) {
+            container.insertBefore(el, existingSlots[domIndex]);
+        } else {
+            container.appendChild(el);
+        }
+
+        // Bind listeners and drag/drop
+        this.setupSlotListeners(slotId);
+        this.setupSlotDragDrop(slotId);
+
+        if (track) {
+            this.removeTrackFromResults(track.id);
+        }
+
+        this.renderBuilder();
+        return slotId;
+    },
+
+    createSteerSlotElement(slotId) {
+        const div = document.createElement('div');
+        div.className = 'slot-container steer-slot-container';
+        div.dataset.slot = slotId;
+        div.innerHTML = `
+            <div class="slot-input-wrapper">
+                <input type="text" class="slot-search-input" placeholder="Search or drag track..."
+                    autocomplete="off">
+                <div class="slot-nav-controls" style="display: none;">
+                    <button class="slot-nav-btn prev" title="Previous result">←</button>
+                    <span class="slot-nav-count"></span>
+                    <button class="slot-nav-btn next" title="Next result">→</button>
+                </div>
+            </div>
+            <div class="slot-enhanced-query" style="display: none;"></div>
+            <div class="track-slot empty">
+                <span class="placeholder">Drag track here or type above</span>
+                <button class="remove-steer-btn" title="Remove">×</button>
+            </div>
+        `;
+
+        div.querySelector('.remove-steer-btn').addEventListener('click', (e) => {
+            e.stopPropagation();
+            this.removeSteerSlot(slotId);
+        });
+
+        return div;
+    },
+
+    removeSteerSlot(slotId) {
+        const index = this.steerSlots.findIndex(s => s.id === slotId);
+        if (index === -1) return;
+
+        const slot = this.steerSlots[index];
+        if (slot.track) {
+            this.addTrackToResults(slot.track);
+        }
+
+        this.steerSlots.splice(index, 1);
+
+        // Remove DOM
+        const el = document.querySelector(`.slot-container[data-slot="${slotId}"]`);
+        if (el) el.remove();
+
+        this.renderBuilder();
+    },
+
+    resetSlots() {
+        ['start', 'end'].forEach(slot => this.resetSlot(slot));
+        // Remove all steer slots
+        this.steerSlots.forEach(s => {
+            const el = document.querySelector(`.slot-container[data-slot="${s.id}"]`);
+            if (el) el.remove();
+        });
+        this.steerSlots = [];
+    },
+
+    resetSlot(slotName) {
+        const slot = this.getSlot(slotName);
+        if (!slot) return;
+        slot.track = null;
+        slot.query = '';
+        slot.results = [];
+        slot.currentIndex = -1;
+        slot.enhancedQuery = null;
     },
 
     updateUIState() {
-        // Update placeholder
         const placeholder = this.searchMode === 'semantic'
             ? 'Describe the vibe (e.g., "warm jazz saxophone", "energetic electronic")...'
             : 'Search by artist, title, or album...';
         document.getElementById('search-input').placeholder = placeholder;
 
-        // Toggle semantic options
         const semanticOptions = document.getElementById('semantic-options');
         const enhancedDisplay = document.getElementById('enhanced-query-display');
 
@@ -149,7 +247,6 @@ const App = {
                 semanticOptions.style.display = 'block';
             } else {
                 semanticOptions.style.display = 'none';
-                // Hide results display when switching modes
                 if (enhancedDisplay) {
                     enhancedDisplay.style.visibility = 'hidden';
                     enhancedDisplay.style.opacity = '0';
@@ -159,54 +256,50 @@ const App = {
     },
 
     setupDragAndDrop() {
-        // Map slot IDs (container IDs or drop zones) to logic
-        const slots = ['start', 'middle', 'end'];
+        ['start', 'end'].forEach(slotName => this.setupSlotDragDrop(slotName));
+    },
 
-        slots.forEach(slotName => {
-            // The drop zone is the track-slot div
-            const el = document.querySelector(`.slot-container[data-slot="${slotName}"] .track-slot`);
-            if (!el) return;
+    setupSlotDragDrop(slotName) {
+        const el = document.querySelector(`.slot-container[data-slot="${slotName}"] .track-slot`);
+        if (!el) return;
 
-            el.addEventListener('dragover', (e) => {
-                e.preventDefault(); // Allow drop
-                e.dataTransfer.dropEffect = 'copy';
-                el.classList.add('drag-over');
-            });
+        el.addEventListener('dragover', (e) => {
+            e.preventDefault();
+            e.dataTransfer.dropEffect = 'copy';
+            el.classList.add('drag-over');
+        });
 
-            el.addEventListener('dragleave', () => {
-                el.classList.remove('drag-over');
-            });
+        el.addEventListener('dragleave', () => {
+            el.classList.remove('drag-over');
+        });
 
-            el.addEventListener('drop', (e) => {
-                e.preventDefault();
-                el.classList.remove('drag-over');
-                try {
-                    const track = JSON.parse(e.dataTransfer.getData('text/plain'));
-                    if (track && track.id) {
-                        this.setSlotTrack(slotName, track);
-                    }
-                } catch (err) {
-                    console.error('Drop failed:', err);
+        el.addEventListener('drop', (e) => {
+            e.preventDefault();
+            el.classList.remove('drag-over');
+            try {
+                const track = JSON.parse(e.dataTransfer.getData('text/plain'));
+                if (track && track.id) {
+                    this.setSlotTrack(slotName, track);
                 }
-            });
+            } catch (err) {
+                console.error('Drop failed:', err);
+            }
         });
     },
 
     addTrackToBuilder(track) {
-        // Smart Add Logic:
-        // 1. If Start is empty -> Set Start
-        // 2. If End is empty -> Set End
-        // 3. If both set -> Shift: Start(keeps), End->Middle, New->End
-
+        // Smart Add: start -> end -> push old end into new steer slot, set new as end
         if (!this.slots.start.track) {
             this.setSlotTrack('start', track);
         } else if (!this.slots.end.track) {
             this.setSlotTrack('end', track);
         } else {
-            // Move current End to Middle
-            this.setSlotTrack('middle', this.slots.end.track);
-            // Set new track as End
-            this.setSlotTrack('end', track);
+            // Push current end into a new steering slot
+            this.addSteerSlot(this.slots.end.track);
+            // Set new track as end (don't return old end to results since addSteerSlot consumed it)
+            this.slots.end.track = track;
+            this.removeTrackFromResults(track.id);
+            this.renderBuilder();
         }
     },
 
@@ -244,7 +337,6 @@ const App = {
             if (this.searchMode === 'semantic') {
                 const response = await API.semanticSearch(query, source, 50, this.enhanceQuery);
 
-                // Handle new response structure { results: [...], enhanced_query: "..." }
                 if (response.results) {
                     tracks = response.results;
 
@@ -257,7 +349,6 @@ const App = {
                         enhancedDisplay.style.opacity = '0';
                     }
                 } else {
-                    // Fallback if backend returns direct array (backward compatibility)
                     tracks = response;
                 }
             } else {
@@ -298,11 +389,8 @@ const App = {
         }
     },
 
-    // Track Management Logic
     removeTrackFromResults(trackId) {
         if (!this.results) return;
-
-        // Find if track exists in results
         const index = this.results.findIndex(t => t.id === trackId);
         if (index !== -1) {
             this.results.splice(index, 1);
@@ -313,10 +401,7 @@ const App = {
 
     addTrackToResults(track) {
         if (!track || !this.results) return;
-
-        // Check if already exists to avoid dupes
         if (!this.results.find(t => t.id === track.id)) {
-            // Add to beginning
             this.results.unshift(track);
             this.renderResults();
             document.getElementById('result-count').textContent = `(${this.results.length})`;
@@ -324,37 +409,28 @@ const App = {
     },
 
     setSlotTrack(slotName, track) {
-        const slot = this.slots[slotName];
+        const slot = this.getSlot(slotName);
+        if (!slot) return;
         if (slot.track) {
             this.addTrackToResults(slot.track);
         }
         slot.track = track;
-        // Optimization: When explicitly setting a track (drag/drop), should we clear the query?
-        // User requirements say "This information [query] should be retained...".
-        // But if I drag a track, the query might not match the track. 
-        // Let's keep the query if it exists, but maybe update the input placeholder?
-        // For now, we won't clear the query, but we might hide it visually or it just sits there.
-
         this.removeTrackFromResults(track.id);
         this.renderBuilder();
     },
 
     async handleSlotSearch(slotName, query) {
         if (!query) return;
-        const slot = this.slots[slotName];
+        const slot = this.getSlot(slotName);
+        if (!slot) return;
         slot.query = query;
 
-        // Visual feedback (loading?) - for now just rely on speed
         const container = document.querySelector(`.slot-container[data-slot="${slotName}"]`);
         const input = container.querySelector('.slot-search-input');
         input.disabled = true;
 
         try {
-            // Always use semantic with enhancement for slots? Or follow global mode?
-            // "flow... support specifying a semantic search query directly... optionally fetch"
-            // Let's use semantic search by default for slots as implied by "semantic search query"
             const source = this.getSelectedSource();
-            // We'll ask for fewer results for slots, maybe 10?
             const response = await API.semanticSearch(query, source, 10, true);
 
             let tracks = [];
@@ -370,8 +446,6 @@ const App = {
                 slot.results = tracks;
                 slot.currentIndex = 0;
                 slot.track = tracks[0];
-                // Do NOT remove this local result from the global results list automatically
-                // But we should probably not remove it from the slot's own results list either.
             } else {
                 slot.results = [];
                 slot.track = null;
@@ -386,8 +460,8 @@ const App = {
     },
 
     navigateSlot(slotName, direction) {
-        const slot = this.slots[slotName];
-        if (!slot.results || slot.results.length === 0) return;
+        const slot = this.getSlot(slotName);
+        if (!slot || !slot.results || slot.results.length === 0) return;
 
         let newIndex = slot.currentIndex + direction;
         if (newIndex < 0) newIndex = slot.results.length - 1;
@@ -399,7 +473,6 @@ const App = {
     },
 
     async interpolate() {
-        // Check if we have tracks or pending queries
         const startReady = this.slots.start.track || this.slots.start.query;
         const endReady = this.slots.end.track || this.slots.end.query;
 
@@ -414,12 +487,10 @@ const App = {
         btn.textContent = 'Generating...';
 
         try {
-            // Resolve Deferred Searches
+            // Resolve deferred searches
             const resolveSlot = async (slotName) => {
-                const slot = this.slots[slotName];
+                const slot = this.getSlot(slotName);
                 if (!slot.track && slot.query) {
-                    // Perform deferred search
-                    console.log(`Resolving deferred search for ${slotName}: ${slot.query}`);
                     await this.handleSlotSearch(slotName, slot.query);
                     if (!slot.track) throw new Error(`Could not find track for query: "${slot.query}"`);
                 }
@@ -429,15 +500,18 @@ const App = {
             const startTrack = await resolveSlot('start');
             const endTrack = await resolveSlot('end');
 
-            // Middle is optional
-            let middleTrack = this.slots.middle.track;
-            if (!middleTrack && this.slots.middle.query) {
-                await this.handleSlotSearch('middle', this.slots.middle.query);
-                middleTrack = this.slots.middle.track;
+            // Resolve all steering slots
+            const steerTrackIds = [];
+            for (const steerSlot of this.steerSlots) {
+                if (!steerSlot.track && steerSlot.query) {
+                    await this.handleSlotSearch(steerSlot.id, steerSlot.query);
+                }
+                if (steerSlot.track) {
+                    steerTrackIds.push(steerSlot.track.id);
+                }
             }
 
             const source = this.getSelectedSource();
-            const steerId = middleTrack ? middleTrack.id : null;
 
             const tracks = await API.interpolatePlaylist(
                 startTrack.id,
@@ -445,27 +519,22 @@ const App = {
                 10,
                 'greedy_walk',
                 source,
-                steerId
+                steerTrackIds
             );
 
             // Mark tracks
             tracks[0].isStart = true;
             tracks[tracks.length - 1].isEnd = true;
-            if (steerId) {
-                // Find and mark middle track
-                const mid = tracks.find(t => t.id === steerId);
-                if (mid) mid.isMiddle = true;
-            }
-
-            // Add query info to the result display if meaningful?
-            // "This information should be retained when generating the playlist but is display only"
-            // We'll leave it in the builder view state.
+            // Mark steering tracks
+            const steerIdSet = new Set(steerTrackIds);
+            tracks.forEach(t => {
+                if (steerIdSet.has(t.id)) t.isSteering = true;
+            });
 
             this.generatedPlaylist = tracks;
             Player.playlist = tracks;
             this.renderPlaylist();
 
-            // Switch View
             document.getElementById('builder-view').style.display = 'none';
             document.getElementById('playlist-view').style.display = 'block';
 
@@ -503,78 +572,120 @@ const App = {
     },
 
     renderBuilder() {
-        ['start', 'middle', 'end'].forEach(slotName => {
-            const slot = this.slots[slotName];
-            const container = document.querySelector(`.slot-container[data-slot="${slotName}"]`);
-            if (!container) return;
-
-            // UI Elements
-            const input = container.querySelector('.slot-search-input');
-            const navControls = container.querySelector('.slot-nav-controls');
-            const navCount = container.querySelector('.slot-nav-count');
-            const enhancedDisplay = container.querySelector('.slot-enhanced-query');
-            const trackSlot = container.querySelector('.track-slot');
-            const prevBtn = container.querySelector('.slot-nav-btn.prev');
-            const nextBtn = container.querySelector('.slot-nav-btn.next');
-            const clearBtn = container.querySelector('.clear-slot-btn-main'); // Middle slot only
-
-            // Update Input Value if it differs?
-            // Only if input is not focused to avoid messing up typing?
-            // Actually, we want the input to reflect the state 'query'.
-            if (document.activeElement !== input) {
-                input.value = slot.query;
-            }
-
-            // Update Enhanced Query Display
-            if (slot.enhancedQuery) {
-                enhancedDisplay.style.display = 'block';
-                enhancedDisplay.textContent = `✨ ${slot.enhancedQuery}`;
-                enhancedDisplay.title = slot.enhancedQuery;
-            } else {
-                enhancedDisplay.style.display = 'none';
-            }
-
-            // Update Nav Controls
-            if (slot.results.length > 1) {
-                navControls.style.display = 'flex';
-                navCount.textContent = `${slot.currentIndex + 1}/${slot.results.length}`;
-                prevBtn.disabled = false; // Circular nav
-                nextBtn.disabled = false;
-            } else {
-                navControls.style.display = 'none';
-            }
-
-            // Middle slot clear button
-            if (clearBtn) {
-                clearBtn.style.display = (slot.track || slot.query) ? 'block' : 'none';
-            }
-
-            // Render Track Slot
-            if (slot.track) {
-                trackSlot.classList.remove('empty');
-                trackSlot.classList.add('filled');
-                trackSlot.innerHTML = '';
-                // Render with 'minimal' + 'showActions'
-                trackSlot.appendChild(Components.renderTrack(slot.track, { showActions: true, minimal: true }));
-
-                // We removed the inner 'X' button in HTML, relying on main clear button or just replacing
-            } else {
-                trackSlot.classList.add('empty');
-                trackSlot.classList.remove('filled');
-                const placeholder = slotName === 'start' ? 'Drag track here or type above' :
-                    slotName === 'middle' ? 'Drag track here or type above' :
-                        'Drag track here or type above';
-                trackSlot.innerHTML = `<span class=\"placeholder\">${placeholder}</span>`;
-            }
-        });
+        // Render fixed slots (start, end)
+        ['start', 'end'].forEach(slotName => this.renderSlot(slotName));
+        // Render dynamic steer slots
+        this.steerSlots.forEach(s => this.renderSlot(s.id));
+        // Render "+" insert buttons between every pair of adjacent slots
+        this.renderInsertButtons();
 
         // Enable interpolate button
         const interpolateBtn = document.getElementById('interpolate-btn');
         if (interpolateBtn) {
-            // Enabled if start/end have track OR query
             const startReady = this.slots.start.track || this.slots.start.query;
             const endReady = this.slots.end.track || this.slots.end.query;
             interpolateBtn.disabled = !(startReady && endReady);
+        }
+    },
+
+    renderInsertButtons() {
+        // Remove existing insert buttons
+        document.querySelectorAll('.insert-steer-btn').forEach(el => el.remove());
+
+        const container = document.getElementById('steer-slots-container');
+
+        const createInsertBtn = (index) => {
+            const btn = document.createElement('button');
+            btn.className = 'insert-steer-btn';
+            btn.textContent = '+';
+            btn.title = 'Add track';
+            btn.addEventListener('click', () => this.addSteerSlot(null, index));
+            return btn;
+        };
+
+        // Insert a "+" before each steer slot and one after the last
+        const slotElements = container.querySelectorAll('.slot-container');
+        if (slotElements.length === 0) {
+            // No steer slots yet — just one "+" button
+            container.appendChild(createInsertBtn(0));
+        } else {
+            // Before each steer slot
+            slotElements.forEach((el, i) => {
+                el.before(createInsertBtn(i));
+            });
+            // After the last steer slot
+            slotElements[slotElements.length - 1].after(createInsertBtn(slotElements.length));
+        }
+    },
+
+    renderSlot(slotName) {
+        const slot = this.getSlot(slotName);
+        const container = document.querySelector(`.slot-container[data-slot="${slotName}"]`);
+        if (!container || !slot) return;
+
+        const input = container.querySelector('.slot-search-input');
+        const navControls = container.querySelector('.slot-nav-controls');
+        const navCount = container.querySelector('.slot-nav-count');
+        const enhancedDisplay = container.querySelector('.slot-enhanced-query');
+        const trackSlot = container.querySelector('.track-slot');
+        const prevBtn = container.querySelector('.slot-nav-btn.prev');
+        const nextBtn = container.querySelector('.slot-nav-btn.next');
+        const clearBtn = container.querySelector('.clear-slot-btn-main');
+
+        if (document.activeElement !== input) {
+            input.value = slot.query;
+        }
+
+        if (slot.enhancedQuery) {
+            enhancedDisplay.style.display = 'block';
+            enhancedDisplay.textContent = `✨ ${slot.enhancedQuery}`;
+            enhancedDisplay.title = slot.enhancedQuery;
+        } else {
+            enhancedDisplay.style.display = 'none';
+        }
+
+        if (slot.results.length > 1) {
+            navControls.style.display = 'flex';
+            navCount.textContent = `${slot.currentIndex + 1}/${slot.results.length}`;
+            prevBtn.disabled = false;
+            nextBtn.disabled = false;
+        } else {
+            navControls.style.display = 'none';
+        }
+
+        if (slot.track) {
+            trackSlot.classList.remove('empty');
+            trackSlot.classList.add('filled');
+            trackSlot.innerHTML = '';
+            trackSlot.appendChild(Components.renderTrack(slot.track, { showActions: true, minimal: true }));
+            // Re-add remove button for steer slots
+            if (slotName.startsWith('steer-')) {
+                const removeBtn = document.createElement('button');
+                removeBtn.className = 'remove-steer-btn';
+                removeBtn.title = 'Remove';
+                removeBtn.textContent = '×';
+                removeBtn.addEventListener('click', (e) => {
+                    e.stopPropagation();
+                    this.removeSteerSlot(slotName);
+                });
+                trackSlot.appendChild(removeBtn);
+            }
+        } else {
+            trackSlot.classList.add('empty');
+            trackSlot.classList.remove('filled');
+            let html = `<span class="placeholder">Drag track here or type above</span>`;
+            if (slotName.startsWith('steer-')) {
+                html += `<button class="remove-steer-btn" title="Remove">×</button>`;
+            }
+            trackSlot.innerHTML = html;
+            // Re-bind remove button
+            const removeBtn = trackSlot.querySelector('.remove-steer-btn');
+            if (removeBtn) {
+                removeBtn.addEventListener('click', (e) => {
+                    e.stopPropagation();
+                    this.removeSteerSlot(slotName);
+                });
+            }
         }
     },
 
