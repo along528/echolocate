@@ -7,6 +7,8 @@
     --accent-primary: #6366f1;
     --accent-secondary: #8b5cf6;
     --accent-gradient: linear-gradient(135deg, #6366f1, #8b5cf6);
+    --accent-interp: #eab308;
+    /* Yellow for interpolation */
     --border-color: rgba(255, 255, 255, 0.08);
     --glass-bg: rgba(255, 255, 255, 0.03);
     --shadow: 0 4px 30px rgba(0, 0, 0, 0.3);
@@ -609,26 +611,59 @@ input:checked+.slider:before {
 .track-slot.filled {
     background: var(--glass-bg);
     border-style: solid;
-    border-color: var(--accent-primary);
+    border-color: var(--border-color);
+    /* Default subtle border */
     justify-content: flex-start;
+    transition: border-color 0.2s ease;
 }
 
+/* Slot Border Updates based on Child State */
+.track-slot.filled:has(.track-item:hover) {
+    border-color: rgba(99, 102, 241, 0.3);
+}
+
+.track-slot.filled:has(.track-item.playing) {
+    border-color: var(--accent-primary);
+    background: rgba(99, 102, 241, 0.05);
+    /* Subtle overall tint */
+}
+
+/* Interpolated Slot Specific Styles */
+.interpolated-slot .track-slot.filled {
+    border-color: rgba(234, 179, 8, 0.15);
+    /* Very subdued yellow border for interpolated */
+}
+
+.interpolated-slot .track-slot.filled:has(.track-item:hover) {
+    border-color: #facc15;
+    /* Lighter yellow */
+}
+
+/* Keep standard background fill (blue tint) but use yellow border */
+.interpolated-slot .track-slot.filled:has(.track-item.playing) {
+    border-color: var(--accent-interp);
+}
+
+
 .track-slot .track-item {
-    width: 100%;
+    width: calc(100% + 1rem);
     border: none;
     background: transparent;
-    padding: 0;
+    padding: 0.5rem;
+    margin: -0.5rem;
     flex-wrap: wrap;
+    border-radius: 7px;
+    transition: background-color 0.2s ease;
+}
+
+.track-slot .track-item:hover {
+    background: rgba(99, 102, 241, 0.1);
 }
 
 .track-slot .track-item.playing {
-    background: rgba(99, 102, 241, 0.35) !important;
-    border-radius: 7px;
-    padding: 0.5rem;
-    margin: -0.5rem;
-    width: calc(100% + 1rem);
-    box-shadow: 0 0 15px rgba(99, 102, 241, 0.2);
-    /* Fill the box completely */
+    background: rgba(99, 102, 241, 0.15) !important;
+    box-shadow: none;
+    /* Match left side exactly */
 }
 
 .track-slot .track-item .track-info {
