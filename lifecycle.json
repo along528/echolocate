@@ -1,0 +1,25 @@
+{
+  "lifecycle": {
+    "rule": [
+      {
+        "action": {
+          "type": "SetStorageClass",
+          "storageClass": "ARCHIVE"
+        },
+        "condition": {
+          "matchesPrefix": ["fma-source/"]
+        }
+      },
+      {
+        "action": {
+          "type": "SetStorageClass",
+          "storageClass": "NEARLINE"
+        },
+        "condition": {
+          "matchesPrefix": ["fma/fma_full/"],
+          "age": 7
+        }
+      }
+    ]
+  }
+}
