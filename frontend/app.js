@@ -125,7 +125,8 @@ const App = {
         }
     },
 
-    addSteerSlot(track = null, insertIndex = -1) {
+    addSteerSlot(track = null, insertIndex = -1, options = {}) {
+        const { isInterpolated = false, skipRender = false } = options;
         const slotId = `steer-${this.steerCounter++}`;
         const slotState = {
             id: slotId,
@@ -133,7 +134,8 @@ const App = {
             query: '',
             results: [],
             currentIndex: -1,
-            enhancedQuery: null
+            enhancedQuery: null,
+            isInterpolated
         };
 
         // Insert at position or append
@@ -154,38 +156,51 @@ const App = {
             container.appendChild(el);
         }
 
-        // Bind listeners and drag/drop
-        this.setupSlotListeners(slotId);
+        // Bind listeners (search input) only for non-interpolated slots
+        if (!isInterpolated) {
+            this.setupSlotListeners(slotId);
+        }
         this.setupSlotDragDrop(slotId);
 
         if (track) {
             this.removeTrackFromResults(track.id);
         }
 
-        this.renderBuilder();
+        if (!skipRender) this.renderBuilder();
         return slotId;
     },
 
     createSteerSlotElement(slotId) {
+        const slot = this.getSlot(slotId);
         const div = document.createElement('div');
         div.className = 'slot-container steer-slot-container';
+        if (slot?.isInterpolated) div.classList.add('interpolated-slot');
         div.dataset.slot = slotId;
-        div.innerHTML = `
-            <div class="slot-input-wrapper">
-                <input type="text" class="slot-search-input" placeholder="Search or drag track..."
-                    autocomplete="off">
-                <div class="slot-nav-controls" style="display: none;">
-                    <button class="slot-nav-btn prev" title="Previous result">←</button>
-                    <span class="slot-nav-count"></span>
-                    <button class="slot-nav-btn next" title="Next result">→</button>
+
+        if (slot?.isInterpolated) {
+            div.innerHTML = `
+                <div class="track-slot empty">
+                    <button class="remove-steer-btn" title="Remove">×</button>
                 </div>
-            </div>
-            <div class="slot-enhanced-query" style="display: none;"></div>
-            <div class="track-slot empty">
-                <span class="placeholder">Drag track here or type above</span>
-                <button class="remove-steer-btn" title="Remove">×</button>
-            </div>
-        `;
+            `;
+        } else {
+            div.innerHTML = `
+                <div class="slot-input-wrapper">
+                    <input type="text" class="slot-search-input" placeholder="Search or drag track..."
+                        autocomplete="off">
+                    <div class="slot-nav-controls" style="display: none;">
+                        <button class="slot-nav-btn prev" title="Previous result">←</button>
+                        <span class="slot-nav-count"></span>
+                        <button class="slot-nav-btn next" title="Next result">→</button>
+                    </div>
+                </div>
+                <div class="slot-enhanced-query" style="display: none;"></div>
+                <div class="track-slot empty">
+                    <span class="placeholder">Drag track here or type above</span>
+                    <button class="remove-steer-btn" title="Remove">×</button>
+                </div>
+            `;
+        }
 
         div.querySelector('.remove-steer-btn').addEventListener('click', (e) => {
             e.stopPropagation();
@@ -589,32 +604,88 @@ const App = {
     },
 
     renderInsertButtons() {
-        // Remove existing insert buttons
-        document.querySelectorAll('.insert-steer-btn').forEach(el => el.remove());
+        // Remove existing button groups
+        document.querySelectorAll('.insert-btn-group').forEach(el => el.remove());
 
         const container = document.getElementById('steer-slots-container');
 
-        const createInsertBtn = (index) => {
-            const btn = document.createElement('button');
-            btn.className = 'insert-steer-btn';
-            btn.textContent = '+';
-            btn.title = 'Add track';
-            btn.addEventListener('click', () => this.addSteerSlot(null, index));
-            return btn;
+        const getAdjacentTracks = (index) => {
+            const above = index === 0
+                ? this.slots.start.track
+                : this.steerSlots[index - 1]?.track;
+            const below = index >= this.steerSlots.length
+                ? this.slots.end.track
+                : this.steerSlots[index]?.track;
+            return { above, below };
         };
 
-        // Insert a "+" before each steer slot and one after the last
+        const createButtonGroup = (index) => {
+            const group = document.createElement('div');
+            group.className = 'insert-btn-group';
+
+            const plusBtn = document.createElement('button');
+            plusBtn.className = 'insert-steer-btn';
+            plusBtn.textContent = '+';
+            plusBtn.title = 'Add track';
+            plusBtn.addEventListener('click', () => this.addSteerSlot(null, index));
+
+            const interpBtn = document.createElement('button');
+            interpBtn.className = 'insert-steer-btn insert-interp-btn';
+            interpBtn.textContent = '≈';
+            interpBtn.title = 'Fill between adjacent tracks';
+
+            const { above, below } = getAdjacentTracks(index);
+            if (above && below) {
+                interpBtn.addEventListener('click', () => this.interpolateBetween(index));
+            } else {
+                interpBtn.disabled = true;
+            }
+
+            group.appendChild(plusBtn);
+            group.appendChild(interpBtn);
+            return group;
+        };
+
         const slotElements = container.querySelectorAll('.slot-container');
         if (slotElements.length === 0) {
-            // No steer slots yet — just one "+" button
-            container.appendChild(createInsertBtn(0));
+            container.appendChild(createButtonGroup(0));
         } else {
-            // Before each steer slot
             slotElements.forEach((el, i) => {
-                el.before(createInsertBtn(i));
+                el.before(createButtonGroup(i));
             });
-            // After the last steer slot
-            slotElements[slotElements.length - 1].after(createInsertBtn(slotElements.length));
+            slotElements[slotElements.length - 1].after(createButtonGroup(slotElements.length));
+        }
+    },
+
+    async interpolateBetween(insertIndex) {
+        const above = insertIndex === 0
+            ? this.slots.start.track
+            : this.steerSlots[insertIndex - 1]?.track;
+        const below = insertIndex >= this.steerSlots.length
+            ? this.slots.end.track
+            : this.steerSlots[insertIndex]?.track;
+
+        if (!above || !below) return;
+
+        try {
+            const source = this.getSelectedSource();
+            const tracks = await API.interpolatePlaylist(
+                above.id, below.id, 5, 'greedy_walk', source
+            );
+
+            // Strip first and last (they match the adjacent tracks)
+            const middleTracks = tracks.slice(1, -1);
+
+            // Insert as interpolated steer slots in order
+            for (let i = 0; i < middleTracks.length; i++) {
+                this.addSteerSlot(middleTracks[i], insertIndex + i, {
+                    isInterpolated: true,
+                    skipRender: true
+                });
+            }
+            this.renderBuilder();
+        } catch (error) {
+            console.error('Interpolation between tracks failed:', error);
         }
     },
 
@@ -623,14 +694,39 @@ const App = {
         const container = document.querySelector(`.slot-container[data-slot="${slotName}"]`);
         if (!container || !slot) return;
 
+        const trackSlot = container.querySelector('.track-slot');
+
+        // Interpolated slots: minimal render — just the track card + remove button
+        if (slot.isInterpolated) {
+            if (slot.track) {
+                trackSlot.classList.remove('empty');
+                trackSlot.classList.add('filled');
+                trackSlot.innerHTML = '';
+                trackSlot.appendChild(Components.renderTrack(slot.track, { showActions: true, minimal: true }));
+            } else {
+                trackSlot.classList.add('empty');
+                trackSlot.classList.remove('filled');
+                trackSlot.innerHTML = `<span class="placeholder">Drag track here</span>`;
+            }
+            const removeBtn = document.createElement('button');
+            removeBtn.className = 'remove-steer-btn';
+            removeBtn.title = 'Remove';
+            removeBtn.textContent = '×';
+            removeBtn.addEventListener('click', (e) => {
+                e.stopPropagation();
+                this.removeSteerSlot(slotName);
+            });
+            trackSlot.appendChild(removeBtn);
+            return;
+        }
+
+        // Normal slot rendering (start, end, non-interpolated steer)
         const input = container.querySelector('.slot-search-input');
         const navControls = container.querySelector('.slot-nav-controls');
         const navCount = container.querySelector('.slot-nav-count');
         const enhancedDisplay = container.querySelector('.slot-enhanced-query');
-        const trackSlot = container.querySelector('.track-slot');
         const prevBtn = container.querySelector('.slot-nav-btn.prev');
         const nextBtn = container.querySelector('.slot-nav-btn.next');
-        const clearBtn = container.querySelector('.clear-slot-btn-main');
 
         if (document.activeElement !== input) {
             input.value = slot.query;
@@ -658,7 +754,6 @@ const App = {
             trackSlot.classList.add('filled');
             trackSlot.innerHTML = '';
             trackSlot.appendChild(Components.renderTrack(slot.track, { showActions: true, minimal: true }));
-            // Re-add remove button for steer slots
             if (slotName.startsWith('steer-')) {
                 const removeBtn = document.createElement('button');
                 removeBtn.className = 'remove-steer-btn';
@@ -678,7 +773,6 @@ const App = {
                 html += `<button class="remove-steer-btn" title="Remove">×</button>`;
             }
             trackSlot.innerHTML = html;
-            // Re-bind remove button
             const removeBtn = trackSlot.querySelector('.remove-steer-btn');
             if (removeBtn) {
                 removeBtn.addEventListener('click', (e) => {

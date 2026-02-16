@@ -674,14 +674,21 @@ input:checked+.slider:before {
     /* Purple */
 }
 
-/* Insert Steer Track Button (small "+" between slots) */
+/* Insert button group (small "+" and "≈" between slots) */
+.insert-btn-group {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 6px;
+    margin: 0.25rem auto;
+}
+
 .insert-steer-btn {
     display: flex;
     align-items: center;
     justify-content: center;
     width: 24px;
     height: 24px;
-    margin: 0.25rem auto;
     padding: 0;
     background: var(--bg-tertiary);
     border: 1px dashed var(--border-color);
@@ -693,12 +700,21 @@ input:checked+.slider:before {
     transition: all 0.2s ease;
 }
 
-.insert-steer-btn:hover {
+.insert-steer-btn:hover:not(:disabled) {
     opacity: 1;
     border-color: var(--accent-primary);
     color: var(--accent-primary);
     background: rgba(99, 102, 241, 0.1);
     border-style: solid;
+}
+
+.insert-steer-btn:disabled {
+    opacity: 0.15;
+    cursor: default;
+}
+
+.insert-interp-btn {
+    font-size: 0.9rem;
 }
 
 /* Remove button inside steer slot */
@@ -736,6 +752,15 @@ input:checked+.slider:before {
 /* Steer slot container — no label, tighter spacing */
 .steer-slot-container {
     margin-top: 0;
+}
+
+/* Interpolated slot — compact, no search input */
+.interpolated-slot {
+    margin-top: 0;
+}
+
+.interpolated-slot .track-slot {
+    min-height: 48px;
 }
 
 
