@@ -1,26 +1,44 @@
 import httpx
 from typing import Optional, List, Literal
 
+import google.auth.transport.requests
+import google.oauth2.id_token
+
 class EchoLocate:
     """
     Client for the Cloud Crate Vector Service.
-    
+
     The vector service contains tracks from two sources:
     - 'library': Your personal Apple Music library
     - 'fma': Free Music Archive tracks
-    
+
     Use the 'source' parameter to filter which tracks to search/return.
     """
-    
+
     def __init__(self, vector_service_url: str):
         """Initialize with the vector service URL."""
         self.base_url = vector_service_url.rstrip('/')
 
+    def _get_id_token(self) -> Optional[str]:
+        """Fetch a Google Cloud ID token with the vector service URL as audience.
+        Returns None in local dev (where metadata server is unavailable)."""
+        try:
+            auth_req = google.auth.transport.requests.Request()
+            token = google.oauth2.id_token.fetch_id_token(auth_req, self.base_url)
+            return token
+        except Exception as e:
+            print(f"EchoLocate: Could not fetch ID token (local dev?): {e}")
+            return None
+
     async def _request(self, method: str, path: str, json_body: dict = None, params: dict = None):
         url = f"{self.base_url}{path}"
+        headers = {}
+        token = self._get_id_token()
+        if token:
+            headers["Authorization"] = f"Bearer {token}"
         async with httpx.AsyncClient() as client:
             try:
-                response = await client.request(method, url, json=json_body, params=params, timeout=30.0)
+                response = await client.request(method, url, json=json_body, params=params, headers=headers, timeout=30.0)
                 response.raise_for_status()
                 return response.json()
             except httpx.HTTPError as e:

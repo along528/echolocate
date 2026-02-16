@@ -77,16 +77,6 @@ def get_midpoint(vec_a, vec_b, method="slerp"):
 
 app = FastAPI()
 
-# CORS middleware - allow frontend to call API from different origin
-from fastapi.middleware.cors import CORSMiddleware
-app.add_middleware(
-    CORSMiddleware,
-    allow_origins=["*"],  # In production, restrict to frontend domain
-    allow_credentials=True,
-    allow_methods=["*"],
-    allow_headers=["*"],
-)
-
 # Configuration
 DB_PATH = os.getenv("DB_PATH", "cloudcrate.duckdb")
 PROJECT_ID = os.getenv("GCP_PROJECT_ID")

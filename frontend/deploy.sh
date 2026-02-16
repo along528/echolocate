@@ -15,7 +15,8 @@ gcloud run deploy ${SERVICE_NAME} \
     --image gcr.io/${PROJECT_ID}/${SERVICE_NAME} \
     --platform managed \
     --region ${REGION} \
-    --allow-unauthenticated \
+    --no-allow-unauthenticated \
+    --ingress internal-and-cloud-load-balancing \
     --port 8080
 
 echo "Frontend deployed!"
