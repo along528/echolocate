@@ -1545,4 +1545,138 @@ input:checked+.slider:before {
        It doesn't need to accommodate an insert button on its left in the header.
        But to keep alignment consistent, we keep the padding.
     */
+}/* Mobile Layout Refinements V5 (Cleanup and Alignment) - Appended */
+@media (max-width: 900px) {
+
+    /* 1. Remove Borders */
+    .slot-container,
+    .steer-slot-container {
+        border-top: none !important;
+        border-bottom: none !important;
+        /* Maintain spacing though */
+    }
+
+    /* 2. Fix Insert Button Alignment for End Track and others */
+    /* The insert-btn-group is positioned relative to its normal flow (between slots).
+       V4 moved it `top: 28px`.
+       The issue might be that End Track has different margin/padding structure or
+       the insert button before it is influenced by the Steer Slot's container.
+       
+       Let's ensure consistent positioning. 
+       The insert group is a sibling *before* the slot.
+       If we want it essentially "inside" the top padding of the *next* slot,
+       we need to be careful with margins.
+    */
+
+    .insert-btn-group {
+        /* Reset any margin interference */
+        margin-top: 0 !important;
+        margin-bottom: 0 !important;
+
+        /* Position relative to where it sits in flow */
+        position: relative !important;
+
+        /* Move it down to overlap the next sibling's padding-top */
+        /* If next sibling has padding-top: 56px, and we want to be in the middle ~28px */
+        top: 28px !important;
+
+        /* Ensure it doesn't take up height that pushes the slot down */
+        height: 0 !important;
+        overflow: visible !important;
+    }
+
+    /* Specific fix for the "Start Slot" controls vs "End Slot" controls */
+    /* Start slot does not have an insert button before it.
+       End slot DOES.
+       
+       If End slot alignment is off, it might be because the container before it (Steer Slots)
+       has some margin-bottom that pushes the Insert Group down?
+    */
+
+    #steer-slots-container {
+        margin-bottom: 0 !important;
+        padding-bottom: 0 !important;
+    }
+
+    /* Ensure Steer Slots themselves don't have weird margins */
+    .steer-slot-container {
+        margin-bottom: 24px !important;
+    }
+
+    /* Ensure the LAST steer slot doesn't double up margins with the End Slot */
+    /* The Insert Group sits between them. */
+
+    /* Visual check: 
+       Slot Container (Start) [margin-bottom: 24px]
+       Insert Group (Flows here)
+       Steer Slot 1 [margin-top: 0] [padding-top: 56px]
+       
+       If Insert Group is `top: 28px`, it moves DOWN 28px.
+       It starts at the bottom of Start Slot.
+       Gap is 24px.
+       28px move puts it 4px into the Steer Slot's padding.
+       Steer Slot padding is 56px.
+       So it sits very high up in the Steer Slot header.
+       
+       If user says it's misaligned on End Track, maybe End Track has different spacing?
+       End Track logic is same as Steer Slot logic in CSS.
+    */
+
+    /* Let's try pushing it down a bit more to be safe/centered */
+    .insert-btn-group {
+        top: 40px !important;
+        /* Move further down into the 56px padding area */
+    }
+
+    /* Align the Right Controls to match this new vertical center */
+    .slot-controls {
+        top: 16px !important;
+        /* Move down from 8px to match the ~40px shift of insert group? */
+        /* If insert group was at 0 and moved 40px down:
+           It is now at Y=40 relative to the gap start.
+           The gap is 24px (margin-bottom of prev).
+           So it is 16px into the next slot.
+           Next slot padding starts at 0 relative to itself.
+           So we want slot-controls at top: 16px to align?
+        */
+    }
+
+}/* Mobile Layout Refinements V6 (Fixing Regression) - Appended */
+@media (max-width: 900px) {
+
+    /* 1. Revert Global Offsets to V4 (Fixes Steer Slots) */
+    .insert-btn-group {
+        top: 28px !important;
+        /* Back to the value that worked for Steer Slots */
+        margin-top: 0 !important;
+        margin-bottom: 0 !important;
+        position: relative !important;
+        height: 0 !important;
+        overflow: visible !important;
+    }
+
+    .slot-controls {
+        top: 8px !important;
+        /* Back to V4 value */
+        right: 8px !important;
+    }
+
+    /* 2. Specific Fix for End Track Alignment */
+    /* The End Slot has a 16px flex-gap before it that Steer Slots don't have.
+       We need to push the LAST insert button group (which sits before End Slot)
+       down by an extra 16px to catch up with the End Slot.
+       28px (base) + 16px (gap) = 44px.
+    */
+    #steer-slots-container .insert-btn-group:last-child {
+        top: 44px !important;
+    }
+
+    /* 3. Ensure Borders are still removed (From V5) */
+    .slot-container,
+    .steer-slot-container {
+        border-top: none !important;
+        border-bottom: none !important;
+    }
+
+    /* 4. Safety: Start Slot has no insert group before it, so no specific fix needed there. */
 }
