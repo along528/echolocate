@@ -43,7 +43,7 @@ const Components = {
         // Highlight special tracks in the generated playlist
         if (inPlaylist) {
             if (track.isStart) div.classList.add('track-card', 'is-start');
-            if (track.isMiddle) div.classList.add('track-card', 'is-middle');
+            if (track.isSteering) div.classList.add('track-card', 'is-steering');
             if (track.isEnd) div.classList.add('track-card', 'is-end');
         }
 

@@ -56,15 +56,18 @@ const API = {
     },
 
     // Interpolate playlist between two tracks
-    async interpolatePlaylist(trackId1, trackId2, limit = 10, method = 'greedy_walk', source = 'all', steerTrackId = null) {
-        return this.request('POST', '/interpolate/playlist', {
+    async interpolatePlaylist(trackId1, trackId2, limit = 10, method = 'greedy_walk', source = 'all', steerTrackIds = []) {
+        const body = {
             track_id_1: trackId1,
             track_id_2: trackId2,
             limit,
             method,
-            source,
-            steer_track_id: steerTrackId
-        });
+            source
+        };
+        if (steerTrackIds.length > 0) {
+            body.steer_track_ids = steerTrackIds;
+        }
+        return this.request('POST', '/interpolate/playlist', body);
     },
 
     // Get stream URL for a track

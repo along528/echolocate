@@ -53,22 +53,18 @@ def slerp(v0, v1, t=0.5):
     
     return (s0 * v0 + s1 * v1).tolist()
 
-def quadratic_bezier_slerp(v0, v1, v2, t):
+def de_casteljau_slerp(control_points, t):
     """
-    Computes a point on a Quadratic Bezier curve on the hypersphere.
-    v0: Start Vector
-    v1: Control Vector (The Steering Track)
-    v2: End Vector
-    t: 0.0 to 1.0
+    General Bezier curve on the hypersphere via recursive slerp (De Casteljau algorithm).
+    Works with 2+ control points:
+      2 points = linear slerp
+      3 points = quadratic Bezier (equivalent to old quadratic_bezier_slerp)
+      4+ points = higher-order Bezier curves
     """
-    # Step 1: Interpolate between Start and Control
-    q0 = slerp(v0, v1, t)
-    
-    # Step 2: Interpolate between Control and End
-    q1 = slerp(v1, v2, t)
-    
-    # Step 3: Interpolate between the two intermediate points
-    return slerp(q0, q1, t)
+    if len(control_points) == 1:
+        return control_points[0]
+    reduced = [slerp(control_points[i], control_points[i+1], t) for i in range(len(control_points) - 1)]
+    return de_casteljau_slerp(reduced, t)
 
 def get_midpoint(vec_a, vec_b, method="slerp"):
     if method == "linear":
@@ -649,23 +645,28 @@ class InterpolationPlaylistRequest(BaseModel):
     track_id_2: str
     limit: Optional[int] = 10
     method: Optional[Literal["slerp", "linear", "greedy_walk"]] = "greedy_walk"
-    steer_track_id: Optional[str] = None # New optional field
+    steer_track_ids: Optional[List[str]] = None
     source: Optional[Literal["library", "fma", "all"]] = "all"
 
 
-def bezier_interpolation(con, vec_start, vec_control, vec_end, exclude_ids, limit=10):
+def bezier_interpolation(con, vec_start, vec_controls, vec_end, exclude_ids, limit=10):
+    """
+    Bezier curve interpolation using De Casteljau algorithm.
+    vec_controls: list of control point vectors (steering tracks).
+    """
     path = []
-    
+    control_points = [vec_start] + vec_controls + [vec_end]
+
     # We want 'limit' items total (excluding start/end).
     # We generate equidistant time steps along the curve.
-    steps = limit + 1 
-    
+    steps = limit + 1
+
     for i in range(1, steps):
         t = i / steps
-        
+
         # Calculate the theoretical point on the curve
-        target_vector = quadratic_bezier_slerp(vec_start, vec_control, vec_end, t)
-        
+        target_vector = de_casteljau_slerp(control_points, t)
+
         # Find the nearest REAL song to this theoretical point
         query = """
             SELECT id, title, artist, album, relative_path, v_mid, array_cosine_similarity(v_mid, ?::FLOAT[768]) as similarity
@@ -673,32 +674,35 @@ def bezier_interpolation(con, vec_start, vec_control, vec_end, exclude_ids, limi
             ORDER BY similarity DESC
             LIMIT 20
         """
-        
+
         candidates = con.execute(query, [target_vector]).fetchall()
-        
+
         best_match = None
         for cand in candidates:
-            # Simple exclusion of visited IDs
             if cand[0] not in exclude_ids:
                 best_match = cand
                 break
-        
+
         if best_match:
             exclude_ids.add(best_match[0])
             path.append(SearchResult(
-                id=best_match[0], title=best_match[1], artist=best_match[2], 
+                id=best_match[0], title=best_match[1], artist=best_match[2],
                 album=best_match[3], relative_path=best_match[4], similarity=best_match[6]
             ))
-            
+
     return path
 
-def greedy_walk_interpolation(con, start_vec, end_vec, start_id, end_id, start_artist, end_artist, limit=10, source="all"):
+def greedy_walk_interpolation(con, start_vec, end_vec, start_id, end_id, start_artist, end_artist, limit=10, source="all", visited_ids=None, visited_artists=None):
     current_vec = start_vec
     path = []
-    
+
     # Track visited IDs and Artists to prevent loops and ensure diversity
-    visited_ids = {start_id, end_id}
-    visited_artists = {start_artist, end_artist}
+    # Accept shared state from multi-segment walks to avoid duplicates across segments
+    visited_ids = visited_ids if visited_ids is not None else {start_id, end_id}
+    visited_artists = visited_artists if visited_artists is not None else {start_artist, end_artist}
+    # Always ensure start/end are in the sets
+    visited_ids.update({start_id, end_id})
+    visited_artists.update({start_artist, end_artist})
     
     # Pre-calculate source filter clause
     source_filter = ""
@@ -867,91 +871,103 @@ def interpolate_playlist(request: InterpolationPlaylistRequest):
         vec_start = start_row[1]
         vec_end = end_row[1]
 
-        # 1.5 Fetch Steering Vector if requested
-        vec_steer = None
-        steer_row = None
-        if request.steer_track_id:
-            query_steer = "SELECT id, v_mid, title, artist, album, relative_path, source, track_url, album_url, artist_url FROM tracks WHERE id = ?"
-            steer_row = con.execute(query_steer, [request.steer_track_id]).fetchone()
-            if not steer_row:
-                 # If steer track not found, fail or ignore? Let's fail for clarity.
-                 con.close()
-                 raise HTTPException(status_code=404, detail="Steering track not found")
-            vec_steer = steer_row[1]
-        
+        # 1.5 Fetch steering tracks if requested
+        steer_ids = list(request.steer_track_ids) if request.steer_track_ids else []
+        steer_rows = []
+        if steer_ids:
+            placeholders = ", ".join(["?"] * len(steer_ids))
+            query_steer = f"SELECT id, v_mid, title, artist, album, relative_path, source, track_url, album_url, artist_url FROM tracks WHERE id IN ({placeholders})"
+            raw_rows = con.execute(query_steer, steer_ids).fetchall()
+            # Re-order to match client-specified order
+            row_by_id = {r[0]: r for r in raw_rows}
+            for sid in steer_ids:
+                if sid not in row_by_id:
+                    con.close()
+                    raise HTTPException(status_code=404, detail=f"Steering track not found: {sid}")
+                steer_rows.append(row_by_id[sid])
+
         # 2. Generate Path
-        
+
         # --- STRATEGY A: GREEDY WALK (Graph Traversal) ---
         if request.method == "greedy_walk":
-            
-            if vec_steer:
-                # Multi-stage walk: Start -> Steer -> End
-                # Split limit roughly in half
-                limit_a = math.ceil(request.limit / 2)
-                limit_b = request.limit - limit_a
-                
-                # Part 1: Start -> Steer
-                path_a = greedy_walk_interpolation(
-                    con, vec_start, vec_steer, 
-                    start_row[0], steer_row[0], 
-                    start_row[2], steer_row[2], limit=limit_a,
-                    source=request.source
-                )
-                
-                # Part 2: Steer -> End
-                path_b = greedy_walk_interpolation(
-                    con, vec_steer, vec_end, 
-                    steer_row[0], end_row[0], 
-                    steer_row[2], end_row[2], limit=limit_b,
-                    source=request.source
-                )
-                
-                # Construct: Start + Path A + [Steer] + Path B + End
-                steer_obj = SearchResult(
-                    id=steer_row[0], title=steer_row[2], artist=steer_row[3], 
-                    album=steer_row[4], relative_path=steer_row[5], 
-                    source=steer_row[6], track_url=steer_row[7], 
-                    album_url=steer_row[8], artist_url=steer_row[9],
-                    similarity=1.0
-                )
-                
-                # Note: path_a excludes start/end of its segment. 
-                # So we manually insert the Steer object in the middle.
-                path = path_a + [steer_obj] + path_b
-                
+
+            if steer_rows:
+                # Multi-segment walk: Start -> S1 -> S2 -> ... -> SN -> End
+                # Build waypoints: [(row, vec), ...]
+                waypoints = [(start_row, vec_start)]
+                for sr in steer_rows:
+                    waypoints.append((sr, sr[1]))
+                waypoints.append((end_row, vec_end))
+
+                # Divide limit across N+1 segments (evenly, remainder to first segments)
+                num_segments = len(waypoints) - 1
+                base_limit = max(1, (request.limit or 10) // num_segments)
+                remainder = max(0, (request.limit or 10) - base_limit * num_segments)
+
+                # Shared state across all segments
+                visited_ids = {start_row[0], end_row[0]}
+                visited_artists = {start_row[3], end_row[3]}
+                for sr in steer_rows:
+                    visited_ids.add(sr[0])
+                    visited_artists.add(sr[3])
+
+                path = []
+                for seg_idx in range(num_segments):
+                    seg_limit = base_limit + (1 if seg_idx < remainder else 0)
+                    from_row, from_vec = waypoints[seg_idx]
+                    to_row, to_vec = waypoints[seg_idx + 1]
+
+                    seg_path = greedy_walk_interpolation(
+                        con, from_vec, to_vec,
+                        from_row[0], to_row[0],
+                        from_row[3], to_row[3],
+                        limit=seg_limit,
+                        source=request.source,
+                        visited_ids=visited_ids,
+                        visited_artists=visited_artists
+                    )
+                    path.extend(seg_path)
+
+                    # Insert the steering track object between segments (not after last segment)
+                    if seg_idx < num_segments - 1:
+                        sr = steer_rows[seg_idx]
+                        steer_obj = SearchResult(
+                            id=sr[0], title=sr[2], artist=sr[3],
+                            album=sr[4], relative_path=sr[5],
+                            source=sr[6], track_url=sr[7],
+                            album_url=sr[8], artist_url=sr[9],
+                            similarity=1.0
+                        )
+                        path.append(steer_obj)
+
             else:
                 # Standard A -> B walk
                 walk_limit = max(1, (request.limit or 10) - 2)
                 path = greedy_walk_interpolation(
-                    con, vec_start, vec_end, 
-                    start_row[0], end_row[0], 
-                    start_row[2], end_row[2], limit=walk_limit,
+                    con, vec_start, vec_end,
+                    start_row[0], end_row[0],
+                    start_row[3], end_row[3], limit=walk_limit,
                     source=request.source
                 )
 
         # --- STRATEGY B: GEOMETRIC (SLERP/Linear) ---
         else:
             exclude_ids = {request.track_id_1, request.track_id_2}
-            
-            if vec_steer:
-                # Bezier Curve Interpolation
-                exclude_ids.add(request.steer_track_id)
-                
-                # The limit is the number of intermediates
-                # If we want the steer track to be INCLUDED in the list, 
-                # Bezier math doesn't guarantee hitting the exact point P1, 
-                # it just curves towards it.
-                # If you want to explicitly include it, reduce limit and insert it? 
-                # For now, let's just do the pure curve generation.
-                
+
+            if steer_rows:
+                # Bezier Curve Interpolation with N control points
+                for sr in steer_rows:
+                    exclude_ids.add(sr[0])
+
+                vec_controls = [sr[1] for sr in steer_rows]
                 path = bezier_interpolation(
-                    con, vec_start, vec_steer, vec_end, exclude_ids, 
+                    con, vec_start, vec_controls, vec_end, exclude_ids,
                     limit=max(1, (request.limit or 10) - 2)
                 )
-                
+
             else:
                 # Standard Recursive Bisection
-                exclude_artists = {start_row[2], end_row[2]}
+                exclude_artists = {start_row[3], end_row[3]}
                 if request.limit and request.limit >= 3:
                     depth_limit = int(math.log2(request.limit - 1))
                 else:

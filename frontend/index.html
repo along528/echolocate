@@ -5,7 +5,7 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>EchoLocate - FMA Explorer</title>
-    <link rel="stylesheet" href="style.css?v=5">
+    <link rel="stylesheet" href="style.css?v=6">
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
@@ -76,7 +76,7 @@
                 <div style="height: 32px;"></div>
 
                 <!-- View 1: Builder Inputs -->
-                <div id="builder-view" style="display: flex; flex-direction: column; flex: 1;">
+                <div id="builder-view" class="builder-view">
 
                     <!-- Control Row (matches Left Panel Search Input row) -->
                     <div style="display: flex; gap: 0.5rem; margin-bottom: 0.75rem; align-items: center;">
@@ -93,64 +93,41 @@
                         <button id="clear-builder" class="btn-secondary" title="Clear builder">Clear</button>
                     </div>
 
-                    <div class="builder-slots" style="flex: 1; overflow-y: auto;">
+                    <div class="builder-slots">
                         <!-- Start Track -->
                         <div class="slot-container" data-slot="start">
                             <label>Start Track</label>
-                            <div class="slot-input-wrapper">
-                                <input type="text" class="slot-search-input" placeholder="Search or drag track..."
-                                    autocomplete="off">
-                                <div class="slot-nav-controls" style="display: none;">
-                                    <button class="slot-nav-btn prev" title="Previous result">←</button>
-                                    <span class="slot-nav-count"></span>
-                                    <button class="slot-nav-btn next" title="Next result">→</button>
+                            <div class="slot-mode-edit">
+                                <div class="slot-input-wrapper">
+                                    <input type="text" class="slot-search-input" placeholder="Search or drag track..."
+                                        autocomplete="off">
                                 </div>
                             </div>
-                            <div class="slot-enhanced-query" style="display: none;"></div>
-
-                            <div id="slot-start" class="track-slot empty">
-                                <span class="placeholder">Drag track here or type above</span>
+                            <div class="slot-mode-view" style="display: none;">
+                                <div class="track-slot filled"></div>
+                            </div>
+                            <div class="track-slot empty" style="display: none;">
+                                <span class="placeholder">Drag track here or click to search</span>
                             </div>
                         </div>
 
-                        <!-- Middle Track -->
-                        <div class="slot-container" data-slot="middle">
-                            <div class="label-row">
-                                <label>Middle Track (Optional)</label>
-                                <button class="clear-slot-btn-main" title="Clear slot" style="display: none;">×</button>
-                            </div>
-                            <div class="slot-input-wrapper">
-                                <input type="text" class="slot-search-input" placeholder="Search or drag track..."
-                                    autocomplete="off">
-                                <div class="slot-nav-controls" style="display: none;">
-                                    <button class="slot-nav-btn prev" title="Previous result">←</button>
-                                    <span class="slot-nav-count"></span>
-                                    <button class="slot-nav-btn next" title="Next result">→</button>
-                                </div>
-                            </div>
-                            <div class="slot-enhanced-query" style="display: none;"></div>
-
-                            <div id="slot-middle" class="track-slot empty">
-                                <span class="placeholder">Drag track here or type above</span>
-                            </div>
-                        </div>
+                        <!-- Dynamic Steering Tracks -->
+                        <div id="steer-slots-container"></div>
 
                         <!-- End Track -->
                         <div class="slot-container" data-slot="end">
                             <label>End Track</label>
-                            <div class="slot-input-wrapper">
-                                <input type="text" class="slot-search-input" placeholder="Search or drag track..."
-                                    autocomplete="off">
-                                <div class="slot-nav-controls" style="display: none;">
-                                    <button class="slot-nav-btn prev" title="Previous result">←</button>
-                                    <span class="slot-nav-count"></span>
-                                    <button class="slot-nav-btn next" title="Next result">→</button>
+                            <div class="slot-mode-edit">
+                                <div class="slot-input-wrapper">
+                                    <input type="text" class="slot-search-input" placeholder="Search or drag track..."
+                                        autocomplete="off">
                                 </div>
                             </div>
-                            <div class="slot-enhanced-query" style="display: none;"></div>
-
-                            <div id="slot-end" class="track-slot empty">
-                                <span class="placeholder">Drag track here or type above</span>
+                            <div class="slot-mode-view" style="display: none;">
+                                <div class="track-slot filled"></div>
+                            </div>
+                            <div class="track-slot empty" style="display: none;">
+                                <span class="placeholder">Drag track here or click to search</span>
                             </div>
                         </div>
                     </div>
@@ -203,10 +180,10 @@
         // Production: set to your deployed vector service URL
         window.VECTOR_API_URL = 'http://localhost:8001';
     </script>
-    <script src="api.js?v=5"></script>
-    <script src="player.js?v=5"></script>
-    <script src="components.js?v=5"></script>
-    <script src="app.js?v=5"></script>
+    <script src="api.js?v=6"></script>
+    <script src="player.js?v=6"></script>
+    <script src="components.js?v=6"></script>
+    <script src="app.js?v=6"></script>
 </body>
 
 </html>

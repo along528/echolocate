@@ -406,7 +406,7 @@ async def list_tools():
                     "track_id_2": {"type": "string", "description": "Vector ID of ending track"},
                     "limit": {"type": "integer", "description": "Number of intermediate tracks", "default": 10},
                     "method": {"type": "string", "enum": ["greedy_walk", "slerp", "linear"], "description": "Interpolation method", "default": "greedy_walk"},
-                    "steer_track_id": {"type": "string", "description": "Optional track ID to steer the path toward (vibe steering)"}
+                    "steer_track_ids": {"type": "array", "items": {"type": "string"}, "description": "Optional list of track IDs for multi-point vibe steering"}
                 },
                 "required": ["track_id_1", "track_id_2"]
             }
@@ -419,7 +419,8 @@ async def list_tools():
                 "properties": {
                     "track_id_1": {"type": "string", "description": "Vector ID of starting track"},
                     "track_id_2": {"type": "string", "description": "Vector ID of ending track"},
-                    "limit": {"type": "integer", "description": "Total tracks in playlist", "default": 20}
+                    "limit": {"type": "integer", "description": "Total tracks in playlist", "default": 20},
+                    "steer_track_ids": {"type": "array", "items": {"type": "string"}, "description": "Optional list of track IDs for multi-point vibe steering"}
                 },
                 "required": ["track_id_1", "track_id_2"]
             }
@@ -932,9 +933,10 @@ Duration: {attrs.get('durationInMillis')} ms
         try:
             if name == "echolocate_generate_playlist":
                  res = await echo_locate.generate_playlist(
-                     arguments["track_id_1"], 
-                     arguments["track_id_2"], 
-                     limit=arguments.get("limit", 20)
+                     arguments["track_id_1"],
+                     arguments["track_id_2"],
+                     limit=arguments.get("limit", 20),
+                     steer_track_ids=arguments.get("steer_track_ids")
                  )
                  output = "\n".join([f"- {t['title']} by {t['artist']} (Vector ID: {t['id']})" for t in res])
                  return [TextContent(type="text", text=f"Generated Path:\n{output}")]
@@ -970,11 +972,11 @@ Duration: {attrs.get('durationInMillis')} ms
 
             elif name == "echolocate_interpolate":
                 res = await echo_locate.interpolate(
-                    arguments["track_id_1"], 
+                    arguments["track_id_1"],
                     arguments["track_id_2"],
-                    limit=arguments.get("limit", 10), 
+                    limit=arguments.get("limit", 10),
                     method=arguments.get("method", "greedy_walk"),
-                    steer_track_id=arguments.get("steer_track_id")
+                    steer_track_ids=arguments.get("steer_track_ids")
                 )
                 output = "\n".join([f"Vector ID: {t['id']} | {t['title']}" for t in res])
                 return [TextContent(type="text", text=output or "Interpolation failed")]
