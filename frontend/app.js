@@ -20,6 +20,7 @@ const App = {
     init() {
         Player.init();
         this.setupEventListeners();
+        this.setupMobileNavigation();
         this.setupDragAndDrop();
         this.loadInitialTracks();
         this.updateUIState();
@@ -113,6 +114,68 @@ const App = {
                 this.renderBuilder();
             });
         }
+    },
+
+    setupMobileNavigation() {
+        // Mobile Navigation Logic
+        const mobileTabs = document.querySelectorAll('.mobile-tab');
+        const resultsPanel = document.querySelector('.results-panel');
+        const playlistPanel = document.querySelector('.playlist-panel');
+
+        // Function to set active mobile view
+        const setMobileView = (viewName) => {
+            // Update tabs
+            mobileTabs.forEach(tab => {
+                if (tab.dataset.mobileTab === viewName) {
+                    tab.classList.add('active');
+                } else {
+                    tab.classList.remove('active');
+                }
+            });
+
+            // Update panels
+            if (viewName === 'search') {
+                if (resultsPanel) resultsPanel.classList.add('active');
+                if (playlistPanel) playlistPanel.classList.remove('active');
+            } else if (viewName === 'playlist') {
+                if (playlistPanel) playlistPanel.classList.add('active');
+                if (resultsPanel) resultsPanel.classList.remove('active');
+            }
+        };
+
+        // Event Listeners
+        mobileTabs.forEach(tab => {
+            tab.addEventListener('click', () => {
+                setMobileView(tab.dataset.mobileTab);
+            });
+        });
+
+        // Initialize Mobile View (Default to Playlist on mobile load)
+        const isMobile = window.innerWidth <= 900;
+        if (isMobile) {
+            setMobileView('playlist');
+        } else {
+            // Reset for desktop
+            if (resultsPanel) resultsPanel.classList.add('active');
+            if (playlistPanel) playlistPanel.classList.add('active');
+        }
+
+        // Handle Resize
+        window.addEventListener('resize', () => {
+            if (window.innerWidth > 900) {
+                // Ensure both are visible on desktop
+                if (resultsPanel) resultsPanel.classList.add('active');
+                if (playlistPanel) playlistPanel.classList.add('active');
+            } else {
+                // Revert to last known or default on mobile
+                // Default to playlist if unclear which one should be active
+                if (resultsPanel && playlistPanel &&
+                    resultsPanel.classList.contains('active') &&
+                    playlistPanel.classList.contains('active')) {
+                    setMobileView('playlist');
+                }
+            }
+        });
     },
 
     addSteerSlot(track = null, insertIndex = -1, options = {}) {
