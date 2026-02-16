@@ -562,6 +562,7 @@ input:checked+.slider:before {
     flex: 1;
     min-height: 0;
     /* Important for nested flex scroll */
+    overflow: hidden;
 }
 
 .builder-slots {

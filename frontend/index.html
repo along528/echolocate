@@ -68,31 +68,16 @@
             <!-- Playlist Panel -->
             <section class="playlist-panel">
                 <div class="panel-header"
-                    style="height: 38px; display: flex; align-items: center; margin-bottom: 0.75rem;">
+                    style="height: 38px; display: flex; align-items: center; justify-content: space-between; margin-bottom: 0.75rem;">
                     <h2>Playlist</h2>
+                    <button id="clear-builder" class="btn-secondary" title="Clear playlist">Clear</button>
                 </div>
 
                 <!-- Spacer to match Left Panel Search Tabs (calculated 32px) -->
-                <div style="height: 32px;"></div>
+
 
                 <!-- View 1: Builder Inputs -->
                 <div id="builder-view" class="builder-view">
-
-                    <!-- Control Row (matches Left Panel Search Input row) -->
-                    <!-- Removed Generate Button -->
-                    <div
-                        style="display: flex; gap: 0.5rem; margin-bottom: 0.75rem; align-items: center; visibility: hidden; height: 38px;">
-                        <!-- Spacer to keep alignment -->
-                    </div>
-
-                    <!-- Spacer to match Left Panel Filters (calculated 38px) -->
-                    <div style="height: 38px;"></div>
-
-                    <div class="playlist-controls"
-                        style="justify-content: space-between; margin-bottom: 1rem; margin-top: 1rem; min-height: 27px;">
-                        <h3>Your Journey</h3>
-                        <button id="clear-builder" class="btn-secondary" title="Clear playlist">Clear</button>
-                    </div>
 
                     <div class="builder-slots">
                         <!-- Start Track -->
