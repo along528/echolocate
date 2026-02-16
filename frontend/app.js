@@ -717,10 +717,24 @@ const App = {
         }
     },
 
+    getBuilderTrackList() {
+        const tracks = [];
+        if (this.slots.start.track) tracks.push(this.slots.start.track);
+        this.steerSlots.forEach(s => {
+            if (s.track) tracks.push(s.track);
+        });
+        if (this.slots.end.track) tracks.push(this.slots.end.track);
+        return tracks;
+    },
+
     renderSlot(slotName) {
         const slot = this.getSlot(slotName);
         const container = document.querySelector(`.slot-container[data-slot="${slotName}"]`);
         if (!container || !slot) return;
+
+        // Get current sequence of tracks in builder for player context
+        const builderContext = this.getBuilderTrackList();
+        // console.log('Builder context for', slotName, builderContext.length, 'tracks');
 
         // --- Render Interpolated Slot ---
         if (slot.isInterpolated) {
@@ -732,8 +746,12 @@ const App = {
                 trackSlot.classList.add('filled');
                 trackSlot.innerHTML = '';
 
-                // Render track card
-                const card = Components.renderTrack(slot.track, { showActions: true, minimal: true });
+                // Render track card with context
+                const card = Components.renderTrack(slot.track, {
+                    showActions: true,
+                    minimal: true,
+                    context: builderContext
+                });
                 trackSlot.appendChild(card);
             } else {
                 // Should not really happen for interpolated, but fallback
@@ -887,7 +905,11 @@ const App = {
             filledSlot.innerHTML = '';
 
             // Render Track
-            const card = Components.renderTrack(slot.track, { showActions: true, minimal: true });
+            const card = Components.renderTrack(slot.track, {
+                showActions: true,
+                minimal: true,
+                context: builderContext
+            });
 
             // --- Footer: Enhanced Text Only (Nav/Edit moved to header) ---
             if (slot.enhancedQuery) {

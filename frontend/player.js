@@ -38,10 +38,14 @@ const Player = {
     },
 
     play(track, context = null) {
-        console.log('Player.play called', { trackId: track.id, contextProvided: !!context });
+        console.log('Player.play called', {
+            trackId: track.id,
+            contextSize: context ? context.length : 'null'
+        });
+
         // Switch playlist context if provided
         if (context) {
-            console.log('Switching playlist context. Length:', context.length);
+            console.log('Switching playlist context to:', context.map(t => t.id));
             this.playlist = context;
         }
 
@@ -58,12 +62,13 @@ const Player = {
         this.updateNowPlaying();
 
         // Sync currentIndex if track is in playlist
-        const index = this.playlist.findIndex(t => t.id === track.id);
+        const index = this.playlist.findIndex(t => String(t.id) === String(track.id));
         console.log('Track index in playlist:', index);
 
         if (index !== -1) {
             this.currentIndex = index;
         } else {
+            console.warn('Track ID found in playlist? No.', track.id, this.playlist.map(t => t.id));
             // Track not in current playlist (e.g. random play from builder or isolated play)
             this.currentIndex = -1;
         }
