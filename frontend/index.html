@@ -65,11 +65,11 @@
                 <div id="results-list" class="track-list"></div>
             </section>
 
-            <!-- Interpolation Builder Panel -->
+            <!-- Playlist Panel -->
             <section class="playlist-panel">
                 <div class="panel-header"
                     style="height: 38px; display: flex; align-items: center; margin-bottom: 0.75rem;">
-                    <h2>Interpolation Builder</h2>
+                    <h2>Playlist</h2>
                 </div>
 
                 <!-- Spacer to match Left Panel Search Tabs (calculated 32px) -->
@@ -79,9 +79,10 @@
                 <div id="builder-view" class="builder-view">
 
                     <!-- Control Row (matches Left Panel Search Input row) -->
-                    <div style="display: flex; gap: 0.5rem; margin-bottom: 0.75rem; align-items: center;">
-                        <button id="interpolate-btn" class="btn-primary" style="flex: 1;" disabled>✨ Generate
-                            Playlist</button>
+                    <!-- Removed Generate Button -->
+                    <div
+                        style="display: flex; gap: 0.5rem; margin-bottom: 0.75rem; align-items: center; visibility: hidden; height: 38px;">
+                        <!-- Spacer to keep alignment -->
                     </div>
 
                     <!-- Spacer to match Left Panel Filters (calculated 38px) -->
@@ -89,8 +90,8 @@
 
                     <div class="playlist-controls"
                         style="justify-content: space-between; margin-bottom: 1rem; margin-top: 1rem; min-height: 27px;">
-                        <h3>Builder Slots</h3>
-                        <button id="clear-builder" class="btn-secondary" title="Clear builder">Clear</button>
+                        <h3>Your Journey</h3>
+                        <button id="clear-builder" class="btn-secondary" title="Clear playlist">Clear</button>
                     </div>
 
                     <div class="builder-slots">
@@ -134,23 +135,7 @@
                 </div>
 
                 <!-- View 2: Generated Playlist (Initially Hidden) -->
-                <div id="playlist-view" style="display: none; flex-direction: column; flex: 1;">
-                    <!-- Control Row match -->
-                    <div style="display: flex; gap: 0.5rem; margin-bottom: 0.75rem; align-items: center;">
-                        <button id="reset-builder" class="btn-secondary" style="flex: 1;">Back to Builder</button>
-                    </div>
 
-                    <!-- Spacer to match Left Panel Filters (calculated 38px) -->
-                    <div style="height: 38px;"></div>
-
-                    <!-- Header match -->
-                    <div class="playlist-controls"
-                        style="justify-content: space-between; margin-bottom: 1rem; margin-top: 1rem; min-height: 27px;">
-                        <h3>Generated Playlist</h3>
-                    </div>
-
-                    <div id="playlist" class="track-list"></div>
-                </div>
             </section>
         </main>
 
@@ -177,8 +162,10 @@
     <!-- Configuration - set your vector service URL here -->
     <script>
         // Production: relative path routed through shared load balancer
-        // Local development: override with window.VECTOR_API_URL = 'http://localhost:8001'
-        window.VECTOR_API_URL = '/api';
+        // Local development: override if on localhost
+        window.VECTOR_API_URL = (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1')
+            ? 'http://localhost:8001'
+            : '/api';
     </script>
     <script src="api.js?v=6"></script>
     <script src="player.js?v=6"></script>

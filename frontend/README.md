@@ -14,8 +14,7 @@ Web frontend for exploring 100k+ FMA tracks with AI-powered search.
 
 1. Start the vector service (from repo root):
 ```bash
-cd vector
-DB_PATH=../data/cloudcrate.duckdb uvicorn main:app --reload --port 8001
+./vector/start_local.sh
 ```
 
 2. Serve the frontend:

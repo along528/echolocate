@@ -15,7 +15,7 @@ const App = {
     },
     steerSlots: [],
     steerCounter: 0,
-    generatedPlaylist: [],
+
 
     init() {
         Player.init();
@@ -60,23 +60,13 @@ const App = {
         // Builder controls
         document.getElementById('clear-builder').addEventListener('click', () => {
             this.resetSlots();
-            this.generatedPlaylist = [];
-            Player.playlist = [];
             this.renderBuilder();
             document.getElementById('builder-view').style.display = 'block';
-            document.getElementById('playlist-view').style.display = 'none';
         });
 
-        // Reset / Back to Builder
-        document.getElementById('reset-builder').addEventListener('click', () => {
-            document.getElementById('builder-view').style.display = 'block';
-            document.getElementById('playlist-view').style.display = 'none';
-        });
 
-        const interpolateBtn = document.getElementById('interpolate-btn');
-        if (interpolateBtn) {
-            interpolateBtn.addEventListener('click', () => this.interpolate());
-        }
+
+
 
         document.getElementById('random-btn').addEventListener('click', () => this.loadInitialTracks());
         document.getElementById('clear-results').addEventListener('click', () => this.clearResults());
@@ -498,80 +488,7 @@ const App = {
         this.renderBuilder();
     },
 
-    async interpolate() {
-        const startReady = this.slots.start.track || this.slots.start.query;
-        const endReady = this.slots.end.track || this.slots.end.query;
 
-        if (!startReady || !endReady) {
-            alert('Please select both a Start and End track (or enter a query).');
-            return;
-        }
-
-        const btn = document.getElementById('interpolate-btn');
-        const originalText = btn.textContent;
-        btn.disabled = true;
-        btn.textContent = 'Generating...';
-
-        try {
-            // Resolve deferred searches
-            const resolveSlot = async (slotName) => {
-                const slot = this.getSlot(slotName);
-                if (!slot.track && slot.query) {
-                    await this.handleSlotSearch(slotName, slot.query);
-                    if (!slot.track) throw new Error(`Could not find track for query: "${slot.query}"`);
-                }
-                return slot.track;
-            };
-
-            const startTrack = await resolveSlot('start');
-            const endTrack = await resolveSlot('end');
-
-            // Resolve all steering slots
-            const steerTrackIds = [];
-            for (const steerSlot of this.steerSlots) {
-                if (!steerSlot.track && steerSlot.query) {
-                    await this.handleSlotSearch(steerSlot.id, steerSlot.query);
-                }
-                if (steerSlot.track) {
-                    steerTrackIds.push(steerSlot.track.id);
-                }
-            }
-
-            const source = this.getSelectedSource();
-
-            const tracks = await API.interpolatePlaylist(
-                startTrack.id,
-                endTrack.id,
-                10,
-                'greedy_walk',
-                source,
-                steerTrackIds
-            );
-
-            // Mark tracks
-            tracks[0].isStart = true;
-            tracks[tracks.length - 1].isEnd = true;
-            // Mark steering tracks
-            const steerIdSet = new Set(steerTrackIds);
-            tracks.forEach(t => {
-                if (steerIdSet.has(t.id)) t.isSteering = true;
-            });
-
-            this.generatedPlaylist = tracks;
-            Player.playlist = tracks;
-            this.renderPlaylist();
-
-            document.getElementById('builder-view').style.display = 'none';
-            document.getElementById('playlist-view').style.display = 'block';
-
-        } catch (error) {
-            console.error('Interpolation failed:', error);
-            alert(`Failed to generate: ${error.message}`);
-        } finally {
-            btn.disabled = false;
-            btn.textContent = originalText;
-        }
-    },
 
     getSelectedSource() {
         return document.querySelector('input[name="source"]:checked').value;
@@ -605,13 +522,7 @@ const App = {
         // Render "+" insert buttons between every pair of adjacent slots
         this.renderInsertButtons();
 
-        // Enable interpolate button
-        const interpolateBtn = document.getElementById('interpolate-btn');
-        if (interpolateBtn) {
-            const startReady = this.slots.start.track || this.slots.start.query;
-            const endReady = this.slots.end.track || this.slots.end.query;
-            interpolateBtn.disabled = !(startReady && endReady);
-        }
+
 
         // Sync Player Context if we are currently playing a track from the builder
         if (Player.currentTrack) {
@@ -956,10 +867,7 @@ const App = {
         }
     },
 
-    renderPlaylist() {
-        const container = document.getElementById('playlist');
-        Components.renderTrackList(container, this.generatedPlaylist, { inPlaylist: true });
-    }
+
 };
 
 // Initialize on DOM ready
