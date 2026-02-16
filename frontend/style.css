@@ -573,6 +573,8 @@ input:checked+.slider:before {
     flex: 1;
     overflow-y: auto;
     min-height: 0;
+    position: relative;
+    /* Context for absolute insert buttons */
 }
 
 .slot-container label {
@@ -763,12 +765,22 @@ input:checked+.slider:before {
     align-items: center;
     justify-content: center;
     gap: 6px;
-    margin: -2px auto;
-    /* Very slight negative margin */
-    position: relative;
+    /* Use absolute positioning to float exactly between slots without affecting flow */
+    position: absolute;
+    left: 0;
+    right: 0;
+    /* Slots have 0.5rem (8px) margin-bottom. We want to be in the middle of that gap. */
+    margin-top: -14px;
+    /* Pull up to overlap the gap */
     z-index: 10;
-    height: 0;
-    overflow: visible;
+    pointer-events: none;
+    /* Let clicks pass through container */
+}
+
+.insert-steer-btn,
+.insert-interp-btn {
+    pointer-events: auto;
+    /* Re-enable clicks on buttons */
 }
 
 /* Ensure tracks don't clip the buttons if they have overflow:hidden */
@@ -857,6 +869,17 @@ input:checked+.slider:before {
 }
 
 /* Slot Entry Animation */
+/* Slot Entry Animation */
+.slot-container {
+    position: relative;
+    /* Context for absolute positioning if needed */
+}
+
+.slot-container.entering {
+    animation: slideDown 0.4s ease-out forwards;
+    transform-origin: top center;
+}
+
 .slot-container.entering {
     animation: slideDown 0.4s ease-out forwards;
     transform-origin: top center;
@@ -1000,9 +1023,21 @@ input:checked+.slider:before {
 /* Steer slot container — no label, tighter spacing */
 .steer-slot-container {
     margin-top: 0;
+    margin-bottom: 0.5rem;
+    /* Ensure consistent bottom margin for all steer slots */
 }
 
 /* Interpolated slot — compact, no search input */
+.interpolated-slot {
+    margin-top: 0;
+    margin-bottom: 0.5rem;
+    /* Match steer-slot margin */
+}
+
+.interpolated-slot .track-slot {
+    min-height: 48px;
+}
+
 .interpolated-slot {
     margin-top: 0;
     margin-bottom: 0.5rem;
