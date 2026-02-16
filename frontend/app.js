@@ -187,35 +187,31 @@ const App = {
         }
         div.dataset.slot = slotId;
 
-        if (slot?.isInterpolated) {
-            div.innerHTML = `
+        div.innerHTML = `
+            <div class="slot-header" style="display: flex; justify-content: flex-end; align-items: center; margin-bottom: 0.5rem; height: 16px;">
+                <div class="slot-controls" style="display: flex; gap: 4px;">
+                    <!-- Controls injected by renderSlot -->
+                </div>
+            </div>
+            ${slot?.isInterpolated ? '' : `
+            <div class="slot-mode-edit" style="display: none;">
+                <div class="slot-input-wrapper">
+                    <input type="text" class="slot-search-input" placeholder="Search or drag track..."
+                        autocomplete="off">
+                </div>
+            </div>
+            `}
+            <div class="slot-mode-view" style="${slot?.isInterpolated ? '' : 'display: none;'}">
                 <div class="track-slot filled">
                     <!-- Configured in renderSlot -->
                 </div>
-            `;
-        } else {
-            div.innerHTML = `
-                <div class="slot-header" style="display: flex; justify-content: flex-end; align-items: center; margin-bottom: 0.5rem; height: 16px;">
-                    <div class="slot-controls" style="display: flex; gap: 4px;">
-                        <!-- Controls injected by renderSlot -->
-                    </div>
-                </div>
-                <div class="slot-mode-edit" style="display: none;">
-                    <div class="slot-input-wrapper">
-                        <input type="text" class="slot-search-input" placeholder="Search or drag track..."
-                            autocomplete="off">
-                    </div>
-                </div>
-                <div class="slot-mode-view" style="display: none;">
-                    <div class="track-slot filled">
-                        <!-- Configured in renderSlot -->
-                    </div>
-                </div>
-                <div class="track-slot empty" style="display: none;">
+            </div>
+            ${slot?.isInterpolated ? '' : `
+            <div class="track-slot empty" style="display: none;">
                     <span class="placeholder">Drag track here or click to search</span>
-                </div>
-            `;
-        }
+            </div>
+            `}
+        `;
 
         return div;
     },
@@ -738,30 +734,6 @@ const App = {
 
                 // Render track card
                 const card = Components.renderTrack(slot.track, { showActions: true, minimal: true });
-
-                // Add explicit "Edit" button for interpolation slots to convert them
-                const editBtn = document.createElement('button');
-                editBtn.className = 'action-btn edit-action-btn';
-                editBtn.title = 'Edit';
-                editBtn.innerHTML = '✎';
-                editBtn.addEventListener('click', (e) => {
-                    e.stopPropagation();
-                    // Convert to manual steer slot
-                    slot.isInterpolated = false;
-                    slot.isEditing = true;
-                    // Re-create the DOM element for this slot to support full editing
-                    // We need to replace the container with a full one. 
-                    // Simplest is to remove current container and let renderBuilder re-create it?
-                    // But renderBuilder re-uses existing if ID matches.
-                    // So we manually remove it first.
-                    container.remove();
-                    this.renderBuilder();
-                });
-
-                // Append edit button to actions
-                const actions = card.querySelector('.track-actions');
-                if (actions) actions.insertBefore(editBtn, actions.firstChild);
-
                 trackSlot.appendChild(card);
             } else {
                 // Should not really happen for interpolated, but fallback
@@ -770,18 +742,47 @@ const App = {
                 trackSlot.innerHTML = `<span class="placeholder">Interpolated</span>`;
             }
 
-            // Add remove button overlay
-            const removeBtn = document.createElement('button');
-            removeBtn.className = 'remove-steer-btn';
-            removeBtn.title = 'Remove';
-            removeBtn.innerHTML = '×';
-            removeBtn.addEventListener('click', (e) => {
-                e.stopPropagation();
-                this.removeSteerSlot(slotName);
-            });
-            trackSlot.appendChild(removeBtn);
+            // Ensure header controls are structured like manual slots for consistent "x" button
+            // Interpolated slots don't usually have a header, but we want the "x" to be consistent.
+            // Actually, manual slots have the "x" in the header (slot-controls).
+            // Interpolated slots currently don't have a header in createSteerSlotElement.
+            // Let's modify createSteerSlotElement to include a header for interpolated slots too, 
+            // OR just add the "x" button in a similar style.
 
-            return;
+            // The user wants "same style and position for the x". 
+            // Manual slots have `slot-header` with `slot-controls` containing the `x`.
+
+            // Let's add an absolute positioned X that mimics the header X, OR
+            // better yet, let's just make interpolated slots have a header like manual slots, 
+            // but without the label/search parts. 
+            // But createSteerSlotElement is already baked. 
+
+            // Let's just use the existing removeBtn but style it to match `.header-nav-btn`.
+            // AND position it similarly (top right).
+
+            // Actually, the previous implementation added a `remove-steer-btn` overlaid.
+            // The user wants it to look like the non-interpolated ones. 
+            // Non-interpolated: `.header-nav-btn` in `.slot-controls` (header).
+
+            // Simplest Fix: Add a "slot-header" structure to interpolated slots dynamically if missing,
+            // or just absolute position a button that looks exactly like the header one.
+
+            // Let's try adding a small header container inside the slot if we can, 
+            // or just overlapping. 
+
+            // Current manual slot structure:
+            // .slot-container
+            //   .slot-header
+            //     .slot-controls -> .header-nav-btn ("x")
+
+            // Current interpolated structure:
+            // .slot-container.interpolated-slot
+            //   .track-slot.filled
+
+            // If we want EXACT style/position, we should probably add the header.
+            // But `createSteerSlotElement` makes the structure.
+            // We can adjust `createSteerSlotElement` to be uniform?
+            // Or just prepend a header here.
         }
 
         // --- Render Standard Slot (Start, End, Manual Steer) ---
@@ -839,8 +840,8 @@ const App = {
                 slotControls.appendChild(createBtn('→', 'Next result', () => this.navigateSlot(slotName, 1), 'next'));
             }
 
-            // 2. Edit Button (only if viewed/filled)
-            if (!slot.isEditing && slot.track) {
+            // 2. Edit Button (only if viewed/filled AND NOT INTERPOLATED)
+            if (!slot.isEditing && slot.track && !slot.isInterpolated) {
                 slotControls.appendChild(createBtn('✎', 'Edit', () => {
                     slot.isEditing = true;
                     this.renderSlot(slotName);

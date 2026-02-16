@@ -763,7 +763,10 @@ input:checked+.slider:before {
     align-items: center;
     justify-content: center;
     gap: 6px;
-    margin: 0.25rem auto;
+    margin: -4px auto;
+    /* Negative margin to pull them closer */
+    position: relative;
+    z-index: 5;
 }
 
 .insert-steer-btn {
@@ -773,13 +776,15 @@ input:checked+.slider:before {
     width: 24px;
     height: 24px;
     padding: 0;
-    background: var(--bg-tertiary);
+    background: var(--bg-secondary);
+    /* Match bg to hide line if needed */
     border: 1px dashed var(--border-color);
     border-radius: 50%;
     color: var(--text-secondary);
     font-size: 0.85rem;
     cursor: pointer;
-    opacity: 0.4;
+    opacity: 0.2;
+    /* Fainter by default */
     transition: all 0.2s ease;
 }
 
@@ -992,6 +997,8 @@ input:checked+.slider:before {
 /* Interpolated slot — compact, no search input */
 .interpolated-slot {
     margin-top: 0;
+    margin-bottom: 0.5rem;
+    /* Reduced bottom margin */
 }
 
 .interpolated-slot .track-slot {
