@@ -187,16 +187,14 @@ const App = {
         } else {
             div.innerHTML = `
                 <div class="slot-header" style="display: flex; justify-content: flex-end; align-items: center; margin-bottom: 0.5rem; height: 16px;">
-                    <div class="header-nav-controls" style="display: none; gap: 4px;">
-                         <button class="header-nav-btn prev" title="Previous result">←</button>
-                         <button class="header-nav-btn next" title="Next result">→</button>
+                    <div class="slot-controls" style="display: flex; gap: 4px;">
+                        <!-- Controls injected by renderSlot -->
                     </div>
                 </div>
                 <div class="slot-mode-edit" style="display: none;">
                     <div class="slot-input-wrapper">
                         <input type="text" class="slot-search-input" placeholder="Search or drag track..."
                             autocomplete="off">
-                        <button class="remove-steer-btn remove-steer-btn-edit" title="Remove" style="position: absolute; right: 8px; top: 50%; transform: translateY(-50%); z-index: 10;">×</button>
                     </div>
                 </div>
                 <div class="slot-mode-view" style="display: none;">
@@ -206,15 +204,9 @@ const App = {
                 </div>
                 <div class="track-slot empty" style="display: none;">
                      <span class="placeholder">Drag track here or click to search</span>
-                     <button class="remove-steer-btn" title="Remove">×</button>
                 </div>
             `;
         }
-
-        div.querySelector('.remove-steer-btn').addEventListener('click', (e) => {
-            e.stopPropagation();
-            this.removeSteerSlot(slotId);
-        });
 
         return div;
     },
@@ -777,10 +769,7 @@ const App = {
             container.innerHTML = `
                 <div class="slot-header" style="display: flex; justify-content: flex-end; align-items: center; margin-bottom: 0.5rem; height: 16px;">
                     <label style="margin-bottom: 0; margin-right: auto;">${slotName === 'start' ? 'Start Track' : 'End Track'}</label>
-                    <div class="header-nav-controls" style="display: none; gap: 4px;">
-                         <button class="header-nav-btn prev" title="Previous result">←</button>
-                         <button class="header-nav-btn next" title="Next result">→</button>
-                    </div>
+                    <div class="slot-controls" style="display: flex; gap: 4px;"></div>
                 </div>
                 <div class="slot-mode-edit" style="display: none;">
                     <div class="slot-input-wrapper">
@@ -801,26 +790,39 @@ const App = {
         }
 
         const input = container.querySelector('.slot-search-input');
+        const slotControls = container.querySelector('.slot-controls');
 
-        // Handle Header Nav Controls
-        const headerNav = container.querySelector('.header-nav-controls');
-        const prevBtn = container.querySelector('.header-nav-btn.prev');
-        const nextBtn = container.querySelector('.header-nav-btn.next');
+        // --- Populate Header Controls: Left, Right, Edit, X ---
+        if (slotControls) {
+            slotControls.innerHTML = ''; // Clear existing
 
-        if (headerNav) {
+            // Helper to create header btn
+            const createBtn = (icon, title, onClick, extraClass = '') => {
+                const btn = document.createElement('button');
+                btn.className = `header-nav-btn ${extraClass}`; // Reuse style
+                btn.innerHTML = icon;
+                btn.title = title;
+                btn.onclick = (e) => { e.stopPropagation(); onClick(e); };
+                return btn;
+            };
+
+            // 1. Left/Right Nav (only if multiple results AND viewed/filled)
             if (slot.results && slot.results.length > 1 && !slot.isEditing && slot.track) {
-                headerNav.style.display = 'flex';
-                if (prevBtn) {
-                    // Remove old listeners to avoid stacking? 
-                    // Cloning node is a cheap way to wipe listeners, or just set onclick.
-                    // onclick is safer here since renderSlot is called often.
-                    prevBtn.onclick = (e) => { e.stopPropagation(); this.navigateSlot(slotName, -1); };
-                }
-                if (nextBtn) {
-                    nextBtn.onclick = (e) => { e.stopPropagation(); this.navigateSlot(slotName, 1); };
-                }
-            } else {
-                headerNav.style.display = 'none';
+                slotControls.appendChild(createBtn('←', 'Previous result', () => this.navigateSlot(slotName, -1), 'prev'));
+                slotControls.appendChild(createBtn('→', 'Next result', () => this.navigateSlot(slotName, 1), 'next'));
+            }
+
+            // 2. Edit Button (only if viewed/filled)
+            if (!slot.isEditing && slot.track) {
+                slotControls.appendChild(createBtn('✎', 'Edit', () => {
+                    slot.isEditing = true;
+                    this.renderSlot(slotName);
+                }, 'edit-control-btn'));
+            }
+
+            // 3. Remove Button (only for steer slots)
+            if (slotName.startsWith('steer-')) {
+                slotControls.appendChild(createBtn('×', 'Remove Slot', () => this.removeSteerSlot(slotName), 'remove-control-btn'));
             }
         }
 
@@ -859,66 +861,29 @@ const App = {
             // Render Track
             const card = Components.renderTrack(slot.track, { showActions: true, minimal: true });
 
-            // Note: pencil moved to footer below.
-
-            // Always create footer to hold pencil if verified track (view mode)
-            const footer = document.createElement('div');
-            footer.className = 'track-card-footer';
-
-            const footerTools = document.createElement('div');
-            footerTools.className = 'footer-tools';
-            footerTools.style.display = 'flex';
-            footerTools.style.alignItems = 'center';
-            footerTools.style.gap = '8px';
-            footerTools.style.width = '100%';
-
-            // Add Pencil to footer tools
-            const footerEditBtn = document.createElement('button');
-            footerEditBtn.className = 'footer-icon-btn';
-            footerEditBtn.innerHTML = '✎';
-            footerEditBtn.title = 'Edit';
-            footerEditBtn.style.background = 'transparent';
-            footerEditBtn.style.border = 'none';
-            footerEditBtn.style.color = 'var(--text-secondary)';
-            footerEditBtn.style.cursor = 'pointer';
-            footerEditBtn.style.fontSize = '1.1rem';
-            footerEditBtn.style.padding = '0';
-            footerEditBtn.style.display = 'flex';
-            footerEditBtn.style.alignItems = 'center';
-
-            footerEditBtn.onmouseover = () => footerEditBtn.style.color = 'var(--accent-primary)';
-            footerEditBtn.onmouseout = () => footerEditBtn.style.color = 'var(--text-secondary)';
-
-            footerEditBtn.onclick = (e) => {
-                e.stopPropagation();
-                slot.isEditing = true;
-                this.renderSlot(slotName);
-            };
-            footerTools.appendChild(footerEditBtn);
-
-            // Enhanced Text
+            // --- Footer: Enhanced Text Only (Nav/Edit moved to header) ---
             if (slot.enhancedQuery) {
+                const footer = document.createElement('div');
+                footer.className = 'track-card-footer';
+
+                const footerTools = document.createElement('div');
+                footerTools.className = 'footer-tools';
+                footerTools.style.display = 'flex';
+                footerTools.style.alignItems = 'center';
+
+                // Enhanced Text
                 const text = document.createElement('div');
                 text.className = 'footer-enhanced-text';
                 text.innerHTML = `✨ ${slot.enhancedQuery}`;
                 text.title = slot.enhancedQuery;
-                text.style.marginLeft = '8px'; // gap
+                text.style.marginLeft = '0';
                 footerTools.appendChild(text);
-            }
 
-            footer.appendChild(footerTools);
-            card.appendChild(footer);
+                footer.appendChild(footerTools);
+                card.appendChild(footer);
+            }
 
             filledSlot.appendChild(card);
-
-            // Add remove btn for steer slots
-            if (slotName.startsWith('steer-')) {
-                const rb = document.createElement('button');
-                rb.className = 'remove-steer-btn';
-                rb.innerHTML = '×';
-                rb.onclick = (e) => { e.stopPropagation(); this.removeSteerSlot(slotName); };
-                filledSlot.appendChild(rb);
-            }
         }
     },
 

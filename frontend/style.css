@@ -827,12 +827,23 @@ input:checked+.slider:before {
     justify-content: center;
     font-size: 0.75rem;
     padding: 0;
+    transition: all 0.2s ease;
 }
 
 .header-nav-btn:hover {
     background: var(--bg-primary);
     color: var(--text-primary);
     border-color: var(--accent-primary);
+}
+
+.header-nav-btn.edit-control-btn {
+    font-size: 0.85rem;
+}
+
+.header-nav-btn.remove-control-btn:hover {
+    background: #ef4444;
+    color: white;
+    border-color: transparent;
 }
 
 /* Footer Tools */
