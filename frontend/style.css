@@ -1355,4 +1355,194 @@ input:checked+.slider:before {
     .track-slot {
         overflow: visible !important;
     }
+}/* Mobile Layout Refinements V3 - Appended */
+@media (max-width: 900px) {
+
+    /* 1. Hide Track Labels */
+    .slot-container label {
+        display: none !important;
+    }
+
+    /* 2. Position Slot Controls (Edit/Remove buttons) */
+    /* They are inside .slot-controls in the header. We need to move them out of flow 
+       and down to the gap between tracks. */
+
+    .slot-container {
+        position: relative;
+        /* Context for absolute positioning */
+        /* Margin bottom is already 48px from V2 */
+    }
+
+    .slot-controls {
+        position: absolute !important;
+        bottom: -44px !important;
+        /* Move into the gap */
+        right: 0 !important;
+
+        display: flex !important;
+        gap: 8px !important;
+        z-index: 20 !important;
+        /* Above insert line if needed */
+
+        /* Ensure buttons are visible */
+        background: transparent !important;
+        padding: 0 !important;
+        margin: 0 !important;
+        height: 48px !important;
+        align-items: center !important;
+    }
+
+    /* 3. Insert Buttons (Left side) */
+    /* V2 already moved them to left. Just ensuring they align vertically. */
+    .insert-btn-group {
+        /* V2 set margin-top: -36px. Let's check alignment.
+           If slot-controls are bottom: -44px, they are roughly in the same band.
+           Insert group is typically 24-32px high.
+           Slot controls are set to 48px high.
+           
+           Let's fine tune.
+           The gap is 48px.
+           Slot controls at bottom: -48px would be exactly in the gap.
+           Insert group should also be roughly there.
+        */
+        bottom: -48px !important;
+        top: auto !important;
+        /* Override default positioning */
+        margin-top: 0 !important;
+        /* Reset V2 adjustment */
+        height: 48px !important;
+        align-items: center !important;
+    }
+
+    /* 4. Slot Header cleanup */
+    /* Since labels are hidden and controls moved, header might collapse or take space. */
+    .slot-header {
+        margin-bottom: 0 !important;
+        height: 0 !important;
+        padding: 0 !important;
+        overflow: visible !important;
+        /* Allow controls to overflow */
+    }
+
+    /* 5. Start/End Slot specific adjustments */
+    /* Start slot is first. Its controls (if any) go below it.
+       Insert button is between Start and Next.
+       So: [Start Slot] -> [Insert Group (Left) | Start Controls (Right)? ] -> [Next Slot]
+       Actually, "Start Controls" usually control the Start Slot. 
+       "Remove" is not on Start slot. "Edit" is.
+       So yes, Edit button for Start slot should be below it.
+    */
+
+    /* 6. Ensure no overlap with track content */
+    /* The 48px margin bottom on slot-container should handle this. */
+}/* Mobile Layout Refinements V4 (Toolbar Strategy) - Appended */
+@media (max-width: 900px) {
+
+    /* 1. Reset previous aggressive overrides if needed, or just overwrite them */
+
+    /* Hide Labels */
+    .slot-container label {
+        display: none !important;
+    }
+
+    /* 2. Create "Toolbar" Header Area */
+    /* We use padding-top on the slot container to create a safe zone for controls */
+    .slot-container,
+    .steer-slot-container {
+        position: relative;
+        margin-top: 0 !important;
+        margin-bottom: 24px !important;
+        /* Standard spacing between slots */
+        padding-top: 56px !important;
+        /* Space for the toolbar */
+        border-top: 1px solid var(--border-color);
+        /* Visual separator */
+    }
+
+    /* Remove default margins that might interfere */
+    .steer-slot-container {
+        margin-top: 0 !important;
+    }
+
+    /* 3. Position Insert Buttons (Left) */
+    /* The insert buttons are technically *between* slots (siblings).
+       To make them appear "in the header" of the *next* slot (or below the previous),
+       we position them absolutely relative to the viewport or flow?
+       No, they are in .insert-btn-group. 
+       Let's position them inside the padding-top of the slot they precede?
+       Actually, .insert-btn-group is a sibling BEFORE the slot.
+       
+       Strategy: Position .insert-btn-group absolutely *relative to the slot following it*?
+       No, easiest is to let it sit in flow but pull it down/up.
+       
+       Better: Position them relative to the *gap* we created.
+       We created 56px padding-top on the slot.
+       The insert group sits before the slot.
+       Let's pull the slot UP to overlap the insert group?
+       Or pull the insert group DOWN into the slot's padding.
+    */
+
+    .insert-btn-group {
+        position: relative !important;
+        width: 100% !important;
+        height: 0 !important;
+        /* Take no flow space */
+        margin: 0 !important;
+        padding: 0 !important;
+        z-index: 30 !important;
+
+        /* Position the actual buttons */
+        display: flex !important;
+        justify-content: flex-start !important;
+        padding-left: 8px !important;
+
+        /* Move down into the next slot's padding-top */
+        top: 28px !important;
+        /* Roughly middle of the 56px padding */
+    }
+
+    /* 4. Position Slot Controls (Right) */
+    /* These are inside the slot, so easy to position in padding-top */
+    .slot-controls {
+        position: absolute !important;
+        top: 8px !important;
+        right: 8px !important;
+        bottom: auto !important;
+        left: auto !important;
+
+        height: 40px !important;
+        display: flex !important;
+        align-items: center !important;
+        gap: 8px !important;
+        z-index: 30 !important;
+
+        background: transparent !important;
+    }
+
+    /* Start/End slots might not have insert groups before them in the same way?
+       Start slot has no insert group before it.
+       So Start slot controls will just be at the top right.
+       
+       Steer slots have insert groups before them.
+    */
+
+    /* 5. Ensure Slot Content is Safe */
+    /* The padding-top: 56px ensures the track card starts below the buttons */
+    .slot-mode-view,
+    .slot-mode-edit {
+        margin-top: 0 !important;
+    }
+
+    /* 6. Clean up "Start Track" / "End Track" container specifics */
+    .slot-header {
+        position: static !important;
+        /* Reset */
+        height: 0 !important;
+        overflow: visible !important;
+    }
+
+    /* 7. Special handling for the very first slot (Start) 
+       It doesn't need to accommodate an insert button on its left in the header.
+       But to keep alignment consistent, we keep the padding.
+    */
 }
