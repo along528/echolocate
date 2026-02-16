@@ -1,0 +1,14 @@
+{
+  "description": "FMA Zip Download",
+  "projectId": "cloud-crate-485418",
+  "transferSpec": {
+    "httpDataSource": {
+      "listUrl": "https://storage.googleapis.com/cloud-crate-vector-db/fma/_transfer_urls.tsv"
+    },
+    "gcsDataSink": {
+      "bucketName": "cloud-crate-vector-db",
+      "path": "fma-source/"
+    }
+  },
+  "status": "ENABLED"
+}

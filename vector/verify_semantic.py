@@ -83,7 +83,7 @@ def semantic_search(query: str, service_url: str, limit: int = 10, enhance: bool
             data = response.json()
             results = data.get('results', [])
             if data.get('enhanced_query'):
-               print(f"🤖 Enhanced Query: \"{data.get('enhanced_query')}\"\n")
+               print(f"🤖 Enhanced: \"{data.get('enhanced_query')}\"\n")
         
         if not results:
             print("No results found.")
