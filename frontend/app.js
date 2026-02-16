@@ -126,7 +126,7 @@ const App = {
     },
 
     addSteerSlot(track = null, insertIndex = -1, options = {}) {
-        const { isInterpolated = false, skipRender = false } = options;
+        const { isInterpolated = false, skipRender = false, animate = false } = options;
         const slotId = `steer-${this.steerCounter++}`;
         const slotState = {
             id: slotId,
@@ -136,7 +136,8 @@ const App = {
             currentIndex: -1,
             enhancedQuery: null,
             isInterpolated,
-            isEditing: !track // If no track, start in edit mode
+            isEditing: !track, // If no track, start in edit mode
+            animate // Store animate flag to be used in creation
         };
 
         // Insert at position or append
@@ -176,6 +177,14 @@ const App = {
         const div = document.createElement('div');
         div.className = 'slot-container steer-slot-container';
         if (slot?.isInterpolated) div.classList.add('interpolated-slot');
+        if (slot?.animate) {
+            div.classList.add('entering');
+            // Disable flag after use so it doesn't re-animate on re-render? 
+            // Actually re-renders might replace the element. 
+            // But usually we just update contents.
+            // If we replace the element, we might want to not animate again.
+            slot.animate = false;
+        }
         div.dataset.slot = slotId;
 
         if (slot?.isInterpolated) {
@@ -203,7 +212,7 @@ const App = {
                     </div>
                 </div>
                 <div class="track-slot empty" style="display: none;">
-                     <span class="placeholder">Drag track here or click to search</span>
+                    <span class="placeholder">Drag track here or click to search</span>
                 </div>
             `;
         }
@@ -633,16 +642,21 @@ const App = {
             plusBtn.className = 'insert-steer-btn';
             plusBtn.textContent = '+';
             plusBtn.title = 'Add track';
-            plusBtn.addEventListener('click', () => this.addSteerSlot(null, index));
+            plusBtn.addEventListener('click', () => this.addSteerSlot(null, index, { animate: true }));
 
             const interpBtn = document.createElement('button');
             interpBtn.className = 'insert-steer-btn insert-interp-btn';
-            interpBtn.textContent = '≈';
+            // Sparkle Icon (SVG)
+            interpBtn.innerHTML = `
+                <svg viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
+                    <path d="M12 2L14.39 9.61L22 12L14.39 14.39L12 22L9.61 14.39L2 12L9.61 9.61L12 2Z"/>
+                </svg>
+            `;
             interpBtn.title = 'Fill between adjacent tracks';
 
             const { above, below } = getAdjacentTracks(index);
             if (above && below) {
-                interpBtn.addEventListener('click', () => this.interpolateBetween(index));
+                interpBtn.addEventListener('click', (e) => this.interpolateBetween(index, e.currentTarget));
             } else {
                 interpBtn.disabled = true;
             }
@@ -663,7 +677,7 @@ const App = {
         }
     },
 
-    async interpolateBetween(insertIndex) {
+    async interpolateBetween(insertIndex, btnElement) {
         const above = insertIndex === 0
             ? this.slots.start.track
             : this.steerSlots[insertIndex - 1]?.track;
@@ -672,6 +686,12 @@ const App = {
             : this.steerSlots[insertIndex]?.track;
 
         if (!above || !below) return;
+
+        // Set Loading State
+        if (btnElement) {
+            btnElement.classList.add('loading');
+            btnElement.disabled = true;
+        }
 
         try {
             const source = this.getSelectedSource();
@@ -686,12 +706,18 @@ const App = {
             for (let i = 0; i < middleTracks.length; i++) {
                 this.addSteerSlot(middleTracks[i], insertIndex + i, {
                     isInterpolated: true,
-                    skipRender: true
+                    skipRender: true,
+                    animate: true
                 });
             }
             this.renderBuilder();
         } catch (error) {
             console.error('Interpolation between tracks failed:', error);
+            // Revert loading on error (if succeed, button is removed by render)
+            if (btnElement) {
+                btnElement.classList.remove('loading');
+                btnElement.disabled = false;
+            }
         }
     },
 

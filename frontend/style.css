@@ -800,6 +800,73 @@ input:checked+.slider:before {
     font-size: 0.9rem;
 }
 
+.insert-interp-btn svg {
+    width: 16px;
+    height: 16px;
+    fill: #fbbf24;
+    /* Gold color */
+    filter: drop-shadow(0 0 2px rgba(251, 191, 36, 0.5));
+}
+
+.insert-interp-btn:hover svg {
+    fill: #f59e0b;
+    transform: scale(1.1);
+    transition: all 0.2s ease;
+}
+
+/* Interpolated Slot Styling */
+.interpolated-slot .track-slot.filled {
+    border-color: #fbbf24;
+    box-shadow: 0 0 10px rgba(251, 191, 36, 0.1);
+}
+
+.interpolated-slot .track-card-footer .footer-enhanced-text {
+    color: #fbbf24;
+}
+
+.insert-interp-btn.loading {
+    cursor: wait;
+    opacity: 0.8;
+}
+
+.insert-interp-btn.loading svg {
+    animation: spin 1s linear infinite;
+}
+
+@keyframes spin {
+    from {
+        transform: rotate(0deg);
+    }
+
+    to {
+        transform: rotate(360deg);
+    }
+}
+
+/* Slot Entry Animation */
+.slot-container.entering {
+    animation: slideDown 0.4s ease-out forwards;
+    transform-origin: top center;
+}
+
+@keyframes slideDown {
+    from {
+        opacity: 0;
+        transform: translateY(-10px) scale(0.98);
+        max-height: 0;
+        margin-bottom: 0;
+    }
+
+    to {
+        opacity: 1;
+        transform: translateY(0) scale(1);
+        max-height: 200px;
+        /* Arbitrary large enough height */
+        margin-bottom: 1rem;
+        /* Match .slot-container margin if any, though it's usually inside containers */
+    }
+}
+
 /* Slot Header & Nav */
 .slot-header {
     display: flex;
