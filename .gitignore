@@ -25,3 +25,4 @@ embeddings/tmp/
 # DuckDB
 *.duckdb
 .bucket_name
+setup_iap_log.txt
