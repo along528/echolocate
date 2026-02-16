@@ -556,12 +556,23 @@ input:checked+.slider:before {
 }
 
 /* Interpolation Builder */
+.builder-view {
+    display: flex;
+    flex-direction: column;
+    flex: 1;
+    min-height: 0;
+    /* Important for nested flex scroll */
+}
+
 .builder-slots {
     display: flex;
     flex-direction: column;
     gap: 1rem;
     padding: 0 4px;
     /* Scrollbar spacing */
+    flex: 1;
+    overflow-y: auto;
+    min-height: 0;
 }
 
 .slot-container label {
