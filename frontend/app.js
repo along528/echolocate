@@ -610,6 +610,12 @@ const App = {
         ['start', 'end'].forEach(slotName => this.renderSlot(slotName));
         // Render dynamic steer slots
         this.steerSlots.forEach(s => this.renderSlot(s.id));
+
+        // Show end slot only if start track is set
+        const endSlot = document.querySelector('.slot-container[data-slot="end"]');
+        const hasStart = !!this.slots.start.track;
+        if (endSlot) endSlot.style.display = hasStart ? '' : 'none';
+
         // Render "+" insert buttons between every pair of adjacent slots
         this.renderInsertButtons();
 
