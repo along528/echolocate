@@ -1323,6 +1323,24 @@ input:checked+.slider:before {
         /* Spacing */
     }
 
+    /* Bigger Slot Search Input */
+    .slot-search-input {
+        height: 48px !important;
+        font-size: 0.9rem !important;
+        padding-right: 0.75rem !important;
+        /* Reset nav-controls padding since they won't be here in edit mode */
+    }
+
+    /* Randomize Button: match control button size, stay in-flow next to search box */
+    .slot-randomize-btn {
+        width: 48px !important;
+        height: 48px !important;
+        font-size: 1.3rem !important;
+        margin-left: 8px !important;
+        flex-shrink: 0 !important;
+        border-radius: 8px !important;
+    }
+
     /* Enhanced Touch Targets for Insertion */
     .insert-steer-btn {
         width: 48px;
