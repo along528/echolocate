@@ -917,6 +917,14 @@ const App = {
             if (slotName.startsWith('steer-')) {
                 slotControls.appendChild(createBtn('×', 'Remove Slot', () => this.removeSteerSlot(slotName), 'remove-control-btn'));
             }
+
+            // 4. Clear Button (for start/end slots when they have a track)
+            if ((slotName === 'start' || slotName === 'end') && slot.track) {
+                slotControls.appendChild(createBtn('×', 'Clear', () => {
+                    this.resetSlot(slotName);
+                    this.renderBuilder();
+                }, 'remove-control-btn'));
+            }
         }
 
         // --- Logic to determine state ---
