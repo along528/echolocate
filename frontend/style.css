@@ -1549,7 +1549,7 @@ input:checked+.slider:before {
     .slot-controls {
         position: absolute !important;
         top: 8px !important;
-        right: 8px !important;
+        right: 0 !important;
         bottom: auto !important;
         left: auto !important;
 
@@ -1705,7 +1705,7 @@ input:checked+.slider:before {
     .slot-controls {
         top: 8px !important;
         /* Back to V4 value */
-        right: 8px !important;
+        right: 0 !important;
     }
 
     /* 2. Specific Fix for End Track Alignment */
