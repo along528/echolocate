@@ -764,8 +764,9 @@ const App = {
         const viewModeDiv = container.querySelector('.slot-mode-view');
         const emptyModeDiv = container.querySelector('.track-slot.empty');
 
-        // For standard start/end slots, ensure DOM structure exists
-        if (!editModeDiv && (slotName === 'start' || slotName === 'end')) {
+        // For standard start/end slots, ensure DOM structure exists (and has new controls)
+        const hasControls = container.querySelector('.slot-controls');
+        if ((!editModeDiv || !hasControls) && (slotName === 'start' || slotName === 'end')) {
             container.innerHTML = `
                 <div class="slot-header" style="display: flex; justify-content: flex-end; align-items: center; margin-bottom: 0.5rem; height: 16px;">
                     <label style="margin-bottom: 0; margin-right: auto;">${slotName === 'start' ? 'Start Track' : 'End Track'}</label>
