@@ -1013,6 +1013,11 @@ input:checked+.slider:before {
     border-color: var(--accent-primary);
 }
 
+/* Inline slot controls: hidden on desktop, shown on mobile */
+.slot-controls-inline {
+    display: none;
+}
+
 .header-nav-btn.edit-control-btn {
     font-size: 0.85rem;
 }
@@ -1485,7 +1490,7 @@ input:checked+.slider:before {
         position: relative;
         margin-top: 0 !important;
         margin-bottom: 24px !important;
-        padding-top: 64px !important;
+        padding-top: 8px !important;
         border: none !important;
     }
 
@@ -1503,21 +1508,9 @@ input:checked+.slider:before {
         overflow: visible !important;
     }
 
-    /* Slot controls (←→✎×): position in top-right of padding area */
+    /* Slot controls in header: hidden on mobile (replaced by inline controls) */
     .slot-controls {
-        position: absolute !important;
-        top: 8px !important;
-        right: 0 !important;
-        bottom: auto !important;
-        left: auto !important;
-        height: 48px !important;
-        display: flex !important;
-        align-items: center !important;
-        gap: 8px !important;
-        z-index: 30 !important;
-        background: transparent !important;
-        padding: 0 !important;
-        margin: 0 !important;
+        display: none !important;
     }
 
     /* Insert buttons (+✨): float between slots into next slot's padding-top area */
@@ -1532,7 +1525,7 @@ input:checked+.slider:before {
         display: flex !important;
         justify-content: flex-start !important;
         padding-left: 4px !important;
-        top: 32px !important;
+        top: 0 !important;
     }
 
     /* Ensure slot content isn't clipped */
@@ -1543,6 +1536,41 @@ input:checked+.slider:before {
     .slot-mode-view,
     .slot-mode-edit {
         margin-top: 0 !important;
+    }
+
+    /* --- Inline Slot Controls (mobile) --- */
+
+    /* Track items in slots: wrap so actions go below info */
+    .track-slot .track-item {
+        flex-wrap: wrap;
+        gap: 0.5rem;
+    }
+
+    .track-slot .track-info {
+        width: 100%;
+        flex: none;
+    }
+
+    .track-slot .track-actions {
+        flex: none;
+    }
+
+    /* Show inline slot controls */
+    .slot-controls-inline {
+        display: flex !important;
+        gap: 0.5rem;
+        margin-left: auto;
+    }
+
+    .slot-controls-inline .action-btn {
+        width: 44px;
+        height: 44px;
+    }
+
+    .slot-controls-inline .remove-inline-btn:hover {
+        background: #ef4444;
+        color: white;
+        border-color: transparent;
     }
 }
 

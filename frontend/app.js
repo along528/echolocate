@@ -810,6 +810,17 @@ const App = {
                     minimal: true,
                     context: builderContext
                 });
+                // Inline controls for interpolated slot (mobile: × button)
+                const inlineControls = document.createElement('div');
+                inlineControls.className = 'slot-controls-inline';
+                const removeBtn = document.createElement('button');
+                removeBtn.className = 'action-btn slot-inline-btn remove-inline-btn';
+                removeBtn.innerHTML = '×';
+                removeBtn.title = 'Remove';
+                removeBtn.onclick = (e) => { e.stopPropagation(); this.removeSteerSlot(slotName); };
+                inlineControls.appendChild(removeBtn);
+                card.appendChild(inlineControls);
+
                 trackSlot.appendChild(card);
             } else {
                 // Should not really happen for interpolated, but fallback
@@ -989,6 +1000,40 @@ const App = {
                 footer.appendChild(footerTools);
                 card.appendChild(footer);
             }
+
+            // --- Inline Slot Controls (for mobile: same row as play/url buttons) ---
+            const inlineControls = document.createElement('div');
+            inlineControls.className = 'slot-controls-inline';
+
+            const createInlineBtn = (icon, title, onClick, extraClass = '') => {
+                const btn = document.createElement('button');
+                btn.className = `action-btn slot-inline-btn ${extraClass}`;
+                btn.innerHTML = icon;
+                btn.title = title;
+                btn.onclick = (e) => { e.stopPropagation(); onClick(e); };
+                return btn;
+            };
+
+            if (slot.results && slot.results.length > 1) {
+                inlineControls.appendChild(createInlineBtn('←', 'Previous result', () => this.navigateSlot(slotName, -1)));
+                inlineControls.appendChild(createInlineBtn('→', 'Next result', () => this.navigateSlot(slotName, 1)));
+            }
+            if (!slot.isInterpolated) {
+                inlineControls.appendChild(createInlineBtn('✎', 'Edit', () => {
+                    slot.isEditing = true;
+                    this.renderSlot(slotName);
+                }));
+            }
+            if (slotName.startsWith('steer-')) {
+                inlineControls.appendChild(createInlineBtn('×', 'Remove', () => this.removeSteerSlot(slotName), 'remove-inline-btn'));
+            } else if (slot.track) {
+                inlineControls.appendChild(createInlineBtn('×', 'Clear', () => {
+                    this.resetSlot(slotName);
+                    this.renderBuilder();
+                }, 'remove-inline-btn'));
+            }
+
+            card.appendChild(inlineControls);
 
             filledSlot.appendChild(card);
         }
