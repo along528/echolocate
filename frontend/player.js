@@ -21,6 +21,7 @@ const Player = {
         this.nowPlayingArtist = document.getElementById('now-playing-artist');
 
         this.setupEventListeners();
+        this.setupKeyboardListeners();
     },
 
     setupEventListeners() {
@@ -35,6 +36,28 @@ const Player = {
         this.audio.addEventListener('pause', () => this.onPause());
 
         this.progressBar.addEventListener('input', (e) => this.seek(e.target.value));
+    },
+
+    setupKeyboardListeners() {
+        document.addEventListener('keydown', (e) => {
+            const tag = e.target.tagName;
+            if (tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT') return;
+
+            switch (e.code) {
+                case 'Space':
+                    e.preventDefault();
+                    this.togglePlay();
+                    break;
+                case 'ArrowLeft':
+                    e.preventDefault();
+                    this.prev();
+                    break;
+                case 'ArrowRight':
+                    e.preventDefault();
+                    this.next();
+                    break;
+            }
+        });
     },
 
     play(track, context = null) {
@@ -60,6 +83,7 @@ const Player = {
         }
 
         this.updateNowPlaying();
+        this.updateMediaSession(track);
 
         // Sync currentIndex if track is in playlist
         const index = this.playlist.findIndex(t => String(t.id) === String(track.id));
@@ -200,6 +224,20 @@ const Player = {
     seek(value) {
         if (this.audio.duration) {
             this.audio.currentTime = (value / 100) * this.audio.duration;
+        }
+    },
+
+    updateMediaSession(track) {
+        if ('mediaSession' in navigator) {
+            navigator.mediaSession.metadata = new MediaMetadata({
+                title: track.title,
+                artist: track.artist,
+                album: track.album || ''
+            });
+            navigator.mediaSession.setActionHandler('play', () => this.audio.play());
+            navigator.mediaSession.setActionHandler('pause', () => this.audio.pause());
+            navigator.mediaSession.setActionHandler('previoustrack', () => this.prev());
+            navigator.mediaSession.setActionHandler('nexttrack', () => this.next());
         }
     },
 
