@@ -1382,6 +1382,7 @@ input:checked+.slider:before {
         height: auto;
         flex: 1;
         min-height: 0;
+        padding: 0.5rem 0.25rem !important;
     }
 
     .results-panel.active,
@@ -1481,6 +1482,13 @@ input:checked+.slider:before {
     /* Hide Track Labels */
     .slot-container label {
         display: none !important;
+    }
+
+    /* Push panel headers in from edges */
+    .playlist-panel .panel-header,
+    .results-panel > h2,
+    .results-panel .playlist-controls {
+        padding: 0 1rem !important;
     }
 
     /* Builder slots: kill gap, no horizontal padding (slots handle their own inset) */
