@@ -268,7 +268,10 @@ const Player = {
             navigator.mediaSession.metadata = new MediaMetadata({
                 title: track.title,
                 artist: track.artist,
-                album: track.album || ''
+                album: track.album || '',
+                artwork: [
+                    { src: 'artwork.png', sizes: '512x512', type: 'image/png' }
+                ]
             });
             navigator.mediaSession.setActionHandler('play', () => this.audio.play());
             navigator.mediaSession.setActionHandler('pause', () => this.audio.pause());
