@@ -26,3 +26,4 @@ embeddings/tmp/
 *.duckdb
 .bucket_name
 setup_iap_log.txt
+setup_iap_log_2.txt
