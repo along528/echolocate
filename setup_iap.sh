@@ -168,7 +168,7 @@ cat > "${URLMAP_FILE}" <<JSONEOF
   "defaultService": "projects/${PROJECT_ID}/global/backendServices/${LB_PREFIX}-frontend-backend",
   "hostRules": [
     {
-      "hosts": ["*"],
+      "hosts": ["echolocate.app"],
       "pathMatcher": "api-matcher"
     }
   ],
@@ -208,21 +208,22 @@ gcloud compute url-maps import ${LB_PREFIX}-urlmap \
 echo "  URL map configured with /api/* -> vector (pathPrefixRewrite: /)"
 
 # ============================================================
-# 5. SSL certificate (nip.io domain, idempotent)
+# 5. SSL certificate (custom domain)
 # ============================================================
-DOMAIN="${IP//./-}.nip.io"
+DOMAIN="echolocate.app"
 echo ""
 echo "Setting up SSL certificate for ${DOMAIN}..."
 
-if ! gcloud compute ssl-certificates describe ${LB_PREFIX}-cert --global --project=${PROJECT_ID} &>/dev/null; then
-    gcloud compute ssl-certificates create ${LB_PREFIX}-cert \
-        --domains=${DOMAIN} \
-        --global \
-        --project=${PROJECT_ID}
-    echo "  Created: ${LB_PREFIX}-cert"
-else
-    echo "  Already exists: ${LB_PREFIX}-cert"
-fi
+# Tear down forwarding rule + HTTPS proxy that reference the cert (recreated in step 6)
+gcloud compute forwarding-rules delete ${LB_PREFIX}-forwarding --global --project=${PROJECT_ID} --quiet 2>/dev/null || true
+gcloud compute target-https-proxies delete ${LB_PREFIX}-https-proxy --project=${PROJECT_ID} --quiet 2>/dev/null || true
+# Now delete old cert (may be for a different domain), then recreate
+gcloud compute ssl-certificates delete ${LB_PREFIX}-cert --global --project=${PROJECT_ID} --quiet 2>/dev/null || true
+gcloud compute ssl-certificates create ${LB_PREFIX}-cert \
+    --domains=${DOMAIN} \
+    --global \
+    --project=${PROJECT_ID}
+echo "  Created: ${LB_PREFIX}-cert for ${DOMAIN}"
 
 # ============================================================
 # 6. HTTPS proxy + forwarding rule (idempotent)

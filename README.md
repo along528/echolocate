@@ -87,10 +87,26 @@ This script is idempotent (safe to re-run) and:
 2. Creates/reuses a static IP address.
 3. Creates serverless NEGs for both frontend and vector services.
 4. Creates a URL map with path-based routing (`/*` -> frontend, `/api/*` -> vector with path rewrite).
-5. Provisions a Google-managed SSL certificate (nip.io domain).
+5. Provisions a Google-managed SSL certificate for `echolocate.app`.
 6. Enables IAP on both backend services.
 7. Grants your email IAP access.
 8. Grants the MCP service account `roles/run.invoker` on the vector service.
+
+#### Step 4b: Configure DNS
+
+Add an A record at your domain registrar pointing to the static IP:
+
+| Type | Name | Value |
+|------|------|-------|
+| A    | @ (or blank) | 34.149.173.190 |
+
+You can retrieve the IP with:
+```bash
+gcloud compute addresses describe cloud-crate-frontend-ip --global --project=cloud-crate-485418 --format='value(address)'
+```
+
+
+The Google-managed SSL certificate requires DNS to point at the load balancer IP before it will provision. The cert can take 10-60 minutes to activate after DNS propagates.
 
 #### Step 5: Attach the OAuth client to the backend services
 
@@ -130,16 +146,18 @@ gcloud run services add-iam-policy-binding cloud-crate-vector \
 
 The SSL certificate takes 10-60 minutes to provision. Check status:
 ```bash
-gcloud compute ssl-certificates describe cloud-crate-cert --global --format='value(managed.status)'
+gcloud compute ssl-certificates describe cloud-crate-cert --global --project=cloud-crate-485418 --format='value(managed.status)'
 ```
 
 Once it shows `ACTIVE`, verify IAP is working:
 ```bash
 # Expect 302 (redirect to Google login)
-curl -s -o /dev/null -w '%{http_code}' https://34-149-173-190.nip.io/
+curl -s -o /dev/null -w '%{http_code}' https://echolocate.app/
 ```
 
-Then open the URL in your browser and sign in with the email you added as a test user.
+Then open `https://echolocate.app` in your browser and sign in with the email you added as a test user.
+
+**If IAP login fails with a redirect error**, update the OAuth client (from Step 3) to add `https://echolocate.app/_gcp_gatekeeper/authenticate` to the **Authorized redirect URIs** at https://console.cloud.google.com/apis/credentials?project=cloud-crate-485418.
 
 ### Connect to Claude
 Once deployed, configure your Claude Desktop or other MCP client with the Remote MCP URL:
@@ -171,21 +189,21 @@ After deployment and IAP setup:
 
 ```bash
 # SSL cert active
-gcloud compute ssl-certificates describe cloud-crate-cert --global --format='value(managed.status)'
+gcloud compute ssl-certificates describe cloud-crate-cert --global --project=cloud-crate-485418 --format='value(managed.status)'
 # Expected: ACTIVE
 
 # Frontend via LB (expect 302 redirect to Google login)
-curl -s -o /dev/null -w '%{http_code}' https://34-149-173-190.nip.io/
+curl -s -o /dev/null -w '%{http_code}' https://echolocate.app/
 
 # Vector via LB (expect 302 when unauthenticated)
-curl -s -o /dev/null -w '%{http_code}' https://34-149-173-190.nip.io/api/
+curl -s -o /dev/null -w '%{http_code}' https://echolocate.app/api/
 
 # Vector direct access blocked (expect 404 — Cloud Run returns 404 for blocked ingress)
 VECTOR_URL=$(gcloud run services describe cloud-crate-vector --region=us-central1 --format='value(status.url)')
 curl -s -o /dev/null -w '%{http_code}' $VECTOR_URL/
 ```
 
-To verify the frontend works end-to-end, open `https://34-149-173-190.nip.io/` in a browser, sign in, and confirm that search and interpolation features load data via `/api/*`.
+To verify the frontend works end-to-end, open `https://echolocate.app` in a browser, sign in, and confirm that search and interpolation features load data via `/api/*`.
 
 Use the provided scripts for deeper checks:
 - `python vector/verify_service.py <VECTOR_URL>`
