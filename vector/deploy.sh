@@ -30,7 +30,8 @@ gcloud run deploy $SERVICE_NAME \
     --cpu=2 \
     --timeout=300 \
     --cpu-boost \
-    --no-cpu-throttling \
+    --cpu-throttling \
+    --min-instances=1 \
     --add-volume=name=db-volume,type=cloud-storage,bucket=$BUCKET_NAME \
     --add-volume-mount=volume=db-volume,mount-path=/data \
     --set-env-vars DB_PATH=/data/cloudcrate.duckdb,GCP_PROJECT_ID=$(gcloud config get-value project)
