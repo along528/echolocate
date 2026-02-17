@@ -1433,20 +1433,16 @@ input:checked+.slider:before {
         border-radius: 8px !important;
     }
 
-    /* Enhanced Touch Targets for Insertion */
+    /* Insert buttons: visible unless disabled */
     .insert-steer-btn {
-        width: 28px;
-        height: 28px;
-        font-size: 1rem;
+        width: 30px;
+        height: 30px;
+        font-size: 1.1rem;
         opacity: 0.7;
     }
 
     .insert-steer-btn:disabled {
         opacity: 0.15;
-    }
-
-    .insert-btn-group {
-        gap: 16px;
     }
 
     /* Player Bar Rearrangement */
@@ -1487,18 +1483,17 @@ input:checked+.slider:before {
         display: none !important;
     }
 
-    /* Builder slots: kill gap, add horizontal padding for buttons extending beyond edges */
+    /* Builder slots: kill gap, no horizontal padding (slots handle their own inset) */
     .builder-slots {
-        padding: 0 32px !important;
+        padding: 0 !important;
         gap: 0 !important;
     }
 
-    /* Slot containers: tiny gap between tracks for button centering */
+    /* Slot containers: inset from edges to leave room for buttons, tiny vertical gap */
     .slot-container,
     .steer-slot-container {
         position: relative;
-        margin-top: 0 !important;
-        margin-bottom: 2px !important;
+        margin: 0 30px 2px 30px !important;
         padding-top: 0 !important;
         border: none !important;
     }
@@ -1522,12 +1517,12 @@ input:checked+.slider:before {
         display: none !important;
     }
 
-    /* Insert buttons (+✨): float between slots, mostly outside slot edges */
+    /* Insert buttons (+✨): full width, buttons sit in the 30px margins outside slots */
     .insert-btn-group {
         position: relative !important;
         height: 0 !important;
         overflow: visible !important;
-        margin: 0 -30px !important;
+        margin: 0 !important;
         padding: 0 !important;
         z-index: 25 !important;
         display: flex !important;
@@ -1540,8 +1535,8 @@ input:checked+.slider:before {
     }
 
     .insert-interp-btn svg {
-        width: 14px;
-        height: 14px;
+        width: 16px;
+        height: 16px;
     }
 
     /* Ensure slot content isn't clipped */
