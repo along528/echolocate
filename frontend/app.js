@@ -492,14 +492,57 @@ const App = {
         }
     },
 
+    seedQueries: [
+        'dreamy lo-fi with warm vinyl crackle',
+        'heavy distorted guitars and pounding drums',
+        'smooth jazz saxophone late at night',
+        'glitchy IDM with stuttering beats',
+        'haunting ambient drone textures',
+        'funky bass grooves and tight percussion',
+        'ethereal vocals floating over synth pads',
+        'raw punk energy and shouted vocals',
+        'melancholic piano with strings',
+        'tropical rhythms and steel drums',
+        'dark industrial machinery sounds',
+        'bright acoustic fingerpicking',
+        'spacey cosmic synth arpeggios',
+        'soulful organ and gospel choir',
+        'minimal techno with hypnotic loops',
+        'chaotic free jazz improvisation',
+        'lush orchestral swells and crescendos',
+        'dusty boom bap hip hop beats',
+        'shimmering shoegaze wall of sound',
+        'eerie field recordings and found sounds',
+    ],
+
     async loadInitialTracks() {
         try {
             const source = this.getSelectedSource();
-            const tracks = await API.getTracks(50, source);
+            const query = this.seedQueries[Math.floor(Math.random() * this.seedQueries.length)];
+            const searchInput = document.getElementById('search-input');
+            searchInput.value = query;
+
+            const enhancedDisplay = document.getElementById('enhanced-query-display');
+            enhancedDisplay.style.visibility = 'hidden';
+            enhancedDisplay.style.opacity = '0';
+
+            const response = await API.semanticSearch(query, source, 50, this.enhanceQuery);
+            let tracks;
+            if (response.results) {
+                tracks = response.results;
+                if (response.enhanced_query && this.enhanceQuery) {
+                    enhancedDisplay.innerHTML = `<strong>Enhanced:</strong> "${response.enhanced_query}"`;
+                    enhancedDisplay.style.visibility = 'visible';
+                    enhancedDisplay.style.opacity = '1';
+                }
+            } else {
+                tracks = response;
+            }
+
             this.results = tracks;
             this.pinnedTrack = null;
             this.renderResults();
-            document.getElementById('result-count').textContent = `(${tracks.length} random)`;
+            document.getElementById('result-count').textContent = `(${tracks.length} found)`;
         } catch (error) {
             console.error('Failed to load tracks:', error);
         }
