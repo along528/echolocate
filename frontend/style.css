@@ -1051,6 +1051,43 @@ input:checked+.slider:before {
     color: var(--accent-primary);
 }
 
+/* Edit-mode action buttons (cancel / remove) */
+.edit-mode-actions {
+    display: none;
+    gap: 4px;
+    margin-left: 4px;
+    flex-shrink: 0;
+}
+
+.edit-mode-action-btn {
+    width: 36px;
+    height: 36px;
+    padding: 0;
+    border-radius: 8px;
+    background: var(--bg-tertiary);
+    border: 1px solid var(--border-color);
+    color: var(--text-secondary);
+    font-size: 1rem;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    transition: all 0.2s ease;
+    flex-shrink: 0;
+}
+
+.edit-mode-action-btn:hover {
+    background: var(--bg-primary);
+    color: var(--text-primary);
+    border-color: var(--accent-primary);
+}
+
+.remove-edit-btn:hover {
+    background: #ef4444;
+    color: white;
+    border-color: transparent;
+}
+
 /* Remove Steer Btn */
 /* Edit mode remove button override */
 .slot-input-wrapper .remove-steer-btn-edit {
@@ -1601,6 +1638,16 @@ input:checked+.slider:before {
         background: #ef4444;
         color: white;
         border-color: transparent;
+    }
+
+    /* Show edit-mode action buttons on mobile */
+    .edit-mode-actions {
+        display: flex !important;
+    }
+
+    .edit-mode-action-btn {
+        width: 44px;
+        height: 44px;
     }
 
     .track-slot .track-card-footer {

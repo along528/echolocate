@@ -963,6 +963,47 @@ const App = {
                 input.value = slot.query;
                 input.focus();
             }
+
+            // --- Mobile edit-mode action buttons ---
+            const inputWrapper = editModeDiv?.querySelector('.slot-input-wrapper');
+            if (inputWrapper) {
+                // Remove any previously rendered edit-mode actions
+                inputWrapper.querySelector('.edit-mode-actions')?.remove();
+
+                const actions = document.createElement('div');
+                actions.className = 'edit-mode-actions';
+
+                // Cancel button: only when editing a slot that already has a track
+                if (slot.track) {
+                    const cancelBtn = document.createElement('button');
+                    cancelBtn.className = 'edit-mode-action-btn cancel-edit-btn';
+                    cancelBtn.innerHTML = '↩';
+                    cancelBtn.title = 'Cancel editing';
+                    cancelBtn.onclick = (e) => {
+                        e.stopPropagation();
+                        slot.isEditing = false;
+                        this.renderSlot(slotName);
+                    };
+                    actions.appendChild(cancelBtn);
+                }
+
+                // Remove button: steer slots only, unless it's the only steer slot
+                if (slotName.startsWith('steer-') && this.steerSlots.length > 1) {
+                    const removeBtn = document.createElement('button');
+                    removeBtn.className = 'edit-mode-action-btn remove-edit-btn';
+                    removeBtn.innerHTML = '×';
+                    removeBtn.title = 'Remove slot';
+                    removeBtn.onclick = (e) => {
+                        e.stopPropagation();
+                        this.removeSteerSlot(slotName);
+                    };
+                    actions.appendChild(removeBtn);
+                }
+
+                if (actions.children.length > 0) {
+                    inputWrapper.appendChild(actions);
+                }
+            }
         } else {
             // Show View (Track Card)
             if (editModeDiv) editModeDiv.style.display = 'none';
