@@ -26,8 +26,8 @@ gcloud run deploy $SERVICE_NAME \
     --no-allow-unauthenticated \
     --ingress internal-and-cloud-load-balancing \
     --execution-environment=gen2 \
-    --memory=4Gi \
-    --cpu=2 \
+    --memory=2Gi \
+    --cpu=1 \
     --timeout=300 \
     --cpu-boost \
     --cpu-throttling \
