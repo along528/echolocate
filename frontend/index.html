@@ -5,7 +5,7 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>EchoLocate - FMA Explorer</title>
-    <link rel="stylesheet" href="style.css?v=29">
+    <link rel="stylesheet" href="style.css?v=31">
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
@@ -133,9 +133,9 @@
                 <span id="now-playing-artist"></span>
             </div>
             <div class="player-controls">
-                <button id="prev-btn" class="player-btn">⏮</button>
-                <button id="play-btn" class="player-btn">▶</button>
-                <button id="next-btn" class="player-btn">⏭</button>
+                <button id="prev-btn" class="player-btn"><svg viewBox="0 0 24 24" fill="currentColor" width="20" height="20"><path d="M6 6h2v12H6zm3.5 6l8.5 6V6z"/></svg></button>
+                <button id="play-btn" class="player-btn"><svg viewBox="0 0 24 24" fill="currentColor" width="20" height="20"><path d="M8 5v14l11-7z"/></svg></button>
+                <button id="next-btn" class="player-btn"><svg viewBox="0 0 24 24" fill="currentColor" width="20" height="20"><path d="M6 18l8.5-6L6 6v12zM16 6v12h2V6h-2z"/></svg></button>
             </div>
             <div class="progress-container">
                 <span id="current-time">0:00</span>
@@ -155,7 +155,7 @@
             : '/api';
     </script>
     <script src="api.js?v=8"></script>
-    <script src="player.js?v=8"></script>
+    <script src="player.js?v=9"></script>
     <script src="components.js?v=8"></script>
     <script src="app.js?v=9"></script>
 </body>
