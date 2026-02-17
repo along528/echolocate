@@ -1333,24 +1333,51 @@ input:checked+.slider:before {
 
 /* Responsive - Mobile Styles (Moved to end to override defaults) */
 @media (max-width: 900px) {
+    body {
+        height: 100dvh;
+        height: 100vh; /* fallback for older browsers */
+        height: 100dvh;
+        overflow: hidden;
+        position: fixed;
+        width: 100%;
+    }
+
+    .app-container {
+        height: 100dvh;
+        height: 100vh;
+        height: 100dvh;
+        min-height: 0;
+        padding-bottom: 0;
+        overflow: hidden;
+    }
+
+    .header {
+        flex-shrink: 0;
+        padding: 1rem;
+    }
+
     .main-content {
         grid-template-columns: 1fr;
         padding: 1rem;
         /* Reduce padding on mobile */
         gap: 1rem;
+        min-height: 0;
+        overflow: hidden;
     }
 
     /* Mobile Navigation Visibility */
     .mobile-nav {
         display: flex;
+        flex-shrink: 0;
     }
 
     /* Hide panels by default on mobile, javascript will toggle 'active' class */
     .results-panel,
     .playlist-panel {
         display: none;
-        height: calc(100vh - 220px);
-        /* Adjust for header + tabs + player */
+        height: auto;
+        flex: 1;
+        min-height: 0;
     }
 
     .results-panel.active,
@@ -1416,6 +1443,8 @@ input:checked+.slider:before {
 
     /* Player Bar Rearrangement */
     .player-bar {
+        position: relative;
+        flex-shrink: 0;
         height: auto;
         flex-direction: column;
         padding: 1rem;
