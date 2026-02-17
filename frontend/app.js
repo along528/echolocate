@@ -532,6 +532,7 @@ const App = {
         'cinematic tension with low cello',
         'sun-drenched surf rock reverb',
         'brittle prepared piano and silence',
+        'sparse minimal classical with solo violin'
     ],
 
     async loadInitialTracks() {
