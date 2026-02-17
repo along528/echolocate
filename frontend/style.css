@@ -1446,6 +1446,10 @@ input:checked+.slider:before {
         opacity: 0.15;
     }
 
+    .insert-steer-btn.loading:disabled {
+        opacity: 1;
+    }
+
     /* Player Bar Rearrangement */
     .player-bar {
         position: relative;
