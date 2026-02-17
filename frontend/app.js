@@ -15,11 +15,12 @@ const App = {
     },
     steerSlots: [],
     steerCounter: 0,
-    generatedPlaylist: [],
+
 
     init() {
         Player.init();
         this.setupEventListeners();
+        this.setupMobileNavigation();
         this.setupDragAndDrop();
         this.loadInitialTracks();
         this.updateUIState();
@@ -60,23 +61,13 @@ const App = {
         // Builder controls
         document.getElementById('clear-builder').addEventListener('click', () => {
             this.resetSlots();
-            this.generatedPlaylist = [];
-            Player.playlist = [];
             this.renderBuilder();
             document.getElementById('builder-view').style.display = 'block';
-            document.getElementById('playlist-view').style.display = 'none';
         });
 
-        // Reset / Back to Builder
-        document.getElementById('reset-builder').addEventListener('click', () => {
-            document.getElementById('builder-view').style.display = 'block';
-            document.getElementById('playlist-view').style.display = 'none';
-        });
 
-        const interpolateBtn = document.getElementById('interpolate-btn');
-        if (interpolateBtn) {
-            interpolateBtn.addEventListener('click', () => this.interpolate());
-        }
+
+
 
         document.getElementById('random-btn').addEventListener('click', () => this.loadInitialTracks());
         document.getElementById('clear-results').addEventListener('click', () => this.clearResults());
@@ -96,6 +87,8 @@ const App = {
         const prevBtn = container.querySelector('.slot-nav-btn.prev');
         const nextBtn = container.querySelector('.slot-nav-btn.next');
         const clearBtn = container.querySelector('.clear-slot-btn-main');
+        const randomizeBtn = container.querySelector('.slot-randomize-btn');
+        const searchBtn = container.querySelector('.slot-search-btn');
 
         if (input) {
             input.addEventListener('keypress', (e) => {
@@ -107,6 +100,17 @@ const App = {
                 const slot = this.getSlot(slotName);
                 if (slot) slot.query = e.target.value;
             });
+        }
+
+        if (searchBtn) {
+            searchBtn.addEventListener('click', () => {
+                const slot = this.getSlot(slotName);
+                if (slot && slot.query) this.handleSlotSearch(slotName, slot.query);
+            });
+        }
+
+        if (randomizeBtn) {
+            randomizeBtn.addEventListener('click', () => this.handleSlotRandomize(slotName));
         }
 
         if (prevBtn) {
@@ -123,6 +127,68 @@ const App = {
                 this.renderBuilder();
             });
         }
+    },
+
+    setupMobileNavigation() {
+        // Mobile Navigation Logic
+        const mobileTabs = document.querySelectorAll('.mobile-tab');
+        const resultsPanel = document.querySelector('.results-panel');
+        const playlistPanel = document.querySelector('.playlist-panel');
+
+        // Function to set active mobile view
+        const setMobileView = (viewName) => {
+            // Update tabs
+            mobileTabs.forEach(tab => {
+                if (tab.dataset.mobileTab === viewName) {
+                    tab.classList.add('active');
+                } else {
+                    tab.classList.remove('active');
+                }
+            });
+
+            // Update panels
+            if (viewName === 'search') {
+                if (resultsPanel) resultsPanel.classList.add('active');
+                if (playlistPanel) playlistPanel.classList.remove('active');
+            } else if (viewName === 'playlist') {
+                if (playlistPanel) playlistPanel.classList.add('active');
+                if (resultsPanel) resultsPanel.classList.remove('active');
+            }
+        };
+
+        // Event Listeners
+        mobileTabs.forEach(tab => {
+            tab.addEventListener('click', () => {
+                setMobileView(tab.dataset.mobileTab);
+            });
+        });
+
+        // Initialize Mobile View (Default to Playlist on mobile load)
+        const isMobile = window.innerWidth <= 900;
+        if (isMobile) {
+            setMobileView('playlist');
+        } else {
+            // Reset for desktop
+            if (resultsPanel) resultsPanel.classList.add('active');
+            if (playlistPanel) playlistPanel.classList.add('active');
+        }
+
+        // Handle Resize
+        window.addEventListener('resize', () => {
+            if (window.innerWidth > 900) {
+                // Ensure both are visible on desktop
+                if (resultsPanel) resultsPanel.classList.add('active');
+                if (playlistPanel) playlistPanel.classList.add('active');
+            } else {
+                // Revert to last known or default on mobile
+                // Default to playlist if unclear which one should be active
+                if (resultsPanel && playlistPanel &&
+                    resultsPanel.classList.contains('active') &&
+                    playlistPanel.classList.contains('active')) {
+                    setMobileView('playlist');
+                }
+            }
+        });
     },
 
     addSteerSlot(track = null, insertIndex = -1, options = {}) {
@@ -196,8 +262,10 @@ const App = {
             ${slot?.isInterpolated ? '' : `
             <div class="slot-mode-edit" style="display: none;">
                 <div class="slot-input-wrapper">
-                    <input type="text" class="slot-search-input" placeholder="Search or drag track..."
+                    <input type="text" class="slot-search-input" placeholder="Describe a vibe..."
                         autocomplete="off">
+                    <button class="slot-search-btn" title="Search">🔍</button>
+                    <button class="slot-randomize-btn" title="Pick a random track">🎲</button>
                 </div>
             </div>
             `}
@@ -206,11 +274,6 @@ const App = {
                     <!-- Configured in renderSlot -->
                 </div>
             </div>
-            ${slot?.isInterpolated ? '' : `
-            <div class="track-slot empty" style="display: none;">
-                    <span class="placeholder">Drag track here or click to search</span>
-            </div>
-            `}
         `;
 
         return div;
@@ -451,7 +514,13 @@ const App = {
 
         const container = document.querySelector(`.slot-container[data-slot="${slotName}"]`);
         const input = container.querySelector('.slot-search-input');
+        const searchBtn = container.querySelector('.slot-search-btn');
         input.disabled = true;
+        input.classList.add('loading');
+        if (searchBtn) {
+            searchBtn.disabled = true;
+            searchBtn.classList.add('loading');
+        }
 
         try {
             const source = this.getSelectedSource();
@@ -479,9 +548,42 @@ const App = {
         } catch (e) {
             console.error(`Search for slot ${slotName} failed:`, e);
         } finally {
-            if (input) input.disabled = false;
-            // Focus if still in edit mode?
+            if (input) {
+                input.disabled = false;
+                input.classList.remove('loading');
+            }
+            if (searchBtn) {
+                searchBtn.disabled = false;
+                searchBtn.classList.remove('loading');
+            }
             this.renderBuilder();
+        }
+    },
+
+    async handleSlotRandomize(slotName) {
+        const slot = this.getSlot(slotName);
+        if (!slot) return;
+
+        const container = document.querySelector(`.slot-container[data-slot="${slotName}"]`);
+        const randomizeBtn = container?.querySelector('.slot-randomize-btn');
+        if (randomizeBtn) {
+            randomizeBtn.disabled = true;
+            randomizeBtn.classList.add('loading');
+        }
+
+        try {
+            const source = this.getSelectedSource();
+            const tracks = await API.getTracks(1, source);
+            if (tracks.length > 0) {
+                this.setSlotTrack(slotName, tracks[0]);
+            }
+        } catch (e) {
+            console.error(`Randomize for slot ${slotName} failed:`, e);
+        } finally {
+            if (randomizeBtn) {
+                randomizeBtn.disabled = false;
+                randomizeBtn.classList.remove('loading');
+            }
         }
     },
 
@@ -496,82 +598,19 @@ const App = {
         slot.currentIndex = newIndex;
         slot.track = slot.results[newIndex];
         this.renderBuilder();
-    },
 
-    async interpolate() {
-        const startReady = this.slots.start.track || this.slots.start.query;
-        const endReady = this.slots.end.track || this.slots.end.query;
-
-        if (!startReady || !endReady) {
-            alert('Please select both a Start and End track (or enter a query).');
-            return;
-        }
-
-        const btn = document.getElementById('interpolate-btn');
-        const originalText = btn.textContent;
-        btn.disabled = true;
-        btn.textContent = 'Generating...';
-
-        try {
-            // Resolve deferred searches
-            const resolveSlot = async (slotName) => {
-                const slot = this.getSlot(slotName);
-                if (!slot.track && slot.query) {
-                    await this.handleSlotSearch(slotName, slot.query);
-                    if (!slot.track) throw new Error(`Could not find track for query: "${slot.query}"`);
-                }
-                return slot.track;
-            };
-
-            const startTrack = await resolveSlot('start');
-            const endTrack = await resolveSlot('end');
-
-            // Resolve all steering slots
-            const steerTrackIds = [];
-            for (const steerSlot of this.steerSlots) {
-                if (!steerSlot.track && steerSlot.query) {
-                    await this.handleSlotSearch(steerSlot.id, steerSlot.query);
-                }
-                if (steerSlot.track) {
-                    steerTrackIds.push(steerSlot.track.id);
-                }
-            }
-
-            const source = this.getSelectedSource();
-
-            const tracks = await API.interpolatePlaylist(
-                startTrack.id,
-                endTrack.id,
-                10,
-                'greedy_walk',
-                source,
-                steerTrackIds
-            );
-
-            // Mark tracks
-            tracks[0].isStart = true;
-            tracks[tracks.length - 1].isEnd = true;
-            // Mark steering tracks
-            const steerIdSet = new Set(steerTrackIds);
-            tracks.forEach(t => {
-                if (steerIdSet.has(t.id)) t.isSteering = true;
-            });
-
-            this.generatedPlaylist = tracks;
-            Player.playlist = tracks;
-            this.renderPlaylist();
-
-            document.getElementById('builder-view').style.display = 'none';
-            document.getElementById('playlist-view').style.display = 'block';
-
-        } catch (error) {
-            console.error('Interpolation failed:', error);
-            alert(`Failed to generate: ${error.message}`);
-        } finally {
-            btn.disabled = false;
-            btn.textContent = originalText;
+        // Scroll the navigated slot into view within the builder container
+        const slotEl = document.querySelector(`.slot-container[data-slot="${slotName}"]`);
+        const scrollContainer = slotEl?.closest('.builder-slots');
+        if (slotEl && scrollContainer) {
+            const elRect = slotEl.getBoundingClientRect();
+            const containerRect = scrollContainer.getBoundingClientRect();
+            const targetScroll = scrollContainer.scrollTop + (elRect.top - containerRect.top) - (scrollContainer.clientHeight / 2) + (slotEl.clientHeight / 2);
+            scrollContainer.scrollTo({ top: targetScroll, behavior: 'smooth' });
         }
     },
+
+
 
     getSelectedSource() {
         return document.querySelector('input[name="source"]:checked').value;
@@ -602,16 +641,16 @@ const App = {
         ['start', 'end'].forEach(slotName => this.renderSlot(slotName));
         // Render dynamic steer slots
         this.steerSlots.forEach(s => this.renderSlot(s.id));
+
+        // Show end slot only if start track is set
+        const endSlot = document.querySelector('.slot-container[data-slot="end"]');
+        const hasStart = !!this.slots.start.track;
+        if (endSlot) endSlot.style.display = hasStart ? '' : 'none';
+
         // Render "+" insert buttons between every pair of adjacent slots
         this.renderInsertButtons();
 
-        // Enable interpolate button
-        const interpolateBtn = document.getElementById('interpolate-btn');
-        if (interpolateBtn) {
-            const startReady = this.slots.start.track || this.slots.start.query;
-            const endReady = this.slots.end.track || this.slots.end.query;
-            interpolateBtn.disabled = !(startReady && endReady);
-        }
+
 
         // Sync Player Context if we are currently playing a track from the builder
         if (Player.currentTrack) {
@@ -838,14 +877,13 @@ const App = {
                 </div>
                 <div class="slot-mode-edit" style="display: none;">
                     <div class="slot-input-wrapper">
-                        <input type="text" class="slot-search-input" placeholder="Search or drag track..." autocomplete="off">
+                        <input type="text" class="slot-search-input" placeholder="Describe a vibe..." autocomplete="off">
+                        <button class="slot-search-btn" title="Search">🔍</button>
+                        <button class="slot-randomize-btn" title="Pick a random track">🎲</button>
                     </div>
                 </div>
                 <div class="slot-mode-view" style="display: none;">
                     <div class="track-slot filled"></div>
-                </div>
-                <div class="track-slot empty" style="display: none;">
-                     <span class="placeholder">Drag track here or click to search</span>
                 </div>
             `;
             // Re-bind listeners for new elements
@@ -889,21 +927,21 @@ const App = {
             if (slotName.startsWith('steer-')) {
                 slotControls.appendChild(createBtn('×', 'Remove Slot', () => this.removeSteerSlot(slotName), 'remove-control-btn'));
             }
+
+            // 4. Clear Button (for start/end slots when they have a track)
+            if ((slotName === 'start' || slotName === 'end') && slot.track) {
+                slotControls.appendChild(createBtn('×', 'Clear', () => {
+                    this.resetSlot(slotName);
+                    this.renderBuilder();
+                }, 'remove-control-btn'));
+            }
         }
 
         // --- Logic to determine state ---
         if (!slot.track && !slot.isEditing) {
-            // Show Empty
-            if (editModeDiv) editModeDiv.style.display = 'none';
+            // No track selected — show edit mode so user can search or randomize
+            if (editModeDiv) editModeDiv.style.display = 'block';
             if (viewModeDiv) viewModeDiv.style.display = 'none';
-            if (emptyModeDiv) {
-                emptyModeDiv.style.display = 'flex';
-                // Click to edit
-                emptyModeDiv.onclick = () => {
-                    slot.isEditing = true;
-                    this.renderSlot(slotName);
-                };
-            }
         } else if (slot.isEditing) {
             // Show Edit Input
             if (editModeDiv) editModeDiv.style.display = 'block';
@@ -956,10 +994,7 @@ const App = {
         }
     },
 
-    renderPlaylist() {
-        const container = document.getElementById('playlist');
-        Components.renderTrackList(container, this.generatedPlaylist, { inPlaylist: true });
-    }
+
 };
 
 // Initialize on DOM ready

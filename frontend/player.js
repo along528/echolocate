@@ -68,7 +68,6 @@ const Player = {
         if (index !== -1) {
             this.currentIndex = index;
         } else {
-            console.warn('Track ID found in playlist? No.', track.id, this.playlist.map(t => t.id));
             // Track not in current playlist (e.g. random play from builder or isolated play)
             this.currentIndex = -1;
         }
@@ -76,24 +75,26 @@ const Player = {
         // Update playing state in UI
         document.querySelectorAll('.track-item').forEach(el => {
             el.classList.remove('playing');
-            if (el.dataset.trackId === track.id) {
+            if (String(el.dataset.trackId) === String(track.id)) {
                 el.classList.add('playing');
 
                 // Manual scroll calculation to prevent whole-page scrolling
                 // We find the specific container and scroll ONLY that.
-                const container = el.closest('.track-list');
+                // Support both search results (.track-list) and builder (.builder-slots)
+                const container = el.closest('.track-list, .builder-slots');
+
                 if (container) {
-                    // Simple logic: scroll the container so the element is centered
-                    // offsetTop is usually reliable if container is the offsetParent. 
-                    // If not, we fall back to bounding client rect diff, but let's try a robust method.
+                    // Use getBoundingClientRect for robust calculation regardless of nesting/positioning
+                    const elRect = el.getBoundingClientRect();
+                    const containerRect = container.getBoundingClientRect();
+                    const currentScroll = container.scrollTop;
 
-                    const elTop = el.offsetTop;
-                    const elHeight = el.offsetHeight;
-                    const containerHeight = container.clientHeight;
+                    // Calculate position relative to the scrollable content
+                    // (Distance from visible top) + (Current Scroll) = Absolute Top
+                    const relativeTop = elRect.top - containerRect.top;
 
-                    // Desired Scroll Position = (Element Top) - (Half Container Height) + (Half Element Height)
-                    // This centers the element
-                    const targetScroll = elTop - (containerHeight / 2) + (elHeight / 2);
+                    // Target: Center the element
+                    const targetScroll = currentScroll + relativeTop - (container.clientHeight / 2) + (el.clientHeight / 2);
 
                     container.scrollTo({
                         top: targetScroll,
@@ -211,12 +212,12 @@ const Player = {
 
     onPlay() {
         this.isPlaying = true;
-        this.playBtn.textContent = '⏸';
+        this.playBtn.innerHTML = '<svg viewBox="0 0 24 24" fill="currentColor" width="20" height="20"><path d="M6 19h4V5H6v14zm8-14v14h4V5h-4z"/></svg>';
     },
 
     onPause() {
         this.isPlaying = false;
-        this.playBtn.textContent = '▶';
+        this.playBtn.innerHTML = '<svg viewBox="0 0 24 24" fill="currentColor" width="20" height="20"><path d="M8 5v14l11-7z"/></svg>';
     },
 
     formatTime(seconds) {

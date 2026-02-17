@@ -1,5 +1,6 @@
 import duckdb
 from fastapi import FastAPI, HTTPException
+from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import RedirectResponse, StreamingResponse
 from pydantic import BaseModel
 from typing import List, Optional, Literal
@@ -76,6 +77,24 @@ def get_midpoint(vec_a, vec_b, method="slerp"):
 
 
 app = FastAPI()
+
+# CORS Configuration
+cors_origins = os.getenv("CORS_ALLOW_ORIGINS", "")
+if cors_origins:
+    origins = cors_origins.split(",")
+    if "*" in origins:
+        origins = ["*"]
+        
+    print(f"✅ CORS Allowed Origins: {origins}")
+    app.add_middleware(
+        CORSMiddleware,
+        allow_origins=origins,
+        allow_credentials=True,
+        allow_methods=["*"],
+        allow_headers=["*"],
+    )
+else:
+    print("ℹ️ CORS middleware not enabled (CORS_ALLOW_ORIGINS not set)")
 
 # Configuration
 DB_PATH = os.getenv("DB_PATH", "cloudcrate.duckdb")

@@ -5,7 +5,7 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>EchoLocate - FMA Explorer</title>
-    <link rel="stylesheet" href="style.css?v=6">
+    <link rel="stylesheet" href="style.css?v=31">
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
@@ -18,6 +18,12 @@
             <h1 class="logo">🎵 EchoLocate</h1>
             <p class="tagline">Explore 100k+ FMA tracks with AI-powered search</p>
         </header>
+
+        <!-- Mobile Navigation (Visible only on small screens) -->
+        <nav class="mobile-nav">
+            <button class="mobile-tab" data-mobile-tab="search">Search</button>
+            <button class="mobile-tab active" data-mobile-tab="playlist">Playlist</button>
+        </nav>
 
         <!-- Main Content -->
         <main class="main-content">
@@ -65,33 +71,19 @@
                 <div id="results-list" class="track-list"></div>
             </section>
 
-            <!-- Interpolation Builder Panel -->
+            <!-- Playlist Panel -->
             <section class="playlist-panel">
                 <div class="panel-header"
-                    style="height: 38px; display: flex; align-items: center; margin-bottom: 0.75rem;">
-                    <h2>Interpolation Builder</h2>
+                    style="height: 38px; display: flex; align-items: center; justify-content: space-between; margin-bottom: 0.75rem;">
+                    <h2>Playlist</h2>
+                    <button id="clear-builder" class="btn-secondary" title="Clear playlist">Clear</button>
                 </div>
 
                 <!-- Spacer to match Left Panel Search Tabs (calculated 32px) -->
-                <div style="height: 32px;"></div>
+
 
                 <!-- View 1: Builder Inputs -->
                 <div id="builder-view" class="builder-view">
-
-                    <!-- Control Row (matches Left Panel Search Input row) -->
-                    <div style="display: flex; gap: 0.5rem; margin-bottom: 0.75rem; align-items: center;">
-                        <button id="interpolate-btn" class="btn-primary" style="flex: 1;" disabled>✨ Generate
-                            Playlist</button>
-                    </div>
-
-                    <!-- Spacer to match Left Panel Filters (calculated 38px) -->
-                    <div style="height: 38px;"></div>
-
-                    <div class="playlist-controls"
-                        style="justify-content: space-between; margin-bottom: 1rem; margin-top: 1rem; min-height: 27px;">
-                        <h3>Builder Slots</h3>
-                        <button id="clear-builder" class="btn-secondary" title="Clear builder">Clear</button>
-                    </div>
 
                     <div class="builder-slots">
                         <!-- Start Track -->
@@ -99,15 +91,13 @@
                             <label>Start Track</label>
                             <div class="slot-mode-edit">
                                 <div class="slot-input-wrapper">
-                                    <input type="text" class="slot-search-input" placeholder="Search or drag track..."
+                                    <input type="text" class="slot-search-input" placeholder="Describe a vibe..."
                                         autocomplete="off">
+                                    <button class="slot-randomize-btn" title="Pick a random track">🎲</button>
                                 </div>
                             </div>
                             <div class="slot-mode-view" style="display: none;">
                                 <div class="track-slot filled"></div>
-                            </div>
-                            <div class="track-slot empty" style="display: none;">
-                                <span class="placeholder">Drag track here or click to search</span>
                             </div>
                         </div>
 
@@ -115,42 +105,24 @@
                         <div id="steer-slots-container"></div>
 
                         <!-- End Track -->
-                        <div class="slot-container" data-slot="end">
+                        <div class="slot-container" data-slot="end" style="display: none;">
                             <label>End Track</label>
                             <div class="slot-mode-edit">
                                 <div class="slot-input-wrapper">
-                                    <input type="text" class="slot-search-input" placeholder="Search or drag track..."
+                                    <input type="text" class="slot-search-input" placeholder="Describe a vibe..."
                                         autocomplete="off">
+                                    <button class="slot-randomize-btn" title="Pick a random track">🎲</button>
                                 </div>
                             </div>
                             <div class="slot-mode-view" style="display: none;">
                                 <div class="track-slot filled"></div>
-                            </div>
-                            <div class="track-slot empty" style="display: none;">
-                                <span class="placeholder">Drag track here or click to search</span>
                             </div>
                         </div>
                     </div>
                 </div>
 
                 <!-- View 2: Generated Playlist (Initially Hidden) -->
-                <div id="playlist-view" style="display: none; flex-direction: column; flex: 1;">
-                    <!-- Control Row match -->
-                    <div style="display: flex; gap: 0.5rem; margin-bottom: 0.75rem; align-items: center;">
-                        <button id="reset-builder" class="btn-secondary" style="flex: 1;">Back to Builder</button>
-                    </div>
 
-                    <!-- Spacer to match Left Panel Filters (calculated 38px) -->
-                    <div style="height: 38px;"></div>
-
-                    <!-- Header match -->
-                    <div class="playlist-controls"
-                        style="justify-content: space-between; margin-bottom: 1rem; margin-top: 1rem; min-height: 27px;">
-                        <h3>Generated Playlist</h3>
-                    </div>
-
-                    <div id="playlist" class="track-list"></div>
-                </div>
             </section>
         </main>
 
@@ -161,9 +133,9 @@
                 <span id="now-playing-artist"></span>
             </div>
             <div class="player-controls">
-                <button id="prev-btn" class="player-btn">⏮</button>
-                <button id="play-btn" class="player-btn">▶</button>
-                <button id="next-btn" class="player-btn">⏭</button>
+                <button id="prev-btn" class="player-btn"><svg viewBox="0 0 24 24" fill="currentColor" width="20" height="20"><path d="M6 6h2v12H6zm3.5 6l8.5 6V6z"/></svg></button>
+                <button id="play-btn" class="player-btn"><svg viewBox="0 0 24 24" fill="currentColor" width="20" height="20"><path d="M8 5v14l11-7z"/></svg></button>
+                <button id="next-btn" class="player-btn"><svg viewBox="0 0 24 24" fill="currentColor" width="20" height="20"><path d="M6 18l8.5-6L6 6v12zM16 6v12h2V6h-2z"/></svg></button>
             </div>
             <div class="progress-container">
                 <span id="current-time">0:00</span>
@@ -177,13 +149,15 @@
     <!-- Configuration - set your vector service URL here -->
     <script>
         // Production: relative path routed through shared load balancer
-        // Local development: override with window.VECTOR_API_URL = 'http://localhost:8001'
-        window.VECTOR_API_URL = '/api';
+        // Local development: override if on localhost
+        window.VECTOR_API_URL = (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1')
+            ? 'http://localhost:8001'
+            : '/api';
     </script>
-    <script src="api.js?v=6"></script>
-    <script src="player.js?v=6"></script>
-    <script src="components.js?v=6"></script>
-    <script src="app.js?v=6"></script>
+    <script src="api.js?v=8"></script>
+    <script src="player.js?v=9"></script>
+    <script src="components.js?v=8"></script>
+    <script src="app.js?v=9"></script>
 </body>
 
 </html>

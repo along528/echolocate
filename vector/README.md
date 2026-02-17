@@ -55,3 +55,13 @@ Deploy using the script in this directory:
 ### Requirements
 - A Google Cloud Storage bucket containing `cloudcrate.duckdb`.
 - The `deploy.sh` script handles mounting this bucket using gcsfuse.
+
+## Local Development
+
+To run the service locally, you can use the provided helper script which sets up the environment variables and enables CORS for local development:
+
+```bash
+./start_local.sh
+```
+
+This will start the service on `http://localhost:8001` with `CORS_ALLOW_ORIGINS="*"`.
