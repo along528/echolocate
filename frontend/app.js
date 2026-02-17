@@ -598,6 +598,16 @@ const App = {
         slot.currentIndex = newIndex;
         slot.track = slot.results[newIndex];
         this.renderBuilder();
+
+        // Scroll the navigated slot into view within the builder container
+        const slotEl = document.querySelector(`.slot-container[data-slot="${slotName}"]`);
+        const scrollContainer = slotEl?.closest('.builder-slots');
+        if (slotEl && scrollContainer) {
+            const elRect = slotEl.getBoundingClientRect();
+            const containerRect = scrollContainer.getBoundingClientRect();
+            const targetScroll = scrollContainer.scrollTop + (elRect.top - containerRect.top) - (scrollContainer.clientHeight / 2) + (slotEl.clientHeight / 2);
+            scrollContainer.scrollTo({ top: targetScroll, behavior: 'smooth' });
+        }
     },
 
 
