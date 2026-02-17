@@ -1487,13 +1487,19 @@ input:checked+.slider:before {
         display: none !important;
     }
 
-    /* Slot containers: toolbar padding area above track content */
+    /* Builder slots: kill gap, add horizontal padding for buttons extending beyond edges */
+    .builder-slots {
+        padding: 0 32px !important;
+        gap: 0 !important;
+    }
+
+    /* Slot containers: zero gap, buttons float on borders */
     .slot-container,
     .steer-slot-container {
         position: relative;
         margin-top: 0 !important;
-        margin-bottom: 16px !important;
-        padding-top: 4px !important;
+        margin-bottom: 0 !important;
+        padding-top: 0 !important;
         border: none !important;
     }
 
@@ -1516,18 +1522,17 @@ input:checked+.slider:before {
         display: none !important;
     }
 
-    /* Insert buttons (+✨): float between slots, + on left, sparkle on right */
+    /* Insert buttons (+✨): float between slots, mostly outside slot edges */
     .insert-btn-group {
         position: relative !important;
-        width: auto !important;
         height: 0 !important;
         overflow: visible !important;
-        margin: 0 !important;
-        padding: 0 4px !important;
+        margin: 0 -30px !important;
+        padding: 0 !important;
         z-index: 25 !important;
         display: flex !important;
         justify-content: space-between !important;
-        top: -8px !important;
+        top: 0 !important;
     }
 
     .insert-btn-group .insert-steer-btn {
@@ -1547,6 +1552,10 @@ input:checked+.slider:before {
     .slot-mode-view,
     .slot-mode-edit {
         margin-top: 0 !important;
+    }
+
+    .slot-input-wrapper {
+        margin-bottom: 0 !important;
     }
 
     /* --- Inline Slot Controls (mobile) --- */
