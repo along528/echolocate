@@ -316,6 +316,7 @@ const App = {
         slot.currentIndex = -1;
         slot.enhancedQuery = null;
         slot.isEditing = true;
+        slot.dismissed = false;
     },
 
     updateUIState() {
@@ -642,10 +643,11 @@ const App = {
         // Render dynamic steer slots
         this.steerSlots.forEach(s => this.renderSlot(s.id));
 
-        // Show end slot only if start track is set
+        // Show end slot only if start track is set and not dismissed
         const endSlot = document.querySelector('.slot-container[data-slot="end"]');
         const hasStart = !!this.slots.start.track;
-        if (endSlot) endSlot.style.display = hasStart ? '' : 'none';
+        const endHasContent = !!this.slots.end.track || this.slots.end.query;
+        if (endSlot) endSlot.style.display = (hasStart && !this.slots.end.dismissed) || endHasContent ? '' : 'none';
 
         // Render "+" insert buttons between every pair of adjacent slots
         this.renderInsertButtons();
@@ -1062,13 +1064,14 @@ const App = {
                 actions.appendChild(cancelBtn);
             } else if (slotName.startsWith('steer-') || slotName === 'end') {
                 // Remove/clear button: empty search box,
-                // unless it's the only search box visible
-                const otherSearchBoxes = [
+                // unless it's the only search box visible.
+                // End slot can always be cleared since start is always present.
+                const canRemove = slotName === 'end' || [
                     this.slots.start,
                     this.slots.end,
                     ...this.steerSlots
-                ].filter(s => s && s.id !== slot.id && (s.isEditing || !s.track));
-                if (otherSearchBoxes.length > 0) {
+                ].filter(s => s && s.id !== slot.id && (s.isEditing || !s.track)).length > 0;
+                if (canRemove) {
                     const removeBtn = document.createElement('button');
                     removeBtn.className = 'edit-mode-action-btn remove-edit-btn';
                     removeBtn.innerHTML = '×';
@@ -1077,8 +1080,9 @@ const App = {
                         e.stopPropagation();
                         if (slotName.startsWith('steer-')) {
                             this.removeSteerSlot(slotName);
-                        } else {
+                        } else if (slotName === 'end') {
                             this.resetSlot(slotName);
+                            this.slots.end.dismissed = true;
                             this.renderBuilder();
                         }
                     };
