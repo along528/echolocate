@@ -265,10 +265,10 @@ const App = {
             });
         });
 
-        // Initialize Mobile View (Default to Playlist on mobile load)
+        // Initialize Mobile View (Default to Search on mobile load)
         const isMobile = window.innerWidth <= 900;
         if (isMobile) {
-            setMobileView('playlist');
+            setMobileView('search');
         } else {
             // Reset for desktop
             if (resultsPanel) resultsPanel.classList.add('active');

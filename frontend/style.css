@@ -1527,7 +1527,6 @@ input:checked+.slider:before {
 
     /* Push panel headers in from edges */
     .playlist-panel .panel-header,
-    .results-panel > h2,
     .results-panel .playlist-controls {
         padding: 0 1rem !important;
     }
@@ -1652,6 +1651,92 @@ input:checked+.slider:before {
 
     .track-slot .track-card-footer {
         order: 4;
+    }
+
+    /* --- Search Panel: Make entire panel scroll on mobile --- */
+    .results-panel.active,
+    .playlist-panel.active {
+        display: block !important;
+        overflow-y: auto !important;
+        -webkit-overflow-scrolling: touch;
+    }
+
+    .results-panel .search-controls {
+        flex-shrink: unset;
+    }
+
+    .results-panel .track-list {
+        overflow-y: visible !important;
+        flex: unset !important;
+        max-height: none !important;
+    }
+
+    /* Hide alignment spacer on mobile */
+    .results-spacer {
+        display: none !important;
+    }
+
+    /* --- Tighten search UI on mobile --- */
+    .results-panel > h2 {
+        font-size: 0.9rem;
+        margin-bottom: 0.5rem;
+    }
+
+    .search-header-row {
+        margin-bottom: 0.5rem;
+    }
+
+    .search-container {
+        margin-bottom: 0.5rem;
+        flex-wrap: wrap;
+    }
+
+    .search-container #search-input {
+        flex: 1 1 100%;
+        padding: 0.6rem 0.75rem;
+        font-size: 16px; /* prevent iOS zoom */
+    }
+
+    .search-container .btn-primary,
+    .search-container .btn-secondary {
+        flex: 1;
+        padding: 0.5rem 0.75rem;
+        font-size: 0.85rem;
+    }
+
+    .search-filters {
+        margin-top: 0.5rem;
+        gap: 1rem;
+        font-size: 0.85rem;
+    }
+
+    .enhanced-query {
+        min-height: 36px;
+        padding: 0.5rem;
+        font-size: 0.8rem;
+    }
+
+    .results-panel .playlist-controls {
+        margin-top: 0.5rem !important;
+        margin-bottom: 0.5rem !important;
+    }
+
+    /* --- Search result track items: buttons below info on mobile --- */
+    .results-panel .track-item {
+        flex-wrap: wrap;
+        gap: 0.5rem;
+        padding: 0.6rem 0.75rem;
+    }
+
+    .results-panel .track-info {
+        width: 100%;
+        flex: none;
+    }
+
+    .results-panel .track-actions {
+        flex: none;
+        flex-wrap: wrap;
+        gap: 0.4rem;
     }
 }
 
