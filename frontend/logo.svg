@@ -11,7 +11,19 @@
     <!-- Head -->
     <ellipse cx="0" cy="0" rx="20" ry="18" fill="url(#batGrad)"/>
 
-    <!-- Ears pointing UP -->
+    <!-- Headphones behind ears (gold, bulky, hugging head) -->
+    <!-- Band follows head contour -->
+    <path d="M -21 -4 C -22 -14 -16 -22 0 -22 C 16 -22 22 -14 21 -4" stroke="#eab308" stroke-width="4.5" stroke-linecap="round" fill="none"/>
+    <!-- Left ear cup hugging side of head -->
+    <ellipse cx="-22" cy="0" rx="6" ry="10" fill="#eab308"/>
+    <ellipse cx="-22" cy="0" rx="4.5" ry="8" fill="#ca9a06"/>
+    <ellipse cx="-22" cy="0" rx="3" ry="5" fill="#0a0a0f" opacity="0.3"/>
+    <!-- Right ear cup hugging side of head -->
+    <ellipse cx="22" cy="0" rx="6" ry="10" fill="#eab308"/>
+    <ellipse cx="22" cy="0" rx="4.5" ry="8" fill="#ca9a06"/>
+    <ellipse cx="22" cy="0" rx="3" ry="5" fill="#0a0a0f" opacity="0.3"/>
+
+    <!-- Ears pointing UP (in front of headphones) -->
     <path d="M -12 -12 L -18 -30 L -6 -16 Z" fill="url(#batGrad)"/>
     <path d="M 12 -12 L 18 -30 L 6 -16 Z" fill="url(#batGrad)"/>
     <!-- Inner ears -->

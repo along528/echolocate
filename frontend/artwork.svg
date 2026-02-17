@@ -14,10 +14,18 @@
     <!-- Head -->
     <ellipse cx="0" cy="0" rx="20" ry="18" fill="url(#batGrad)"/>
 
-    <!-- Ears pointing UP -->
+    <!-- Headphones behind ears (gold, bulky, hugging head) -->
+    <path d="M -21 -4 C -22 -14 -16 -22 0 -22 C 16 -22 22 -14 21 -4" stroke="#eab308" stroke-width="4.5" stroke-linecap="round" fill="none"/>
+    <ellipse cx="-22" cy="0" rx="6" ry="10" fill="#eab308"/>
+    <ellipse cx="-22" cy="0" rx="4.5" ry="8" fill="#ca9a06"/>
+    <ellipse cx="-22" cy="0" rx="3" ry="5" fill="#0a0a0f" opacity="0.3"/>
+    <ellipse cx="22" cy="0" rx="6" ry="10" fill="#eab308"/>
+    <ellipse cx="22" cy="0" rx="4.5" ry="8" fill="#ca9a06"/>
+    <ellipse cx="22" cy="0" rx="3" ry="5" fill="#0a0a0f" opacity="0.3"/>
+
+    <!-- Ears pointing UP (in front of headphones) -->
     <path d="M -12 -12 L -18 -30 L -6 -16 Z" fill="url(#batGrad)"/>
     <path d="M 12 -12 L 18 -30 L 6 -16 Z" fill="url(#batGrad)"/>
-    <!-- Inner ears -->
     <path d="M -11 -14 L -15 -26 L -7 -16 Z" fill="#4f46e5" opacity="0.4"/>
     <path d="M 11 -14 L 15 -26 L 7 -16 Z" fill="#4f46e5" opacity="0.4"/>
 
@@ -28,10 +36,8 @@
     <!-- Eyes -->
     <ellipse cx="-8" cy="-2" rx="4" ry="4.5" fill="#0a0a0f"/>
     <ellipse cx="8" cy="-2" rx="4" ry="4.5" fill="#0a0a0f"/>
-    <!-- Pupils -->
     <circle cx="-7" cy="-1" r="2" fill="#6366f1" opacity="0.6"/>
     <circle cx="9" cy="-1" r="2" fill="#6366f1" opacity="0.6"/>
-    <!-- Eye shine -->
     <circle cx="-6" cy="-3" r="1" fill="rgba(255,255,255,0.5)"/>
     <circle cx="10" cy="-3" r="1" fill="rgba(255,255,255,0.5)"/>
 

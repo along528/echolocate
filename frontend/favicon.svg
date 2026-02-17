@@ -10,17 +10,22 @@
   <g transform="translate(16, 12)">
     <ellipse cx="0" cy="0" rx="7" ry="6.5" fill="url(#g)"/>
 
-    <!-- Ears pointing up -->
+    <!-- Headphones behind ears (gold, hugging head) -->
+    <path d="M -7.5 -1.5 C -8 -5.5 -5.5 -8 0 -8 C 5.5 -8 8 -5.5 7.5 -1.5" stroke="#eab308" stroke-width="1.8" stroke-linecap="round" fill="none"/>
+    <ellipse cx="-8" cy="0" rx="2.2" ry="3.5" fill="#eab308"/>
+    <ellipse cx="-8" cy="0" rx="1.5" ry="2.5" fill="#ca9a06"/>
+    <ellipse cx="8" cy="0" rx="2.2" ry="3.5" fill="#eab308"/>
+    <ellipse cx="8" cy="0" rx="1.5" ry="2.5" fill="#ca9a06"/>
+
+    <!-- Ears pointing up (in front of headphones) -->
     <path d="M -4 -4 L -6.5 -11 L -2 -5.5 Z" fill="url(#g)"/>
     <path d="M 4 -4 L 6.5 -11 L 2 -5.5 Z" fill="url(#g)"/>
 
     <!-- Eyes -->
     <ellipse cx="-3" cy="-1" rx="1.5" ry="1.7" fill="#0a0a0f"/>
     <ellipse cx="3" cy="-1" rx="1.5" ry="1.7" fill="#0a0a0f"/>
-    <!-- Pupils -->
     <circle cx="-2.7" cy="-0.7" r="0.7" fill="#6366f1" opacity="0.6"/>
     <circle cx="3.3" cy="-0.7" r="0.7" fill="#6366f1" opacity="0.6"/>
-    <!-- Eye shine -->
     <circle cx="-2.3" cy="-1.5" r="0.4" fill="rgba(255,255,255,0.5)"/>
     <circle cx="3.7" cy="-1.5" r="0.4" fill="rgba(255,255,255,0.5)"/>
 
