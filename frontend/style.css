@@ -877,8 +877,7 @@ input:checked+.slider:before {
     color: var(--text-secondary);
     font-size: 0.85rem;
     cursor: pointer;
-    opacity: 0.2;
-    /* Fainter by default */
+    opacity: 0.5;
     transition: all 0.2s ease;
 }
 
@@ -1436,14 +1435,18 @@ input:checked+.slider:before {
 
     /* Enhanced Touch Targets for Insertion */
     .insert-steer-btn {
-        width: 48px;
-        height: 48px;
-        font-size: 1.5rem;
+        width: 28px;
+        height: 28px;
+        font-size: 1rem;
+        opacity: 0.7;
+    }
+
+    .insert-steer-btn:disabled {
+        opacity: 0.15;
     }
 
     .insert-btn-group {
         gap: 16px;
-        /* More space between + and interpolate */
     }
 
     /* Player Bar Rearrangement */
@@ -1489,8 +1492,8 @@ input:checked+.slider:before {
     .steer-slot-container {
         position: relative;
         margin-top: 0 !important;
-        margin-bottom: 24px !important;
-        padding-top: 8px !important;
+        margin-bottom: 16px !important;
+        padding-top: 4px !important;
         border: none !important;
     }
 
@@ -1513,19 +1516,27 @@ input:checked+.slider:before {
         display: none !important;
     }
 
-    /* Insert buttons (+✨): float between slots into next slot's padding-top area */
+    /* Insert buttons (+✨): float between slots, + on left, sparkle on right */
     .insert-btn-group {
         position: relative !important;
         width: auto !important;
         height: 0 !important;
         overflow: visible !important;
         margin: 0 !important;
-        padding: 0 !important;
+        padding: 0 4px !important;
         z-index: 25 !important;
         display: flex !important;
-        justify-content: flex-start !important;
-        padding-left: 4px !important;
-        top: 0 !important;
+        justify-content: space-between !important;
+        top: -8px !important;
+    }
+
+    .insert-btn-group .insert-steer-btn {
+        transform: translateY(-50%);
+    }
+
+    .insert-interp-btn svg {
+        width: 14px;
+        height: 14px;
     }
 
     /* Ensure slot content isn't clipped */
