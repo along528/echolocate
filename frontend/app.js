@@ -19,12 +19,112 @@ const App = {
 
     init() {
         Player.init();
+        const restored = this.restoreState();
         this.setupEventListeners();
         this.setupMobileNavigation();
         this.setupDragAndDrop();
-        this.loadInitialTracks();
+        if (restored) {
+            // Sync DOM inputs to restored state
+            const searchInput = document.getElementById('search-input');
+            if (searchInput && this._savedSearchValue) {
+                searchInput.value = this._savedSearchValue;
+            }
+            delete this._savedSearchValue;
+
+            // Sync search mode tabs
+            document.querySelectorAll('.tab').forEach(t => {
+                t.classList.toggle('active', t.dataset.tab === this.searchMode);
+            });
+
+            // Sync enhance toggle
+            const toggle = document.getElementById('enhance-toggle');
+            if (toggle) toggle.checked = this.enhanceQuery;
+
+            // Rebuild steer slot DOM elements from restored state
+            const container = document.getElementById('steer-slots-container');
+            this.steerSlots.forEach(slot => {
+                const el = this.createSteerSlotElement(slot.id);
+                container.appendChild(el);
+                if (!slot.isInterpolated) {
+                    this.setupSlotListeners(slot.id);
+                }
+                this.setupSlotDragDrop(slot.id);
+            });
+
+            this.renderResults();
+            this.renderBuilder();
+        } else {
+            this.loadInitialTracks();
+            this.renderBuilder();
+        }
         this.updateUIState();
-        this.renderBuilder();
+    },
+
+    saveState() {
+        try {
+            const serializeSlot = (slot) => ({
+                id: slot.id,
+                track: slot.track,
+                query: slot.query,
+                results: slot.results,
+                currentIndex: slot.currentIndex,
+                enhancedQuery: slot.enhancedQuery,
+                isEditing: slot.isEditing,
+                dismissed: slot.dismissed,
+                isInterpolated: slot.isInterpolated
+            });
+
+            const builderState = {
+                start: serializeSlot(this.slots.start),
+                end: serializeSlot(this.slots.end),
+                steerSlots: this.steerSlots.map(serializeSlot),
+                steerCounter: this.steerCounter
+            };
+            localStorage.setItem('echolocate-builder', JSON.stringify(builderState));
+
+            const searchState = {
+                searchMode: this.searchMode,
+                enhanceQuery: this.enhanceQuery,
+                results: this.results,
+                pinnedTrack: this.pinnedTrack,
+                searchValue: document.getElementById('search-input')?.value || ''
+            };
+            localStorage.setItem('echolocate-search', JSON.stringify(searchState));
+        } catch (e) {
+            console.warn('Failed to save app state:', e);
+        }
+    },
+
+    restoreState() {
+        try {
+            const builderRaw = localStorage.getItem('echolocate-builder');
+            const searchRaw = localStorage.getItem('echolocate-search');
+            if (!builderRaw && !searchRaw) return false;
+
+            if (builderRaw) {
+                const builder = JSON.parse(builderRaw);
+                // Restore fixed slots
+                if (builder.start) Object.assign(this.slots.start, builder.start);
+                if (builder.end) Object.assign(this.slots.end, builder.end);
+                if (builder.steerSlots) this.steerSlots = builder.steerSlots;
+                if (builder.steerCounter != null) this.steerCounter = builder.steerCounter;
+            }
+
+            if (searchRaw) {
+                const search = JSON.parse(searchRaw);
+                if (search.searchMode) this.searchMode = search.searchMode;
+                if (search.enhanceQuery != null) this.enhanceQuery = search.enhanceQuery;
+                if (search.results) this.results = search.results;
+                if (search.pinnedTrack !== undefined) this.pinnedTrack = search.pinnedTrack;
+                // Stash search input value for init() to apply after DOM is ready
+                this._savedSearchValue = search.searchValue || '';
+            }
+
+            return true;
+        } catch (e) {
+            console.warn('Failed to restore app state:', e);
+            return false;
+        }
     },
 
     getSlot(name) {
@@ -41,6 +141,7 @@ const App = {
                 target.classList.add('active');
                 this.searchMode = target.dataset.tab;
                 this.updateUIState();
+                this.saveState();
             });
         });
 
@@ -55,6 +156,7 @@ const App = {
         if (toggle) {
             toggle.addEventListener('change', (e) => {
                 this.enhanceQuery = e.target.checked;
+                this.saveState();
             });
         }
 
@@ -635,6 +737,7 @@ const App = {
         }
 
         Components.renderTrackList(container, this.results, { clear: false });
+        this.saveState();
     },
 
     renderBuilder() {
@@ -672,6 +775,7 @@ const App = {
                 Player.updatePlaylist(builderTracks);
             }
         }
+        this.saveState();
     },
 
     renderInsertButtons() {

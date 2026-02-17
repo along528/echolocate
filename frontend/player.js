@@ -22,6 +22,38 @@ const Player = {
 
         this.setupEventListeners();
         this.setupKeyboardListeners();
+        this.restoreState();
+    },
+
+    saveState() {
+        try {
+            const state = {
+                playlist: this.playlist,
+                currentTrack: this.currentTrack,
+                currentIndex: this.currentIndex
+            };
+            localStorage.setItem('echolocate-player', JSON.stringify(state));
+        } catch (e) {
+            console.warn('Failed to save player state:', e);
+        }
+    },
+
+    restoreState() {
+        try {
+            const raw = localStorage.getItem('echolocate-player');
+            if (!raw) return;
+            const state = JSON.parse(raw);
+            if (state.playlist && state.playlist.length > 0) {
+                this.playlist = state.playlist;
+                this.currentIndex = state.currentIndex ?? -1;
+                if (state.currentTrack) {
+                    this.currentTrack = state.currentTrack;
+                    this.updateNowPlaying();
+                }
+            }
+        } catch (e) {
+            console.warn('Failed to restore player state:', e);
+        }
     },
 
     setupEventListeners() {
@@ -84,6 +116,7 @@ const Player = {
 
         this.updateNowPlaying();
         this.updateMediaSession(track);
+        this.saveState();
 
         // Sync currentIndex if track is in playlist
         const index = this.playlist.findIndex(t => String(t.id) === String(track.id));
@@ -154,6 +187,7 @@ const Player = {
     setPlaylist(tracks, startIndex = 0) {
         this.playlist = tracks;
         this.currentIndex = startIndex;
+        this.saveState();
         if (tracks.length > 0) {
             this.play(tracks[startIndex]);
         }
@@ -163,6 +197,7 @@ const Player = {
         // Avoid duplicates
         if (!this.playlist.find(t => t.id === track.id)) {
             this.playlist.push(track);
+            this.saveState();
             return true;
         }
         return false;
@@ -185,8 +220,8 @@ const Player = {
                 this.playlist = newTracks;
                 this.currentIndex = newIndex;
             } else {
-                // Current track not in new list. 
-                // Decision: Do we update anyway? 
+                // Current track not in new list.
+                // Decision: Do we update anyway?
                 // If we do, currentIndex becomes invalid (-1), next user action will restart.
                 // This seems correct for "Builder changed significantly".
                 console.log('Syncing playlist. Current track not found in new list.');
@@ -198,6 +233,7 @@ const Player = {
             this.playlist = newTracks;
             this.currentIndex = -1;
         }
+        this.saveState();
     },
 
     clearPlaylist() {
