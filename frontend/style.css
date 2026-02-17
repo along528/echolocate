@@ -1386,7 +1386,7 @@ input:checked+.slider:before {
     /* Bigger Slot Search Input */
     .slot-search-input {
         height: 48px !important;
-        font-size: 0.9rem !important;
+        font-size: 16px !important;
         padding-right: 0.75rem !important;
         /* Reset nav-controls padding since they won't be here in edit mode */
     }
