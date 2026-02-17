@@ -1549,10 +1549,12 @@ input:checked+.slider:before {
     .track-slot .track-info {
         width: 100%;
         flex: none;
+        order: 1;
     }
 
     .track-slot .track-actions {
         flex: none;
+        order: 2;
     }
 
     /* Show inline slot controls */
@@ -1560,6 +1562,7 @@ input:checked+.slider:before {
         display: flex !important;
         gap: 0.5rem;
         margin-left: auto;
+        order: 3;
     }
 
     .slot-controls-inline .action-btn {
@@ -1571,6 +1574,10 @@ input:checked+.slider:before {
         background: #ef4444;
         color: white;
         border-color: transparent;
+    }
+
+    .track-slot .track-card-footer {
+        order: 4;
     }
 }
 

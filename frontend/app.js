@@ -979,28 +979,6 @@ const App = {
                 context: builderContext
             });
 
-            // --- Footer: Enhanced Text Only (Nav/Edit moved to header) ---
-            if (slot.enhancedQuery) {
-                const footer = document.createElement('div');
-                footer.className = 'track-card-footer';
-
-                const footerTools = document.createElement('div');
-                footerTools.className = 'footer-tools';
-                footerTools.style.display = 'flex';
-                footerTools.style.alignItems = 'center';
-
-                // Enhanced Text
-                const text = document.createElement('div');
-                text.className = 'footer-enhanced-text';
-                text.innerHTML = `✨ ${slot.enhancedQuery}`;
-                text.title = slot.enhancedQuery;
-                text.style.marginLeft = '0';
-                footerTools.appendChild(text);
-
-                footer.appendChild(footerTools);
-                card.appendChild(footer);
-            }
-
             // --- Inline Slot Controls (for mobile: same row as play/url buttons) ---
             const inlineControls = document.createElement('div');
             inlineControls.className = 'slot-controls-inline';
@@ -1034,6 +1012,28 @@ const App = {
             }
 
             card.appendChild(inlineControls);
+
+            // --- Footer: Enhanced Text Only (Nav/Edit moved to header) ---
+            if (slot.enhancedQuery) {
+                const footer = document.createElement('div');
+                footer.className = 'track-card-footer';
+
+                const footerTools = document.createElement('div');
+                footerTools.className = 'footer-tools';
+                footerTools.style.display = 'flex';
+                footerTools.style.alignItems = 'center';
+
+                // Enhanced Text
+                const text = document.createElement('div');
+                text.className = 'footer-enhanced-text';
+                text.innerHTML = `✨ ${slot.enhancedQuery}`;
+                text.title = slot.enhancedQuery;
+                text.style.marginLeft = '0';
+                footerTools.appendChild(text);
+
+                footer.appendChild(footerTools);
+                card.appendChild(footer);
+            }
 
             filledSlot.appendChild(card);
         }
