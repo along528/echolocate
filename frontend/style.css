@@ -1493,12 +1493,12 @@ input:checked+.slider:before {
         gap: 0 !important;
     }
 
-    /* Slot containers: zero gap, buttons float on borders */
+    /* Slot containers: tiny gap between tracks for button centering */
     .slot-container,
     .steer-slot-container {
         position: relative;
         margin-top: 0 !important;
-        margin-bottom: 0 !important;
+        margin-bottom: 2px !important;
         padding-top: 0 !important;
         border: none !important;
     }
@@ -1536,7 +1536,7 @@ input:checked+.slider:before {
     }
 
     .insert-btn-group .insert-steer-btn {
-        transform: translateY(-50%);
+        transform: translateY(calc(-50% - 1px));
     }
 
     .insert-interp-btn svg {
