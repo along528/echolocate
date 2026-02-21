@@ -26,9 +26,12 @@ gcloud run deploy $SERVICE_NAME \
     --no-allow-unauthenticated \
     --ingress internal-and-cloud-load-balancing \
     --execution-environment=gen2 \
-    --memory=4Gi \
-    --cpu=2 \
-    --timeout=300 \
+    --memory=2Gi \
+    --cpu=1 \
+    --timeout=900 \
+    --cpu-boost \
+    --cpu-throttling \
+    --min-instances=0 \
     --add-volume=name=db-volume,type=cloud-storage,bucket=$BUCKET_NAME \
     --add-volume-mount=volume=db-volume,mount-path=/data \
     --set-env-vars DB_PATH=/data/cloudcrate.duckdb,GCP_PROJECT_ID=$(gcloud config get-value project)

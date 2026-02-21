@@ -217,13 +217,27 @@ async def startup_event():
     else:
         print("ℹ️ GCP_PROJECT_ID not set. Enhanced search disabled.")
 
-    # 2. Verify DB
+    # 2. Pre-install DuckDB VSS extension (avoids download on first request)
+    try:
+        con = duckdb.connect(DB_PATH, read_only=True)
+        con.execute("INSTALL vss; LOAD vss;")
+        con.close()
+        print(f"✅ DuckDB VSS extension installed, database: {DB_PATH}")
+    except Exception as e:
+        print(f"⚠️ DuckDB VSS pre-install failed: {e}")
+
+    # 3. Verify DB
     if not os.path.exists(DB_PATH):
         print(f"⚠️ WARNING: Database file not found at {DB_PATH}")
     else:
         print(f"Database found at {DB_PATH}")
-    
-    print("CLAP model will be loaded on first semantic search request.")
+
+    # 4. Eagerly load CLAP model (cpu-boost provides extra CPU during startup)
+    try:
+        get_clap_model()
+        print("✅ CLAP model loaded at startup.")
+    except Exception as e:
+        print(f"⚠️ CLAP model failed to load at startup (will retry on first request): {e}")
 
 def get_db_connection():
     # Connect in Read-Only mode to allow concurrency/cloud run compatibility
