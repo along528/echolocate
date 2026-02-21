@@ -303,8 +303,12 @@ def list_tracks(limit: int = 50, offset: int = 0, random: bool = True, source: L
         source_filter = "" if source == "all" else f"WHERE source = '{source}'"
         
         if random:
-            query = f"SELECT id, source, title, artist, album, relative_path, track_url, album_url, artist_url FROM tracks {source_filter} ORDER BY RANDOM() LIMIT ?"
-            results = con.execute(query, [limit]).fetchall()
+            sample_size = int(limit)
+            if source == "all":
+                query = f"SELECT id, source, title, artist, album, relative_path, track_url, album_url, artist_url FROM tracks USING SAMPLE {sample_size} ROWS"
+            else:
+                query = f"SELECT id, source, title, artist, album, relative_path, track_url, album_url, artist_url FROM (SELECT * FROM tracks WHERE source = '{source}') USING SAMPLE {sample_size} ROWS"
+            results = con.execute(query).fetchall()
         else:
             where_or_and = "WHERE" if source == "all" else "AND"
             query = f"SELECT id, source, title, artist, album, relative_path, track_url, album_url, artist_url FROM tracks {source_filter} ORDER BY id LIMIT ? OFFSET ?"

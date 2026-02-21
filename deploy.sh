@@ -9,9 +9,10 @@ cd vector
 ./deploy.sh
 cd ..
 
-# Capture Vector Service URL
+# Capture Vector Service URL using project-number format (required for Cloud Run internal routing)
 echo "🔍 Retrieving Vector Service URL..."
-VECTOR_URL=$(gcloud run services describe cloud-crate-vector --region us-central1 --format 'value(status.url)')
+PROJECT_NUMBER=$(gcloud projects describe $(gcloud config get-value project) --format 'value(projectNumber)')
+VECTOR_URL="https://cloud-crate-vector-${PROJECT_NUMBER}.us-central1.run.app"
 echo "✅ Vector Service URL: $VECTOR_URL"
 
 # 2. Deploy MCP Server
