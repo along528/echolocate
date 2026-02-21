@@ -24,7 +24,7 @@ gcloud run deploy $SERVICE_NAME \
     --source . \
     --region $REGION \
     --no-allow-unauthenticated \
-    --ingress internal-and-cloud-load-balancing \
+    --ingress all \
     --execution-environment=gen2 \
     --memory=2Gi \
     --cpu=1 \
