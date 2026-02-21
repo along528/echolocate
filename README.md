@@ -208,3 +208,13 @@ To verify the frontend works end-to-end, open `https://echolocate.app` in a brow
 Use the provided scripts for deeper checks:
 - `python vector/verify_service.py <VECTOR_URL>`
 - `python mcp/verify_auth.py <MCP_URL>`
+
+## Troubleshooting
+
+### Safari: frontend loads but vector API calls fail after a redeploy
+
+**Symptom**: The page loads and you're logged in, but search or interpolation buttons do nothing (or fail silently). Chrome works fine.
+
+**Cause**: The frontend and vector API are separate IAP-protected backends behind the same load balancer. Each backend requires its own IAP session cookie. Chrome silently re-authenticates both sessions via a hidden iframe on the first request. Safari's Intelligent Tracking Prevention (ITP) blocks these third-party cookie flows, so the vector backend session is never established.
+
+**Fix**: Clear your browser cookies for `echolocate.app` (or do a full Safari "Clear History and Website Data"), then reload. This forces a fresh IAP login that establishes sessions for both backends at once.
