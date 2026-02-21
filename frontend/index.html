@@ -5,6 +5,9 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>EchoLocate - FMA Explorer</title>
+    <meta name="theme-color" content="#0a0a0f">
+    <link rel="icon" type="image/svg+xml" href="favicon.svg">
+    <link rel="apple-touch-icon" href="apple-touch-icon.png">
     <link rel="stylesheet" href="style.css?v=31">
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
@@ -15,14 +18,14 @@
     <div class="app-container">
         <!-- Header -->
         <header class="header">
-            <h1 class="logo">🎵 EchoLocate</h1>
+            <h1 class="logo"><img src="logo.svg" alt="EchoLocate" class="logo-icon"> EchoLocate</h1>
             <p class="tagline">Explore 100k+ FMA tracks with AI-powered search</p>
         </header>
 
         <!-- Mobile Navigation (Visible only on small screens) -->
         <nav class="mobile-nav">
-            <button class="mobile-tab" data-mobile-tab="search">Search</button>
-            <button class="mobile-tab active" data-mobile-tab="playlist">Playlist</button>
+            <button class="mobile-tab active" data-mobile-tab="search">Search</button>
+            <button class="mobile-tab" data-mobile-tab="playlist">Playlist</button>
         </nav>
 
         <!-- Main Content -->
@@ -49,8 +52,8 @@
                     <div class="search-container">
                         <input type="text" id="search-input" placeholder="Search by artist, title, or album...">
                         <button id="search-btn" class="btn-primary">Search</button>
-                        <button id="random-btn" class="btn-secondary" title="Surprise me with random tracks">🎲
-                            Random</button>
+                        <button id="random-btn" class="btn-secondary" title="Surprise me with a random vibe">🎲
+                            Surprise</button>
                     </div>
 
                     <div id="enhanced-query-display" class="enhanced-query"></div>
@@ -67,7 +70,7 @@
                     <button id="clear-results" class="btn-secondary" title="Clear search results">Clear</button>
                 </div>
                 <!-- Alignment Spacer: Matches "Start Track" label height in builder -->
-                <div style="height: 17px;"></div>
+                <div class="results-spacer" style="height: 17px;"></div>
                 <div id="results-list" class="track-list"></div>
             </section>
 
@@ -133,9 +136,18 @@
                 <span id="now-playing-artist"></span>
             </div>
             <div class="player-controls">
-                <button id="prev-btn" class="player-btn"><svg viewBox="0 0 24 24" fill="currentColor" width="20" height="20"><path d="M6 6h2v12H6zm3.5 6l8.5 6V6z"/></svg></button>
-                <button id="play-btn" class="player-btn"><svg viewBox="0 0 24 24" fill="currentColor" width="20" height="20"><path d="M8 5v14l11-7z"/></svg></button>
-                <button id="next-btn" class="player-btn"><svg viewBox="0 0 24 24" fill="currentColor" width="20" height="20"><path d="M6 18l8.5-6L6 6v12zM16 6v12h2V6h-2z"/></svg></button>
+                <button id="prev-btn" class="player-btn"><svg viewBox="0 0 24 24" fill="currentColor" width="20"
+                        height="20">
+                        <path d="M6 6h2v12H6zm3.5 6l8.5 6V6z" />
+                    </svg></button>
+                <button id="play-btn" class="player-btn"><svg viewBox="0 0 24 24" fill="currentColor" width="20"
+                        height="20">
+                        <path d="M8 5v14l11-7z" />
+                    </svg></button>
+                <button id="next-btn" class="player-btn"><svg viewBox="0 0 24 24" fill="currentColor" width="20"
+                        height="20">
+                        <path d="M6 18l8.5-6L6 6v12zM16 6v12h2V6h-2z" />
+                    </svg></button>
             </div>
             <div class="progress-container">
                 <span id="current-time">0:00</span>
@@ -155,7 +167,7 @@
             : '/api';
     </script>
     <script src="api.js?v=8"></script>
-    <script src="player.js?v=9"></script>
+    <script src="player.js?v=10"></script>
     <script src="components.js?v=8"></script>
     <script src="app.js?v=9"></script>
 </body>

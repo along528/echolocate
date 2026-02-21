@@ -19,12 +19,112 @@ const App = {
 
     init() {
         Player.init();
+        const restored = this.restoreState();
         this.setupEventListeners();
         this.setupMobileNavigation();
         this.setupDragAndDrop();
-        this.loadInitialTracks();
+        if (restored) {
+            // Sync DOM inputs to restored state
+            const searchInput = document.getElementById('search-input');
+            if (searchInput && this._savedSearchValue) {
+                searchInput.value = this._savedSearchValue;
+            }
+            delete this._savedSearchValue;
+
+            // Sync search mode tabs
+            document.querySelectorAll('.tab').forEach(t => {
+                t.classList.toggle('active', t.dataset.tab === this.searchMode);
+            });
+
+            // Sync enhance toggle
+            const toggle = document.getElementById('enhance-toggle');
+            if (toggle) toggle.checked = this.enhanceQuery;
+
+            // Rebuild steer slot DOM elements from restored state
+            const container = document.getElementById('steer-slots-container');
+            this.steerSlots.forEach(slot => {
+                const el = this.createSteerSlotElement(slot.id);
+                container.appendChild(el);
+                if (!slot.isInterpolated) {
+                    this.setupSlotListeners(slot.id);
+                }
+                this.setupSlotDragDrop(slot.id);
+            });
+
+            this.renderResults();
+            this.renderBuilder();
+        } else {
+            this.loadInitialTracks();
+            this.renderBuilder();
+        }
         this.updateUIState();
-        this.renderBuilder();
+    },
+
+    saveState() {
+        try {
+            const serializeSlot = (slot) => ({
+                id: slot.id,
+                track: slot.track,
+                query: slot.query,
+                results: slot.results,
+                currentIndex: slot.currentIndex,
+                enhancedQuery: slot.enhancedQuery,
+                isEditing: slot.isEditing,
+                dismissed: slot.dismissed,
+                isInterpolated: slot.isInterpolated
+            });
+
+            const builderState = {
+                start: serializeSlot(this.slots.start),
+                end: serializeSlot(this.slots.end),
+                steerSlots: this.steerSlots.map(serializeSlot),
+                steerCounter: this.steerCounter
+            };
+            localStorage.setItem('echolocate-builder', JSON.stringify(builderState));
+
+            const searchState = {
+                searchMode: this.searchMode,
+                enhanceQuery: this.enhanceQuery,
+                results: this.results,
+                pinnedTrack: this.pinnedTrack,
+                searchValue: document.getElementById('search-input')?.value || ''
+            };
+            localStorage.setItem('echolocate-search', JSON.stringify(searchState));
+        } catch (e) {
+            console.warn('Failed to save app state:', e);
+        }
+    },
+
+    restoreState() {
+        try {
+            const builderRaw = localStorage.getItem('echolocate-builder');
+            const searchRaw = localStorage.getItem('echolocate-search');
+            if (!builderRaw && !searchRaw) return false;
+
+            if (builderRaw) {
+                const builder = JSON.parse(builderRaw);
+                // Restore fixed slots
+                if (builder.start) Object.assign(this.slots.start, builder.start);
+                if (builder.end) Object.assign(this.slots.end, builder.end);
+                if (builder.steerSlots) this.steerSlots = builder.steerSlots;
+                if (builder.steerCounter != null) this.steerCounter = builder.steerCounter;
+            }
+
+            if (searchRaw) {
+                const search = JSON.parse(searchRaw);
+                if (search.searchMode) this.searchMode = search.searchMode;
+                if (search.enhanceQuery != null) this.enhanceQuery = search.enhanceQuery;
+                if (search.results) this.results = search.results;
+                if (search.pinnedTrack !== undefined) this.pinnedTrack = search.pinnedTrack;
+                // Stash search input value for init() to apply after DOM is ready
+                this._savedSearchValue = search.searchValue || '';
+            }
+
+            return true;
+        } catch (e) {
+            console.warn('Failed to restore app state:', e);
+            return false;
+        }
     },
 
     getSlot(name) {
@@ -41,6 +141,7 @@ const App = {
                 target.classList.add('active');
                 this.searchMode = target.dataset.tab;
                 this.updateUIState();
+                this.saveState();
             });
         });
 
@@ -55,6 +156,7 @@ const App = {
         if (toggle) {
             toggle.addEventListener('change', (e) => {
                 this.enhanceQuery = e.target.checked;
+                this.saveState();
             });
         }
 
@@ -163,10 +265,10 @@ const App = {
             });
         });
 
-        // Initialize Mobile View (Default to Playlist on mobile load)
+        // Initialize Mobile View (Default to Search on mobile load)
         const isMobile = window.innerWidth <= 900;
         if (isMobile) {
-            setMobileView('playlist');
+            setMobileView('search');
         } else {
             // Reset for desktop
             if (resultsPanel) resultsPanel.classList.add('active');
@@ -316,6 +418,7 @@ const App = {
         slot.currentIndex = -1;
         slot.enhancedQuery = null;
         slot.isEditing = true;
+        slot.dismissed = false;
     },
 
     updateUIState() {
@@ -389,14 +492,77 @@ const App = {
         }
     },
 
+    seedQueries: [
+        'dreamy lo-fi with warm vinyl crackle',
+        'heavy distorted guitars and pounding drums',
+        'smooth jazz saxophone late at night',
+        'glitchy IDM with stuttering beats',
+        'haunting ambient drone textures',
+        'funky bass grooves and tight percussion',
+        'ethereal vocals floating over synth pads',
+        'raw punk energy and shouted vocals',
+        'melancholic piano with strings',
+        'tropical rhythms and steel drums',
+        'dark industrial machinery sounds',
+        'bright acoustic fingerpicking',
+        'spacey cosmic synth arpeggios',
+        'soulful organ and gospel choir',
+        'minimal techno with hypnotic loops',
+        'chaotic free jazz improvisation',
+        'lush orchestral swells and crescendos',
+        'dusty boom bap hip hop beats',
+        'shimmering shoegaze wall of sound',
+        'eerie field recordings and found sounds',
+        'wobbly tape-warped synths and delay',
+        'driving krautrock motorik beat',
+        'gentle bossa nova guitar and brushes',
+        'massive sub bass and skittering hi-hats',
+        'twangy country slide guitar',
+        'polyrhythmic afrobeat horns and percussion',
+        'meditative singing bowls and drones',
+        'crunchy breakbeats and jungle rollers',
+        'wistful accordion and strings waltz',
+        'fizzy power pop with jangly guitars',
+        'deep dub reggae with heavy reverb',
+        'noisy feedback and dissonant chords',
+        'chiptune arpeggios and 8-bit drums',
+        'thunderous orchestral percussion',
+        'whispery folk and fingerpicked banjo',
+        'acid house squelchy 303 bassline',
+        'cinematic tension with low cello',
+        'sun-drenched surf rock reverb',
+        'brittle prepared piano and silence',
+        'sparse minimal classical with solo violin'
+    ],
+
     async loadInitialTracks() {
         try {
             const source = this.getSelectedSource();
-            const tracks = await API.getTracks(50, source);
+            const query = this.seedQueries[Math.floor(Math.random() * this.seedQueries.length)];
+            const searchInput = document.getElementById('search-input');
+            searchInput.value = query;
+
+            const enhancedDisplay = document.getElementById('enhanced-query-display');
+            enhancedDisplay.style.visibility = 'hidden';
+            enhancedDisplay.style.opacity = '0';
+
+            const response = await API.semanticSearch(query, source, 50, this.enhanceQuery);
+            let tracks;
+            if (response.results) {
+                tracks = response.results;
+                if (response.enhanced_query && this.enhanceQuery) {
+                    enhancedDisplay.innerHTML = `<strong>Enhanced:</strong> "${response.enhanced_query}"`;
+                    enhancedDisplay.style.visibility = 'visible';
+                    enhancedDisplay.style.opacity = '1';
+                }
+            } else {
+                tracks = response;
+            }
+
             this.results = tracks;
             this.pinnedTrack = null;
             this.renderResults();
-            document.getElementById('result-count').textContent = `(${tracks.length} random)`;
+            document.getElementById('result-count').textContent = `(${tracks.length} found)`;
         } catch (error) {
             console.error('Failed to load tracks:', error);
         }
@@ -634,6 +800,7 @@ const App = {
         }
 
         Components.renderTrackList(container, this.results, { clear: false });
+        this.saveState();
     },
 
     renderBuilder() {
@@ -642,10 +809,11 @@ const App = {
         // Render dynamic steer slots
         this.steerSlots.forEach(s => this.renderSlot(s.id));
 
-        // Show end slot only if start track is set
+        // Show end slot only if start track is set and not dismissed
         const endSlot = document.querySelector('.slot-container[data-slot="end"]');
         const hasStart = !!this.slots.start.track;
-        if (endSlot) endSlot.style.display = hasStart ? '' : 'none';
+        const endHasContent = !!this.slots.end.track || this.slots.end.query;
+        if (endSlot) endSlot.style.display = (hasStart && !this.slots.end.dismissed) || endHasContent ? '' : 'none';
 
         // Render "+" insert buttons between every pair of adjacent slots
         this.renderInsertButtons();
@@ -670,6 +838,7 @@ const App = {
                 Player.updatePlaylist(builderTracks);
             }
         }
+        this.saveState();
     },
 
     renderInsertButtons() {
@@ -810,6 +979,17 @@ const App = {
                     minimal: true,
                     context: builderContext
                 });
+                // Inline controls for interpolated slot (mobile: × button)
+                const inlineControls = document.createElement('div');
+                inlineControls.className = 'slot-controls-inline';
+                const removeBtn = document.createElement('button');
+                removeBtn.className = 'action-btn slot-inline-btn remove-inline-btn';
+                removeBtn.innerHTML = '×';
+                removeBtn.title = 'Remove';
+                removeBtn.onclick = (e) => { e.stopPropagation(); this.removeSteerSlot(slotName); };
+                inlineControls.appendChild(removeBtn);
+                card.appendChild(inlineControls);
+
                 trackSlot.appendChild(card);
             } else {
                 // Should not really happen for interpolated, but fallback
@@ -968,6 +1148,40 @@ const App = {
                 context: builderContext
             });
 
+            // --- Inline Slot Controls (for mobile: same row as play/url buttons) ---
+            const inlineControls = document.createElement('div');
+            inlineControls.className = 'slot-controls-inline';
+
+            const createInlineBtn = (icon, title, onClick, extraClass = '') => {
+                const btn = document.createElement('button');
+                btn.className = `action-btn slot-inline-btn ${extraClass}`;
+                btn.innerHTML = icon;
+                btn.title = title;
+                btn.onclick = (e) => { e.stopPropagation(); onClick(e); };
+                return btn;
+            };
+
+            if (slot.results && slot.results.length > 1) {
+                inlineControls.appendChild(createInlineBtn('←', 'Previous result', () => this.navigateSlot(slotName, -1)));
+                inlineControls.appendChild(createInlineBtn('→', 'Next result', () => this.navigateSlot(slotName, 1)));
+            }
+            if (!slot.isInterpolated) {
+                inlineControls.appendChild(createInlineBtn('✎', 'Edit', () => {
+                    slot.isEditing = true;
+                    this.renderSlot(slotName);
+                }));
+            }
+            if (slotName.startsWith('steer-')) {
+                inlineControls.appendChild(createInlineBtn('×', 'Remove', () => this.removeSteerSlot(slotName), 'remove-inline-btn'));
+            } else if (slot.track) {
+                inlineControls.appendChild(createInlineBtn('×', 'Clear', () => {
+                    this.resetSlot(slotName);
+                    this.renderBuilder();
+                }, 'remove-inline-btn'));
+            }
+
+            card.appendChild(inlineControls);
+
             // --- Footer: Enhanced Text Only (Nav/Edit moved to header) ---
             if (slot.enhancedQuery) {
                 const footer = document.createElement('div');
@@ -991,6 +1205,61 @@ const App = {
             }
 
             filledSlot.appendChild(card);
+        }
+
+        // --- Mobile edit-mode action buttons (cancel / remove) ---
+        // Runs for both edit-mode branches (no track, or editing existing)
+        const inputWrapper = editModeDiv?.querySelector('.slot-input-wrapper');
+        if (inputWrapper && editModeDiv?.style.display !== 'none') {
+            // Remove any previously rendered edit-mode actions
+            inputWrapper.querySelector('.edit-mode-actions')?.remove();
+
+            const actions = document.createElement('div');
+            actions.className = 'edit-mode-actions';
+
+            if (slot.track) {
+                // Cancel button: editing a slot that already has a track
+                const cancelBtn = document.createElement('button');
+                cancelBtn.className = 'edit-mode-action-btn cancel-edit-btn';
+                cancelBtn.innerHTML = '↩';
+                cancelBtn.title = 'Cancel editing';
+                cancelBtn.onclick = (e) => {
+                    e.stopPropagation();
+                    slot.isEditing = false;
+                    this.renderSlot(slotName);
+                };
+                actions.appendChild(cancelBtn);
+            } else if (slotName.startsWith('steer-') || slotName === 'end') {
+                // Remove/clear button: empty search box,
+                // unless it's the only search box visible.
+                // End slot can always be cleared since start is always present.
+                const canRemove = slotName === 'end' || [
+                    this.slots.start,
+                    this.slots.end,
+                    ...this.steerSlots
+                ].filter(s => s && s.id !== slot.id && (s.isEditing || !s.track)).length > 0;
+                if (canRemove) {
+                    const removeBtn = document.createElement('button');
+                    removeBtn.className = 'edit-mode-action-btn remove-edit-btn';
+                    removeBtn.innerHTML = '×';
+                    removeBtn.title = slotName === 'end' ? 'Clear' : 'Remove slot';
+                    removeBtn.onclick = (e) => {
+                        e.stopPropagation();
+                        if (slotName.startsWith('steer-')) {
+                            this.removeSteerSlot(slotName);
+                        } else if (slotName === 'end') {
+                            this.resetSlot(slotName);
+                            this.slots.end.dismissed = true;
+                            this.renderBuilder();
+                        }
+                    };
+                    actions.appendChild(removeBtn);
+                }
+            }
+
+            if (actions.children.length > 0) {
+                inputWrapper.appendChild(actions);
+            }
         }
     },
 

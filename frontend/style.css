@@ -49,6 +49,14 @@ body {
     -webkit-background-clip: text;
     -webkit-text-fill-color: transparent;
     background-clip: text;
+    display: inline-flex;
+    align-items: center;
+    gap: 0.5rem;
+}
+
+.logo-icon {
+    height: 3.2rem;
+    width: auto;
 }
 
 .tagline {
@@ -877,8 +885,7 @@ input:checked+.slider:before {
     color: var(--text-secondary);
     font-size: 0.85rem;
     cursor: pointer;
-    opacity: 0.2;
-    /* Fainter by default */
+    opacity: 0.5;
     transition: all 0.2s ease;
 }
 
@@ -1013,6 +1020,11 @@ input:checked+.slider:before {
     border-color: var(--accent-primary);
 }
 
+/* Inline slot controls: hidden on desktop, shown on mobile */
+.slot-controls-inline {
+    display: none;
+}
+
 .header-nav-btn.edit-control-btn {
     font-size: 0.85rem;
 }
@@ -1045,6 +1057,43 @@ input:checked+.slider:before {
 
 .footer-icon-btn:hover {
     color: var(--accent-primary);
+}
+
+/* Edit-mode action buttons (cancel / remove) */
+.edit-mode-actions {
+    display: none;
+    gap: 4px;
+    margin-left: 4px;
+    flex-shrink: 0;
+}
+
+.edit-mode-action-btn {
+    width: 36px;
+    height: 36px;
+    padding: 0;
+    border-radius: 8px;
+    background: var(--bg-tertiary);
+    border: 1px solid var(--border-color);
+    color: var(--text-secondary);
+    font-size: 1rem;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    transition: all 0.2s ease;
+    flex-shrink: 0;
+}
+
+.edit-mode-action-btn:hover {
+    background: var(--bg-primary);
+    color: var(--text-primary);
+    border-color: var(--accent-primary);
+}
+
+.remove-edit-btn:hover {
+    background: #ef4444;
+    color: white;
+    border-color: transparent;
 }
 
 /* Remove Steer Btn */
@@ -1333,24 +1382,52 @@ input:checked+.slider:before {
 
 /* Responsive - Mobile Styles (Moved to end to override defaults) */
 @media (max-width: 900px) {
+    body {
+        height: 100dvh;
+        height: 100vh; /* fallback for older browsers */
+        height: 100dvh;
+        overflow: hidden;
+        position: fixed;
+        width: 100%;
+    }
+
+    .app-container {
+        height: 100dvh;
+        height: 100vh;
+        height: 100dvh;
+        min-height: 0;
+        padding-bottom: 0;
+        overflow: hidden;
+    }
+
+    .header {
+        flex-shrink: 0;
+        padding: 1rem;
+    }
+
     .main-content {
         grid-template-columns: 1fr;
         padding: 1rem;
         /* Reduce padding on mobile */
         gap: 1rem;
+        min-height: 0;
+        overflow: hidden;
     }
 
     /* Mobile Navigation Visibility */
     .mobile-nav {
         display: flex;
+        flex-shrink: 0;
     }
 
     /* Hide panels by default on mobile, javascript will toggle 'active' class */
     .results-panel,
     .playlist-panel {
         display: none;
-        height: calc(100vh - 220px);
-        /* Adjust for header + tabs + player */
+        height: auto;
+        flex: 1;
+        min-height: 0;
+        padding: 0.5rem 0.25rem !important;
     }
 
     .results-panel.active,
@@ -1402,20 +1479,26 @@ input:checked+.slider:before {
         border-radius: 8px !important;
     }
 
-    /* Enhanced Touch Targets for Insertion */
+    /* Insert buttons: visible unless disabled */
     .insert-steer-btn {
-        width: 48px;
-        height: 48px;
-        font-size: 1.5rem;
+        width: 30px;
+        height: 30px;
+        font-size: 1.1rem;
+        opacity: 0.7;
     }
 
-    .insert-btn-group {
-        gap: 16px;
-        /* More space between + and interpolate */
+    .insert-steer-btn:disabled {
+        opacity: 0.15;
+    }
+
+    .insert-steer-btn.loading:disabled {
+        opacity: 1;
     }
 
     /* Player Bar Rearrangement */
     .player-bar {
+        position: relative;
+        flex-shrink: 0;
         height: auto;
         flex-direction: column;
         padding: 1rem;
@@ -1450,13 +1533,24 @@ input:checked+.slider:before {
         display: none !important;
     }
 
-    /* Slot containers: toolbar padding area above track content */
+    /* Push panel headers in from edges */
+    .playlist-panel .panel-header,
+    .results-panel .playlist-controls {
+        padding: 0 1rem !important;
+    }
+
+    /* Builder slots: kill gap, no horizontal padding (slots handle their own inset) */
+    .builder-slots {
+        padding: 0 !important;
+        gap: 0 !important;
+    }
+
+    /* Slot containers: inset from edges to leave room for buttons, tiny vertical gap */
     .slot-container,
     .steer-slot-container {
         position: relative;
-        margin-top: 0 !important;
-        margin-bottom: 24px !important;
-        padding-top: 64px !important;
+        margin: 0 30px 2px 30px !important;
+        padding-top: 0 !important;
         border: none !important;
     }
 
@@ -1474,36 +1568,31 @@ input:checked+.slider:before {
         overflow: visible !important;
     }
 
-    /* Slot controls (←→✎×): position in top-right of padding area */
+    /* Slot controls in header: hidden on mobile (replaced by inline controls) */
     .slot-controls {
-        position: absolute !important;
-        top: 8px !important;
-        right: 0 !important;
-        bottom: auto !important;
-        left: auto !important;
-        height: 48px !important;
-        display: flex !important;
-        align-items: center !important;
-        gap: 8px !important;
-        z-index: 30 !important;
-        background: transparent !important;
-        padding: 0 !important;
-        margin: 0 !important;
+        display: none !important;
     }
 
-    /* Insert buttons (+✨): float between slots into next slot's padding-top area */
+    /* Insert buttons (+✨): full width, buttons sit in the 30px margins outside slots */
     .insert-btn-group {
         position: relative !important;
-        width: auto !important;
         height: 0 !important;
         overflow: visible !important;
         margin: 0 !important;
         padding: 0 !important;
         z-index: 25 !important;
         display: flex !important;
-        justify-content: flex-start !important;
-        padding-left: 4px !important;
-        top: 32px !important;
+        justify-content: space-between !important;
+        top: 0 !important;
+    }
+
+    .insert-btn-group .insert-steer-btn {
+        transform: translateY(calc(-50% - 1px));
+    }
+
+    .insert-interp-btn svg {
+        width: 16px;
+        height: 16px;
     }
 
     /* Ensure slot content isn't clipped */
@@ -1514,6 +1603,148 @@ input:checked+.slider:before {
     .slot-mode-view,
     .slot-mode-edit {
         margin-top: 0 !important;
+    }
+
+    .slot-input-wrapper {
+        margin-bottom: 0 !important;
+    }
+
+    /* --- Inline Slot Controls (mobile) --- */
+
+    /* Track items in slots: wrap so actions go below info */
+    .track-slot .track-item {
+        flex-wrap: wrap;
+        gap: 0.5rem;
+    }
+
+    .track-slot .track-info {
+        width: 100%;
+        flex: none;
+        order: 1;
+    }
+
+    .track-slot .track-actions {
+        flex: none;
+        order: 2;
+    }
+
+    /* Show inline slot controls */
+    .slot-controls-inline {
+        display: flex !important;
+        gap: 0.5rem;
+        margin-left: auto;
+        order: 3;
+    }
+
+    .slot-controls-inline .action-btn {
+        width: 44px;
+        height: 44px;
+    }
+
+    .slot-controls-inline .remove-inline-btn:hover {
+        background: #ef4444;
+        color: white;
+        border-color: transparent;
+    }
+
+    /* Show edit-mode action buttons on mobile */
+    .edit-mode-actions {
+        display: flex !important;
+    }
+
+    .edit-mode-action-btn {
+        width: 44px;
+        height: 44px;
+    }
+
+    .track-slot .track-card-footer {
+        order: 4;
+    }
+
+    /* --- Search Panel: Make entire panel scroll on mobile --- */
+    .results-panel.active,
+    .playlist-panel.active {
+        display: block !important;
+        overflow-y: auto !important;
+        -webkit-overflow-scrolling: touch;
+    }
+
+    .results-panel .search-controls {
+        flex-shrink: unset;
+    }
+
+    .results-panel .track-list {
+        overflow-y: visible !important;
+        flex: unset !important;
+        max-height: none !important;
+    }
+
+    /* Hide alignment spacer on mobile */
+    .results-spacer {
+        display: none !important;
+    }
+
+    /* --- Tighten search UI on mobile --- */
+    .results-panel > h2 {
+        font-size: 0.9rem;
+        margin-bottom: 0.5rem;
+    }
+
+    .search-header-row {
+        margin-bottom: 0.5rem;
+    }
+
+    .search-container {
+        margin-bottom: 0.5rem;
+        flex-wrap: wrap;
+    }
+
+    .search-container #search-input {
+        flex: 1 1 100%;
+        padding: 0.6rem 0.75rem;
+        font-size: 16px; /* prevent iOS zoom */
+    }
+
+    .search-container .btn-primary,
+    .search-container .btn-secondary {
+        flex: 1;
+        padding: 0.5rem 0.75rem;
+        font-size: 0.85rem;
+    }
+
+    .search-filters {
+        margin-top: 0.5rem;
+        gap: 1rem;
+        font-size: 0.85rem;
+    }
+
+    .enhanced-query {
+        min-height: 36px;
+        padding: 0.5rem;
+        font-size: 0.8rem;
+    }
+
+    .results-panel .playlist-controls {
+        margin-top: 0.5rem !important;
+        margin-bottom: 0.5rem !important;
+    }
+
+    /* --- Search result track items: buttons below info on mobile --- */
+    .results-panel .track-item {
+        flex-wrap: wrap;
+        gap: 0.5rem;
+        padding: 0.6rem 0.75rem;
+    }
+
+    .results-panel .track-info {
+        width: 100%;
+        flex: none;
+    }
+
+    .results-panel .track-actions {
+        flex: none;
+        flex-wrap: wrap;
+        gap: 0.4rem;
     }
 }
 
