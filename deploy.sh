@@ -23,7 +23,13 @@ export VECTOR_SERVICE_URL=$VECTOR_URL
 ./deploy.sh
 cd ..
 
-# 3. Deploy Frontend
+# 3. Deploy Discogs MCP Server
+echo "📦 Deploying Discogs MCP Server..."
+cd mcp-discogs
+./deploy.sh
+cd ..
+
+# 4. Deploy Frontend
 echo "📦 Deploying Frontend..."
 cd frontend
 ./deploy.sh
@@ -31,3 +37,4 @@ cd ..
 
 echo "✅ All services deployed!"
 echo "Cloud Crate MCP: $(gcloud run services describe cloud-crate-mcp --region us-central1 --format 'value(status.url)')"
+echo "Discogs MCP: $(gcloud run services describe cloud-crate-discogs-mcp --region us-central1 --format 'value(status.url)')"

@@ -8,22 +8,28 @@ Cloud Crate is a music library management and discovery system that exposes MCP 
 
 ## Architecture
 
-The project consists of three main services:
+The project consists of four main services:
 
-1. **`mcp/`** - Remote MCP server (Starlette/uvicorn)
+1. **`mcp/`** - EchoLocate MCP server (Starlette/uvicorn)
    - OAuth2 authentication flow for MCP clients
-   - Discogs integration via `RecordCrate` class (search, wantlist management)
    - Vector search proxy via `EchoLocate` class (connects to vector service)
+   - 6 tools: `echolocate_*` (sample, similar, interpolate, generate_playlist, text_search, semantic_search)
    - Entry point: `mcp/main.py`
 
-2. **`vector/`** - Vector search service (FastAPI)
+2. **`mcp-discogs/`** - Dedicated Discogs MCP server (Starlette/uvicorn)
+   - OAuth2 authentication flow (password-based, same pattern as `mcp/`)
+   - Discogs integration via `RecordCrate` class (search, wantlist, collection management)
+   - 9 tools: `discogs_*` (search, get_versions, get_release, get_wantlist, add_to_wantlist, get_collection_folders, get_collection, add_to_collection, move_release)
+   - Entry point: `mcp-discogs/main.py`
+
+3. **`vector/`** - Vector search service (FastAPI)
    - DuckDB with VSS extension for vector similarity search
    - CLAP model for semantic text-to-audio search (lazy-loaded)
    - Interpolation algorithms: greedy walk, SLERP, linear, Bezier curves
    - Mounted GCS bucket for database file in Cloud Run
    - Entry point: `vector/main.py`
 
-3. **`mcp-apple/`** - Dedicated Apple Music MCP server (Starlette/uvicorn)
+4. **`mcp-apple/`** - Dedicated Apple Music MCP server (Starlette/uvicorn)
    - Shared app-level `MCP_CLIENT_ID`/`MCP_CLIENT_SECRET` (all users configure the same values)
    - Self-service registration: users sign in with Apple Music via MusicKit.js during `/authorize`
    - User identity = SHA-256 hash of Apple Music user token, stored in Firestore (`cloud_crate_users/{user_id}`)
@@ -32,7 +38,7 @@ The project consists of three main services:
    - Owns `apple_crate.py` directly (colocated)
    - Entry point: `mcp-apple/main.py`
 
-4. **`embeddings/`** - Audio embedding pipeline (local processing)
+5. **`embeddings/`** - Audio embedding pipeline (local processing)
    - MERT model (`m-a-p/MERT-v1-95M`) for 768-dim audio embeddings
    - CLAP model for 512-dim text-matchable embeddings
    - Segments audio into intro/mid/outro (5s each)
@@ -47,10 +53,11 @@ source .venv/bin/activate
 
 ### Deployment
 ```bash
-./deploy.sh                    # Deploy both services to Cloud Run
-cd mcp && ./deploy.sh          # Deploy MCP server only
-cd vector && ./deploy.sh       # Deploy vector service only
-cd mcp-apple && ./deploy.sh    # Deploy Apple MCP server only
+./deploy.sh                        # Deploy all services to Cloud Run
+cd mcp && ./deploy.sh              # Deploy EchoLocate MCP server only
+cd mcp-discogs && ./deploy.sh      # Deploy Discogs MCP server only
+cd vector && ./deploy.sh           # Deploy vector service only
+cd mcp-apple && ./deploy.sh        # Deploy Apple MCP server only
 ```
 
 ### Embedding Generation
@@ -63,8 +70,11 @@ python generate_db.py          # Build DuckDB from JSONL files
 
 ### Local Development
 ```bash
-# MCP Server (port 8080)
+# EchoLocate MCP Server (port 8080)
 cd mcp && python main.py
+
+# Discogs MCP Server (port 8080)
+cd mcp-discogs && python main.py
 
 # Apple MCP Server (port 8080)
 cd mcp-apple && source .venv/bin/activate && python main.py
@@ -98,9 +108,9 @@ The `tracks` table has columns:
 All tools are strictly namespaced: `apple_*`, `discogs_*`, `echolocate_*`
 
 ### Environment Variables
-- MCP: `MCP_AUTH_SECRET`, `MCP_JWT_SECRET`, `MCP_CLIENT_ID`, `MCP_CLIENT_SECRET`
+- MCP (EchoLocate): `MCP_AUTH_SECRET`, `MCP_JWT_SECRET`, `MCP_CLIENT_ID`, `MCP_CLIENT_SECRET`, `VECTOR_SERVICE_URL`
+- Discogs MCP: `MCP_AUTH_SECRET`, `MCP_JWT_SECRET`, `MCP_CLIENT_ID`, `MCP_CLIENT_SECRET`, `DISCOGS_TOKEN`
 - Apple MCP: `APPLE_TEAM_ID`, `APPLE_KEY_ID`, `APPLE_PRIVATE_KEY`, `MCP_JWT_SECRET`, `MCP_CLIENT_ID`, `MCP_CLIENT_SECRET`, `GOOGLE_CLOUD_PROJECT` (for Firestore)
-- Discogs: `DISCOGS_TOKEN`
 - Vector: `LIBRARY_VECTOR_URL`, `FMA_VECTOR_URL`, or legacy `VECTOR_SERVICE_URL`
 - Secrets can be fetched from Google Secret Manager if `GOOGLE_CLOUD_PROJECT` is set
 
