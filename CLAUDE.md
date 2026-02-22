@@ -24,7 +24,16 @@ The project consists of three main services:
    - Mounted GCS bucket for database file in Cloud Run
    - Entry point: `vector/main.py`
 
-3. **`embeddings/`** - Audio embedding pipeline (local processing)
+3. **`mcp-apple/`** - Dedicated Apple Music MCP server (Starlette/uvicorn)
+   - Per-user OAuth with Firestore-backed credentials and Apple Music tokens
+   - Each user gets a `client_id`/`client_secret` pair; `client_id` is the Firestore document key
+   - MusicKit.js auth flow stores user tokens in Firestore (`cloud_crate_users/{client_id}`)
+   - `contextvars.ContextVar` threads user identity from JWT to tool handlers
+   - 4 tools only: `apple_search_catalog`, `apple_search_library`, `apple_create_playlist`, `apple_get_track_context`
+   - Reuses `mcp/apple_crate.py` (copied at Docker build time)
+   - Entry point: `mcp-apple/main.py`
+
+4. **`embeddings/`** - Audio embedding pipeline (local processing)
    - MERT model (`m-a-p/MERT-v1-95M`) for 768-dim audio embeddings
    - CLAP model for 512-dim text-matchable embeddings
    - Segments audio into intro/mid/outro (5s each)
@@ -42,6 +51,7 @@ source .venv/bin/activate
 ./deploy.sh                    # Deploy both services to Cloud Run
 cd mcp && ./deploy.sh          # Deploy MCP server only
 cd vector && ./deploy.sh       # Deploy vector service only
+cd mcp-apple && ./deploy.sh    # Deploy Apple MCP server only
 ```
 
 ### Embedding Generation
@@ -57,8 +67,17 @@ python generate_db.py          # Build DuckDB from JSONL files
 # MCP Server (port 8080)
 cd mcp && python main.py
 
+# Apple MCP Server (port 8080)
+cd mcp-apple && source .venv/bin/activate && python main.py
+
 # Vector Service (port 8000)
 cd vector && uvicorn main:app --reload
+```
+
+### User Provisioning (mcp-apple)
+```bash
+cd mcp-apple && source .venv/bin/activate
+python provision_user.py <client_id> <display_name>
 ```
 
 ### Verification
@@ -88,6 +107,7 @@ All tools are strictly namespaced: `apple_*`, `discogs_*`, `echolocate_*`
 ### Environment Variables
 - MCP: `MCP_AUTH_SECRET`, `MCP_JWT_SECRET`, `MCP_CLIENT_ID`, `MCP_CLIENT_SECRET`
 - Apple: `APPLE_TEAM_ID`, `APPLE_KEY_ID`, `APPLE_PRIVATE_KEY`, `APPLE_MUSIC_USER_TOKEN`
+- Apple MCP: `APPLE_TEAM_ID`, `APPLE_KEY_ID`, `APPLE_PRIVATE_KEY`, `MCP_JWT_SECRET`, `GOOGLE_CLOUD_PROJECT` (for Firestore)
 - Discogs: `DISCOGS_TOKEN`
 - Vector: `LIBRARY_VECTOR_URL`, `FMA_VECTOR_URL`, or legacy `VECTOR_SERVICE_URL`
 - Secrets can be fetched from Google Secret Manager if `GOOGLE_CLOUD_PROJECT` is set
