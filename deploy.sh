@@ -29,7 +29,13 @@ cd mcp-discogs
 ./deploy.sh
 cd ..
 
-# 4. Deploy Frontend
+# 4. Deploy Apple MCP Server
+echo "📦 Deploying Apple MCP Server..."
+cd mcp-apple
+./deploy.sh
+cd ..
+
+# 5. Deploy Frontend
 echo "📦 Deploying Frontend..."
 cd frontend
 ./deploy.sh
@@ -38,3 +44,4 @@ cd ..
 echo "✅ All services deployed!"
 echo "Cloud Crate MCP: $(gcloud run services describe cloud-crate-mcp --region us-central1 --format 'value(status.url)')"
 echo "Discogs MCP: $(gcloud run services describe cloud-crate-discogs-mcp --region us-central1 --format 'value(status.url)')"
+echo "Apple MCP: $(gcloud run services describe cloud-crate-apple-mcp --region us-central1 --format 'value(status.url)')"
