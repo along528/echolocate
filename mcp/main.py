@@ -20,7 +20,6 @@ from mcp.server.streamable_http_manager import StreamableHTTPSessionManager
 from mcp.server.transport_security import TransportSecuritySettings
 
 # New Crate Imports
-from apple_crate import AppleCrate
 from record_crate import RecordCrate
 from echo_locate import EchoLocate
 
@@ -57,28 +56,10 @@ MCP_CLIENT_SECRET = get_secret("MCP_CLIENT_SECRET")
 # Vector Service Configuration
 VECTOR_SERVICE_URL = os.getenv("VECTOR_SERVICE_URL") or get_secret("VECTOR_SERVICE_URL")
 
-# Apple Music Secrets
-APPLE_TEAM_ID = get_secret("APPLE_TEAM_ID")
-APPLE_KEY_ID = get_secret("APPLE_KEY_ID")
-APPLE_PRIVATE_KEY = get_secret("APPLE_PRIVATE_KEY")
-
 # Discogs Secrets
 DISCOGS_TOKEN = get_secret("DISCOGS_TOKEN")
 
-# Store the User Token in memory for this simple implementation
-APPLE_MUSIC_USER_TOKEN = get_secret("APPLE_MUSIC_USER_TOKEN", force_gsm=True)
-
 # --- Initialization ---
-
-apple_crate = None
-if APPLE_TEAM_ID and APPLE_KEY_ID and APPLE_PRIVATE_KEY:
-    try:
-        apple_crate = AppleCrate(APPLE_TEAM_ID, APPLE_KEY_ID, APPLE_PRIVATE_KEY)
-        print("Apple Crate initialized.")
-    except Exception as e:
-        print(f"Failed to initialize Apple Crate: {e}")
-else:
-    print("Warning: Apple Music credentials not found. Music tools will be disabled.")
 
 record_crate = None
 if DISCOGS_TOKEN:
@@ -187,7 +168,7 @@ async def token_endpoint(request: Request):
 
 # --- Admin Auth ---
 async def login_page(request: Request):
-    next_url = request.query_params.get("next", "/apple-auth")
+    next_url = request.query_params.get("next", "/")
     html = f"""
     <!DOCTYPE html>
     <html>
@@ -206,7 +187,7 @@ async def login_page(request: Request):
 async def login_submit(request: Request):
     form = await request.form()
     password = form.get("password")
-    next_url = form.get("next", "/apple-auth")
+    next_url = form.get("next", "/")
     
     if password != MCP_AUTH_SECRET:
          return HTMLResponse("Invalid Password", status_code=401)
@@ -216,42 +197,6 @@ async def login_submit(request: Request):
     response = RedirectResponse(next_url, status_code=303)
     response.set_cookie("access_token", token, httponly=True, secure=True)
     return response
-
-# --- Apple Music Auth UI ---
-async def apple_login_page(request: Request):
-    if not apple_crate:
-        return HTMLResponse("Apple Crate not configured.", status_code=500)
-    dev_token = apple_crate.get_developer_token()
-    # (Simplified HTML for brevity, assumes same logic as before but using apple_crate)
-    html = f"""<!DOCTYPE html>
-    <html><head><title>Link Apple Music</title>
-    <script src="https://js-cdn.music.apple.com/musickit/v3/musickit.js"></script>
-    </head><body>
-    <button id="login-btn">Log In with Apple Music</button>
-    <script>
-        document.addEventListener('musickitloaded', async function() {{
-            await MusicKit.configure({{ developerToken: '{dev_token}', app: {{ name: 'Cloud Crate', build: '1.0.0' }} }});
-            document.getElementById('login-btn').addEventListener('click', async () => {{
-                const music = MusicKit.getInstance();
-                await music.authorize();
-                await fetch('/apple-auth/callback', {{ method: 'POST', headers: {{ 'Content-Type': 'application/json' }}, body: JSON.stringify({{ token: music.musicUserToken }}) }});
-                alert("Logged in!");
-            }});
-        }});
-    </script>
-    </body></html>"""
-    return HTMLResponse(html)
-
-async def apple_callback(request: Request):
-    global APPLE_MUSIC_USER_TOKEN
-    data = await request.json()
-    token = data.get("token")
-    if token:
-        APPLE_MUSIC_USER_TOKEN = token
-        # Persist to Secret Manager logic omitted for brevity, but could be re-added
-        print(f"Received Apple Music User Token.")
-        return JSONResponse({"status": "success"})
-    return JSONResponse({"error": "missing_token"}, status_code=400)
 
 async def client_log(request: Request):
     return JSONResponse({"status": "ok"})
@@ -271,8 +216,6 @@ class AuthMiddleware(BaseHTTPMiddleware):
             token = request.cookies.get("access_token")
         
         if not token:
-             if request.url.path.startswith("/apple-auth"):
-                 return RedirectResponse(f"/login?next={request.url.path}")
              return JSONResponse({"error": "Unauthorized"}, status_code=401)
         
         try:
@@ -290,46 +233,6 @@ async def list_tools():
     from mcp.types import Tool
     tools = []
     
-    # --- Apple Crate Tools ---
-    tools.append(Tool(
-        name="apple_search_catalog",
-        description="Search Apple Music Catalog. Returns Apple Music IDs.",
-        inputSchema={
-            "type": "object",
-            "properties": {
-                "query": {"type": "string"},
-                "limit": {"type": "integer"}
-            },
-            "required": ["query"]
-        }
-    ))
-    tools.append(Tool(
-        name="apple_create_playlist",
-        description="Create Apple Music playlist.",
-        inputSchema={
-            "type": "object",
-            "properties": {
-                "name": {"type": "string"},
-                "description": {"type": "string"},
-                "track_ids": {"type": "array", "items": {"type": "string"}}
-            },
-            "required": ["name", "track_ids"]
-        }
-    ))
-    tools.append(Tool(
-        name="apple_search_library",
-        description="Search Apple Music Library.",
-        inputSchema={
-            "type": "object",
-            "properties": {
-                "title": {"type": "string"},
-                "artist": {"type": "string"},
-                "album": {"type": "string"},
-                "limit": {"type": "integer"}
-            }
-        }
-    ))
-
     # --- Record Crate Tools ---
     tools.append(Tool(
         name="discogs_search",
@@ -465,19 +368,6 @@ async def list_tools():
             }
         ))
 
-    # --- Context Tools ---
-    tools.append(Tool(
-        name="apple_get_track_context",
-        description="Get details for a catalog track using Apple Music ID.",
-        inputSchema={
-            "type": "object",
-            "properties": {
-                "track_id": {"type": "string", "description": "Catalog Track ID"}
-            },
-            "required": ["track_id"]
-        }
-    ))
-    
     # --- Discogs Advanced Tools ---
     tools.append(Tool(
         name="discogs_get_release",
@@ -567,153 +457,8 @@ async def list_tools():
 async def call_tool(name: str, arguments: dict):
     from mcp.types import TextContent
     
-    # Apple Crate Handlers
-    if name == "apple_search_catalog":
-        if not apple_crate: return [TextContent(type="text", text="Apple Crate not configured")]
-        try:
-            res = await apple_crate.search(arguments["query"], limit=arguments.get("limit", 5))
-            songs = res.get("results", {}).get("songs", {}).get("data", [])
-            output = "\n".join([f"Apple ID: {s['id']} | {s['attributes']['name']} - {s['attributes']['artistName']}" for s in songs])
-            return [TextContent(type="text", text=output or "No results")]
-        except Exception as e:
-            return [TextContent(type="text", text=f"Error: {e}")]
-
-    elif name == "apple_create_playlist":
-        if not apple_crate or not APPLE_MUSIC_USER_TOKEN: return [TextContent(type="text", text="Auth required")]
-        try:
-            res = await apple_crate.create_playlist(arguments["name"], arguments.get("description", ""), arguments["track_ids"], APPLE_MUSIC_USER_TOKEN)
-            # The API returns the playlist object
-            playlist_data = res.get("data", [])
-            if playlist_data:
-                playlist_id = playlist_data[0].get("id")
-                return [TextContent(type="text", text=f"Playlist Created Successfully. ID: {playlist_id}")]
-            return [TextContent(type="text", text="Playlist Created Successfully (No ID returned).")]
-        except Exception as e:
-            return [TextContent(type="text", text=f"Error: {e}")]
-
-    elif name == "apple_search_library":
-        if not apple_crate: return [TextContent(type="text", text="Apple Crate not configured")]
-        if not APPLE_MUSIC_USER_TOKEN: return [TextContent(type="text", text="Auth required")]
-        
-        # 1. Determine Primary Search Query
-        primary_query = None
-        if arguments.get("title"):
-             primary_query = arguments.get("title")
-        elif arguments.get("album"):
-             primary_query = arguments.get("album")
-        elif arguments.get("artist"):
-             primary_query = arguments.get("artist")
-             
-        if not primary_query:
-            return [TextContent(type="text", text="Please provide at least one of: artist, album, title.")]
-
-        limit_arg = arguments.get("limit", 5)
-
-        # --- Pass 1: Strict Search (Query + Filters) ---
-        strict_results = []
-        try:
-            # We paginate up to 100 to find matches that might be buried
-            limit_per_req = 25
-            max_total = 100
-            offset = 0
-            
-            while len(strict_results) < max_total:
-                res = await apple_crate.search_library(
-                    primary_query, APPLE_MUSIC_USER_TOKEN, limit=limit_per_req, offset=offset
-                )
-                batch = res.get("results", {}).get("library-songs", {}).get("data", [])
-                
-                if not batch: break
-                
-                for song in batch:
-                    attrs = song.get("attributes", {})
-                    
-                    # Apply Strict Filters
-                    match = True
-                    if arguments.get("artist"):
-                        if arguments.get("artist").lower() not in attrs.get("artistName", "").lower():
-                            match = False
-                    if match and arguments.get("album"):
-                         if arguments.get("album").lower() not in attrs.get("albumName", "").lower():
-                            match = False
-                    # For title in strict pass, we trust the primary query if it IS the title, 
-                    # but if we searched by artist/album and PROVIDED a title, we check it.
-                    if match and arguments.get("title") and primary_query != arguments.get("title"):
-                         if arguments.get("title").lower() not in attrs.get("name", "").lower():
-                            match = False
-                            
-                    if match:
-                        strict_results.append(song)
-                
-                offset += len(batch)
-                if len(batch) < limit_per_req: break
-                
-        except Exception as e:
-            return [TextContent(type="text", text=f"Error in strict search: {e}")]
-
-        # --- Pass 2: Broad Title Search (Optional) ---
-        broad_results = []
-        if arguments.get("title"):
-             # We always perform the broad title search if a title is provided, 
-             # to ensure we capture "Title Only" matches even if the filtered search 
-             # (which might also use the title as the query) filtered them out due to artist/album constraints.
-             # This satisfies the requirement: "search for the song title by itself if provided... in addition"
-            try:
-                # Just fetch a small batch for the broad title match
-                # Use the provided limit for the broad search as well, or a default? 
-                # User didn't specify, but usually we want "some" results.
-                res = await apple_crate.search_library(
-                    arguments.get("title"), APPLE_MUSIC_USER_TOKEN, limit=limit_arg
-                )
-                broad_results = res.get("results", {}).get("library-songs", {}).get("data", [])
-            except Exception as e:
-                # Don't fail the whole request
-                print(f"Error in broad search: {e}")
-
-        # --- Merge & Deduplicate ---
-        # Priority: Strict results first (they matched all criteria), then Broad results
-        final_songs = []
-        seen_ids = set()
-        
-        for song in strict_results:
-            if song['id'] not in seen_ids:
-                final_songs.append(song)
-                seen_ids.add(song['id'])
-        
-        for song in broad_results:
-            if song['id'] not in seen_ids:
-                final_songs.append(song)
-                seen_ids.add(song['id'])
-                
-        # Limit
-        final_songs = final_songs[:limit_arg]
-        
-        output = "\n".join([f"Apple ID: {s['id']} | {s['attributes']['name']} - {s['attributes']['artistName']}" for s in final_songs])
-        return [TextContent(type="text", text=output or "No results")]
-    
-    elif name == "apple_get_track_context":
-        if not apple_crate: return [TextContent(type="text", text="Apple Crate not configured")]
-        track_id = arguments.get("track_id")
-        if track_id.startswith("catalog:"): track_id = track_id.split(":", 1)[1]
-        try:
-            data = await apple_crate.get_resource(track_id, "songs")
-            if data and "data" in data and len(data["data"]) > 0:
-                attrs = data["data"][0]["attributes"]
-                result = f"""
-Title: {attrs.get('name')}
-Artist: {attrs.get('artistName')}
-Album: {attrs.get('albumName')}
-Release Date: {attrs.get('releaseDate')}
-Duration: {attrs.get('durationInMillis')} ms
-"""
-            else:
-                result = "Track not found."
-            return [TextContent(type="text", text=result)]
-        except Exception as e:
-             return [TextContent(type="text", text=f"Error: {e}")]
-
     # Record Crate Handlers
-    elif name == "discogs_search":
+    if name == "discogs_search":
         if not record_crate: return [TextContent(type="text", text="Record Crate not configured")]
         try:
             res = await record_crate.search(arguments["query"], limit=arguments.get("limit", 5), format=arguments.get("format"))
@@ -1049,8 +794,6 @@ app = Starlette(
         Route("/token", token_endpoint, methods=["POST"]),
         Route("/health", health),
         Route("/", health),
-        Route("/apple-auth", apple_login_page, methods=["GET"]),
-        Route("/apple-auth/callback", apple_callback, methods=["POST"]),
         Route("/client-log", client_log, methods=["POST"]),
         Route("/login", login_page, methods=["GET"]),
         Route("/login", login_submit, methods=["POST"]),

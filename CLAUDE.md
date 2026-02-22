@@ -12,7 +12,6 @@ The project consists of three main services:
 
 1. **`mcp/`** - Remote MCP server (Starlette/uvicorn)
    - OAuth2 authentication flow for MCP clients
-   - Apple Music integration via `AppleCrate` class (catalog search, library search, playlist creation)
    - Discogs integration via `RecordCrate` class (search, wantlist management)
    - Vector search proxy via `EchoLocate` class (connects to vector service)
    - Entry point: `mcp/main.py`
@@ -24,7 +23,16 @@ The project consists of three main services:
    - Mounted GCS bucket for database file in Cloud Run
    - Entry point: `vector/main.py`
 
-3. **`embeddings/`** - Audio embedding pipeline (local processing)
+3. **`mcp-apple/`** - Dedicated Apple Music MCP server (Starlette/uvicorn)
+   - Shared app-level `MCP_CLIENT_ID`/`MCP_CLIENT_SECRET` (all users configure the same values)
+   - Self-service registration: users sign in with Apple Music via MusicKit.js during `/authorize`
+   - User identity = SHA-256 hash of Apple Music user token, stored in Firestore (`cloud_crate_users/{user_id}`)
+   - `contextvars.ContextVar` threads user identity from JWT to tool handlers
+   - 4 tools only: `apple_search_catalog`, `apple_search_library`, `apple_create_playlist`, `apple_get_track_context`
+   - Owns `apple_crate.py` directly (colocated)
+   - Entry point: `mcp-apple/main.py`
+
+4. **`embeddings/`** - Audio embedding pipeline (local processing)
    - MERT model (`m-a-p/MERT-v1-95M`) for 768-dim audio embeddings
    - CLAP model for 512-dim text-matchable embeddings
    - Segments audio into intro/mid/outro (5s each)
@@ -42,6 +50,7 @@ source .venv/bin/activate
 ./deploy.sh                    # Deploy both services to Cloud Run
 cd mcp && ./deploy.sh          # Deploy MCP server only
 cd vector && ./deploy.sh       # Deploy vector service only
+cd mcp-apple && ./deploy.sh    # Deploy Apple MCP server only
 ```
 
 ### Embedding Generation
@@ -56,6 +65,9 @@ python generate_db.py          # Build DuckDB from JSONL files
 ```bash
 # MCP Server (port 8080)
 cd mcp && python main.py
+
+# Apple MCP Server (port 8080)
+cd mcp-apple && source .venv/bin/activate && python main.py
 
 # Vector Service (port 8000)
 cd vector && uvicorn main:app --reload
@@ -87,7 +99,7 @@ All tools are strictly namespaced: `apple_*`, `discogs_*`, `echolocate_*`
 
 ### Environment Variables
 - MCP: `MCP_AUTH_SECRET`, `MCP_JWT_SECRET`, `MCP_CLIENT_ID`, `MCP_CLIENT_SECRET`
-- Apple: `APPLE_TEAM_ID`, `APPLE_KEY_ID`, `APPLE_PRIVATE_KEY`, `APPLE_MUSIC_USER_TOKEN`
+- Apple MCP: `APPLE_TEAM_ID`, `APPLE_KEY_ID`, `APPLE_PRIVATE_KEY`, `MCP_JWT_SECRET`, `MCP_CLIENT_ID`, `MCP_CLIENT_SECRET`, `GOOGLE_CLOUD_PROJECT` (for Firestore)
 - Discogs: `DISCOGS_TOKEN`
 - Vector: `LIBRARY_VECTOR_URL`, `FMA_VECTOR_URL`, or legacy `VECTOR_SERVICE_URL`
 - Secrets can be fetched from Google Secret Manager if `GOOGLE_CLOUD_PROJECT` is set
