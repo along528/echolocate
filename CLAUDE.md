@@ -25,9 +25,9 @@ The project consists of three main services:
    - Entry point: `vector/main.py`
 
 3. **`mcp-apple/`** - Dedicated Apple Music MCP server (Starlette/uvicorn)
-   - Per-user OAuth with Firestore-backed credentials and Apple Music tokens
-   - Each user gets a `client_id`/`client_secret` pair; `client_id` is the Firestore document key
-   - MusicKit.js auth flow stores user tokens in Firestore (`cloud_crate_users/{client_id}`)
+   - Shared app-level `MCP_CLIENT_ID`/`MCP_CLIENT_SECRET` (all users configure the same values)
+   - Self-service registration: users sign in with Apple Music via MusicKit.js during `/authorize`
+   - User identity = SHA-256 hash of Apple Music user token, stored in Firestore (`cloud_crate_users/{user_id}`)
    - `contextvars.ContextVar` threads user identity from JWT to tool handlers
    - 4 tools only: `apple_search_catalog`, `apple_search_library`, `apple_create_playlist`, `apple_get_track_context`
    - Reuses `mcp/apple_crate.py` (copied at Docker build time)
@@ -74,12 +74,6 @@ cd mcp-apple && source .venv/bin/activate && python main.py
 cd vector && uvicorn main:app --reload
 ```
 
-### User Provisioning (mcp-apple)
-```bash
-cd mcp-apple && source .venv/bin/activate
-python provision_user.py <client_id> <display_name>
-```
-
 ### Verification
 ```bash
 python vector/verify_service.py <VECTOR_URL>
@@ -107,7 +101,7 @@ All tools are strictly namespaced: `apple_*`, `discogs_*`, `echolocate_*`
 ### Environment Variables
 - MCP: `MCP_AUTH_SECRET`, `MCP_JWT_SECRET`, `MCP_CLIENT_ID`, `MCP_CLIENT_SECRET`
 - Apple: `APPLE_TEAM_ID`, `APPLE_KEY_ID`, `APPLE_PRIVATE_KEY`, `APPLE_MUSIC_USER_TOKEN`
-- Apple MCP: `APPLE_TEAM_ID`, `APPLE_KEY_ID`, `APPLE_PRIVATE_KEY`, `MCP_JWT_SECRET`, `GOOGLE_CLOUD_PROJECT` (for Firestore)
+- Apple MCP: `APPLE_TEAM_ID`, `APPLE_KEY_ID`, `APPLE_PRIVATE_KEY`, `MCP_JWT_SECRET`, `MCP_CLIENT_ID`, `MCP_CLIENT_SECRET`, `GOOGLE_CLOUD_PROJECT` (for Firestore)
 - Discogs: `DISCOGS_TOKEN`
 - Vector: `LIBRARY_VECTOR_URL`, `FMA_VECTOR_URL`, or legacy `VECTOR_SERVICE_URL`
 - Secrets can be fetched from Google Secret Manager if `GOOGLE_CLOUD_PROJECT` is set
