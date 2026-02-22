@@ -5,7 +5,8 @@ WORKDIR /app
 COPY requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
 
-COPY . .
+COPY main.py .
+COPY echo_locate.py .
 
 # Environment variables to disable MCP host validation
 # Cloud Run handles security at the load balancer level

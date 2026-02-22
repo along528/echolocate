@@ -1,26 +1,19 @@
 import os
-import random
 import uvicorn
 import contextlib
-import base64
-import json
 import time
-from typing import Optional, List, Dict
 from starlette.applications import Starlette
 from starlette.routing import Route, Mount
 from starlette.responses import JSONResponse, HTMLResponse, RedirectResponse
 from starlette.requests import Request
 from starlette.middleware import Middleware
 from starlette.middleware.base import BaseHTTPMiddleware
-from starlette.datastructures import Secret
 
 from jose import jwt, JWSError
 from mcp.server import Server
 from mcp.server.streamable_http_manager import StreamableHTTPSessionManager
 from mcp.server.transport_security import TransportSecuritySettings
 
-# New Crate Imports
-from record_crate import RecordCrate
 from echo_locate import EchoLocate
 
 # --- Secret Configuration ---
@@ -56,20 +49,7 @@ MCP_CLIENT_SECRET = get_secret("MCP_CLIENT_SECRET")
 # Vector Service Configuration
 VECTOR_SERVICE_URL = os.getenv("VECTOR_SERVICE_URL") or get_secret("VECTOR_SERVICE_URL")
 
-# Discogs Secrets
-DISCOGS_TOKEN = get_secret("DISCOGS_TOKEN")
-
 # --- Initialization ---
-
-record_crate = None
-if DISCOGS_TOKEN:
-    try:
-        record_crate = RecordCrate(DISCOGS_TOKEN)
-        print("Record Crate initialized.")
-    except Exception as e:
-        print(f"Failed to initialize Record Crate: {e}")
-else:
-    print("Warning: DISCOGS_TOKEN not found. Discogs tools will be disabled.")
 
 echo_locate = None
 if VECTOR_SERVICE_URL:
@@ -83,13 +63,12 @@ ALGORITHM = "HS256"
 ACCESS_TOKEN_EXPIRE_MINUTES = 60 * 24 * 30  # 30 days
 
 # --- OAuth Endpoints ---
-# (Kept largely the same for auth flow)
 
 async def authorize_page(request: Request):
     client_id = request.query_params.get("client_id")
     redirect_uri = request.query_params.get("redirect_uri")
     state = request.query_params.get("state")
-    
+
     if MCP_CLIENT_ID and client_id and client_id != MCP_CLIENT_ID:
          return HTMLResponse(f"Invalid Client ID: {client_id}", status_code=400)
 
@@ -188,10 +167,10 @@ async def login_submit(request: Request):
     form = await request.form()
     password = form.get("password")
     next_url = form.get("next", "/")
-    
+
     if password != MCP_AUTH_SECRET:
          return HTMLResponse("Invalid Password", status_code=401)
-         
+
     now = time.time()
     token = jwt.encode({"sub": "admin", "iat": now, "exp": now + 86400, "type": "access"}, MCP_JWT_SECRET, algorithm=ALGORITHM)
     response = RedirectResponse(next_url, status_code=303)
@@ -207,17 +186,17 @@ class AuthMiddleware(BaseHTTPMiddleware):
     async def dispatch(self, request: Request, call_next):
         if request.url.path in ["/", "/health", "/authorize", "/token", "/login"]:
             return await call_next(request)
-        
+
         auth_header = request.headers.get("Authorization")
         token = None
         if auth_header and auth_header.startswith("Bearer "):
              token = auth_header.split(" ")[1]
         if not token:
             token = request.cookies.get("access_token")
-        
+
         if not token:
              return JSONResponse({"error": "Unauthorized"}, status_code=401)
-        
+
         try:
             jwt.decode(token, MCP_JWT_SECRET, algorithms=[ALGORITHM])
         except Exception:
@@ -232,36 +211,7 @@ server = Server("Cloud Crate MCP")
 async def list_tools():
     from mcp.types import Tool
     tools = []
-    
-    # --- Record Crate Tools ---
-    tools.append(Tool(
-        name="discogs_search",
-        description="Search Discogs. Returns Master IDs by default. To get a specific Release ID (required for wantlist/collection), use 'discogs_get_versions' with the Master ID returned here.",
-        inputSchema={
-            "type": "object",
-            "properties": {
-                "query": {"type": "string", "description": "Search query"},
-                "limit": {"type": "integer", "description": "Max results to return"},
-                "format": {"type": "string", "description": "Filter by format (e.g. 'Vinyl', 'CD')"}
-            },
-            "required": ["query"]
-        }
-    ))
-    tools.append(Tool(
-        name="discogs_get_versions",
-        description="Get specific release versions for a Discogs Master Release. Input: Master ID. Output: Release IDs (usable for wantlist/collection).",
-        inputSchema={
-            "type": "object",
-            "properties": {
-                "master_id": {"type": "string", "description": "Discogs Master ID (from discogs_search)"},
-                "page": {"type": "integer", "description": "Page number for pagination"},
-                "limit": {"type": "integer", "description": "Results per page"}
-            },
-            "required": ["master_id"]
-        }
-    ))
 
-    # --- Echo Locate Tools ---
     if echo_locate:
         tools.append(Tool(
             name="echolocate_sample",
@@ -270,9 +220,9 @@ async def list_tools():
                 "type": "object",
                 "properties": {
                     "source": {
-                        "type": "string", 
-                        "enum": ["library", "fma", "all"], 
-                        "description": "Which tracks to sample: 'library' = personal Apple Music library, 'fma' = Free Music Archive, 'all' = both sources", 
+                        "type": "string",
+                        "enum": ["library", "fma", "all"],
+                        "description": "Which tracks to sample: 'library' = personal Apple Music library, 'fma' = Free Music Archive, 'all' = both sources",
                         "default": "library"
                     },
                     "limit": {"type": "integer", "description": "Max tracks to return", "default": 20},
@@ -289,9 +239,9 @@ async def list_tools():
                 "properties": {
                     "track_id": {"type": "string", "description": "Vector ID of the reference track"},
                     "source": {
-                        "type": "string", 
-                        "enum": ["library", "fma", "all"], 
-                        "description": "Which tracks to search: 'library' = personal library, 'fma' = Free Music Archive, 'all' = both", 
+                        "type": "string",
+                        "enum": ["library", "fma", "all"],
+                        "description": "Which tracks to search: 'library' = personal library, 'fma' = Free Music Archive, 'all' = both",
                         "default": "library"
                     },
                     "limit": {"type": "integer", "description": "Max similar tracks to return", "default": 5}
@@ -339,9 +289,9 @@ async def list_tools():
                     "album": {"type": "string", "description": "Search by album name"},
                     "title": {"type": "string", "description": "Search by track title"},
                     "source": {
-                        "type": "string", 
-                        "enum": ["library", "fma", "all"], 
-                        "description": "Which tracks to search: 'library' = personal library, 'fma' = Free Music Archive, 'all' = both", 
+                        "type": "string",
+                        "enum": ["library", "fma", "all"],
+                        "description": "Which tracks to search: 'library' = personal library, 'fma' = Free Music Archive, 'all' = both",
                         "default": "library"
                     },
                     "limit": {"type": "integer", "description": "Max results", "default": 20}
@@ -356,9 +306,9 @@ async def list_tools():
                 "properties": {
                     "query": {"type": "string", "description": "Natural language description of desired sound"},
                     "source": {
-                        "type": "string", 
-                        "enum": ["library", "fma", "all"], 
-                        "description": "Which tracks to search: 'library' = personal library, 'fma' = Free Music Archive, 'all' = both", 
+                        "type": "string",
+                        "enum": ["library", "fma", "all"],
+                        "description": "Which tracks to search: 'library' = personal library, 'fma' = Free Music Archive, 'all' = both",
                         "default": "library"
                     },
                     "limit": {"type": "integer", "description": "Max results", "default": 10},
@@ -368,312 +318,13 @@ async def list_tools():
             }
         ))
 
-    # --- Discogs Advanced Tools ---
-    tools.append(Tool(
-        name="discogs_get_release",
-        description="Get detailed info for a specific Discogs release. Input: Release ID (from discogs_get_versions, wantlist, or collection). Output: Full release details.",
-        inputSchema={
-            "type": "object",
-            "properties": {
-                "release_id": {"type": "string", "description": "Discogs Release ID (NOT Master ID)"},
-                "release_ids": {"type": "array", "items": {"type": "string"}, "description": "Multiple Release IDs for batch lookup"}
-            }
-        }
-    ))
-    tools.append(Tool(
-        name="discogs_get_wantlist",
-        description="Get user's Discogs wantlist. Output: Release IDs (not Master IDs).",
-        inputSchema={
-            "type": "object",
-            "properties": {
-                "page": {"type": "integer", "description": "Page number"},
-                "limit": {"type": "integer", "description": "Results per page"}
-            }
-        }
-    ))
-    tools.append(Tool(
-        name="discogs_add_to_wantlist",
-        description="Add a release to the Discogs wantlist. Input: Release ID (NOT Master ID). Use 'discogs_get_versions' to convert a Master ID to Release ID first.",
-        inputSchema={
-            "type": "object",
-            "properties": {
-                "release_id": {"type": "string", "description": "Discogs Release ID (NOT Master ID - use discogs_get_versions to get Release IDs)"},
-                "notes": {"type": "string", "description": "Optional notes"},
-                "rating": {"type": "integer", "description": "Optional rating (1-5)"}
-            },
-            "required": ["release_id"]
-        }
-    ))
-    tools.append(Tool(
-        name="discogs_get_collection_folders",
-        description="Get all folders in user's Discogs collection. Output: Folder IDs. Folder ID 0 is a special 'All' folder containing every release.",
-        inputSchema={
-            "type": "object",
-            "properties": {}
-        }
-    ))
-    tools.append(Tool(
-        name="discogs_get_collection",
-        description="Get releases from a Discogs collection folder. Input: Folder ID. Output: Release IDs (not Master IDs). Use folder_id=0 for all releases.",
-        inputSchema={
-            "type": "object",
-            "properties": {
-                "folder_id": {"type": "integer", "description": "Folder ID (0 for All) - get IDs from discogs_get_collection_folders"},
-                "page": {"type": "integer", "description": "Page number"},
-                "limit": {"type": "integer", "description": "Results per page"},
-                "sort": {"type": "string", "description": "Sort by: label, artist, title, catno, format, rating, added, year"},
-                "sort_order": {"type": "string", "enum": ["asc", "desc"], "description": "Sort direction"}
-            }
-        }
-    ))
-    tools.append(Tool(
-        name="discogs_add_to_collection",
-        description="Add a release to a Discogs collection folder. Input: Release ID (NOT Master ID) and Folder ID. Use discogs_get_versions to convert Master ID to Release ID. Cannot add to folder 0; use folder 1 (Uncategorized) or another folder.",
-        inputSchema={
-            "type": "object",
-            "properties": {
-                "release_id": {"type": "string", "description": "Discogs Release ID (NOT Master ID - use discogs_get_versions to get Release IDs)"},
-                "folder_id": {"type": "integer", "description": "Target folder ID (default: 1) - get IDs from discogs_get_collection_folders"}
-            },
-            "required": ["release_id"]
-        }
-    ))
-    tools.append(Tool(
-        name="discogs_move_release",
-        description="Move a release from one Discogs collection folder to another. Input: Release ID (NOT Master ID) and New Folder ID.",
-        inputSchema={
-            "type": "object",
-            "properties": {
-                "release_id": {"type": "string", "description": "Discogs Release ID"},
-                "new_folder_id": {"type": "integer", "description": "Destination Folder ID"}
-            },
-            "required": ["release_id", "new_folder_id"]
-        }
-    ))
-
     return tools
 
 @server.call_tool()
 async def call_tool(name: str, arguments: dict):
     from mcp.types import TextContent
-    
-    # Record Crate Handlers
-    if name == "discogs_search":
-        if not record_crate: return [TextContent(type="text", text="Record Crate not configured")]
-        try:
-            res = await record_crate.search(arguments["query"], limit=arguments.get("limit", 5), format=arguments.get("format"))
-            results = res.get("results", [])
-            output = "\n".join([f"Master ID: {r.get('id')} | {r.get('title')}" for r in results])
-            return [TextContent(type="text", text=output or "No results")]
-        except Exception as e:
-            return [TextContent(type="text", text=f"Error: {e}")]
 
-    elif name == "discogs_get_versions":
-        if not record_crate: return [TextContent(type="text", text="Record Crate not configured")]
-        try:
-            res = await record_crate.get_master_versions(arguments["master_id"], page=arguments.get("page", 1), per_page=arguments.get("limit", 10))
-            vers = res.get("versions", [])
-            output = "\n".join([f"Release ID: {v.get('id')} | {v.get('title')} | {v.get('format')}" for v in vers])
-            return [TextContent(type="text", text=output or "No versions")]
-        except Exception as e:
-            return [TextContent(type="text", text=f"Error: {e}")]
-
-    elif name == "discogs_get_release":
-        if not record_crate: return [TextContent(type="text", text="Record Crate not configured")]
-        release_id = arguments.get("release_id")
-        if not release_id and arguments.get("release_ids"): 
-             # Just take first for simplicity or handle batch logic if needed
-             release_id = arguments.get("release_ids")[0]
-        
-        if not release_id: return [TextContent(type="text", text="No release ID provided")]
-
-        try:
-             # Support batch if passed IDs? The prompt implied batch capability in previous code.
-             # The legacy code looped. Let's do that for release_ids.
-             target_ids = arguments.get("release_ids", [])
-             if release_id and release_id not in target_ids: target_ids.append(release_id)
-             
-             responses = await record_crate.get_releases(target_ids)
-             final_output = []
-             for i, data in enumerate(responses):
-                 rid = target_ids[i]
-                 if isinstance(data, Exception):
-                     final_output.append(f"Error: {data}")
-                     continue
-                 
-                 artists = ', '.join(a.get('name', '') for a in data.get('artists', []))
-                 labels = ', '.join(f"{l.get('name', '')} ({l.get('catno', '')})" for l in data.get('labels', []))
-                 formats = ', '.join(
-                     f"{f.get('name', '')}" + (f" [{', '.join(f.get('descriptions', []))}]" if f.get('descriptions') else "")
-                     for f in data.get('formats', [])
-                 )
-                 genres = ', '.join(data.get('genres', []))
-                 styles = ', '.join(data.get('styles', []))
-                 identifiers = '\n'.join(
-                     f"  {ident.get('type', '')}: {ident.get('value', '')}"
-                     for ident in data.get('identifiers', [])
-                 )
-                 community = data.get('community', {})
-                 rating = community.get('rating', {})
-
-                 lines = [
-                     "---",
-                     f"Discogs Release ID: {rid}",
-                     f"Title: {data.get('title')}",
-                     f"Artists: {artists}",
-                     f"Year: {data.get('year')}",
-                     f"Country: {data.get('country', 'Unknown')}",
-                     f"Labels: {labels}",
-                     f"Formats: {formats}",
-                     f"Genres: {genres}",
-                     f"Styles: {styles}",
-                 ]
-                 if identifiers:
-                     lines.append(f"Identifiers:\n{identifiers}")
-                 notes = data.get('notes', '')
-                 if notes:
-                     lines.append(f"Notes: {notes}")
-                 lines += [
-                     f"Community: {community.get('have', 0)} have / {community.get('want', 0)} want / Rating: {rating.get('average', 0):.1f} ({rating.get('count', 0)} votes)",
-                     f"For Sale: {data.get('num_for_sale', 'N/A')} from {data.get('lowest_price', 'N/A')}",
-                     f"Marketplace: {record_crate.get_marketplace_url(rid)}",
-                 ]
-                 final_output.append('\n'.join(lines))
-             return [TextContent(type="text", text="\n".join(final_output))]
-        except Exception as e:
-             return [TextContent(type="text", text=f"Error: {e}")]
-
-    elif name == "discogs_get_wantlist":
-        if not record_crate: return [TextContent(type="text", text="Record Crate not configured")]
-        try:
-             identity = await record_crate.get_identity()
-             username = identity.get("username")
-             if not username: return [TextContent(type="text", text="No username found")]
-             
-             data = await record_crate.get_wantlist(username, page=arguments.get("page", 1), per_page=arguments.get("limit", 50))
-             wants = data.get("wants", [])
-             
-             output = []
-             for w in wants:
-                  info = w.get("basic_information", {})
-                  rid = str(info.get("id"))
-                  output.append(f"[Release ID: {rid}] {info.get('title')} - {', '.join([a.get('name') for a in info.get('artists', [])])}")
-             return [TextContent(type="text", text="\n".join(output) or "Wantlist empty")]
-        except Exception as e:
-             return [TextContent(type="text", text=f"Error: {e}")]
-
-    elif name == "discogs_add_to_wantlist":
-        if not record_crate: return [TextContent(type="text", text="Record Crate not configured")]
-        try:
-             # Need username
-             identity = await record_crate.get_identity()
-             username = identity.get("username")
-             if not username: return [TextContent(type="text", text="No username found")]
-
-             release_id = arguments["release_id"]
-             res = await record_crate.add_to_wantlist(
-                 username,
-                 release_id,
-                 notes=arguments.get("notes"),
-                 rating=arguments.get("rating")
-             )
-
-             title = res.get("basic_information", {}).get("title", "Unknown Title")
-             return [TextContent(type="text", text=f"Added to Wantlist: {title} (ID: {release_id})")]
-        except Exception as e:
-             return [TextContent(type="text", text=f"Error: {e}")]
-
-    elif name == "discogs_get_collection_folders":
-        if not record_crate: return [TextContent(type="text", text="Record Crate not configured")]
-        try:
-            identity = await record_crate.get_identity()
-            username = identity.get("username")
-            if not username: return [TextContent(type="text", text="No username found")]
-
-            data = await record_crate.get_collection_folders(username)
-            folders = data.get("folders", [])
-            output = "\n".join([f"[Folder ID: {f.get('id')}] {f.get('name')} ({f.get('count')} releases)" for f in folders])
-            return [TextContent(type="text", text=output or "No folders found")]
-        except Exception as e:
-            return [TextContent(type="text", text=f"Error: {e}")]
-
-    elif name == "discogs_get_collection":
-        if not record_crate: return [TextContent(type="text", text="Record Crate not configured")]
-        try:
-            identity = await record_crate.get_identity()
-            username = identity.get("username")
-            if not username: return [TextContent(type="text", text="No username found")]
-
-            data = await record_crate.get_collection_releases(
-                username,
-                folder_id=arguments.get("folder_id", 0),
-                page=arguments.get("page", 1),
-                per_page=arguments.get("limit", 50),
-                sort=arguments.get("sort"),
-                sort_order=arguments.get("sort_order")
-            )
-
-            releases = data.get("releases", [])
-            pagination = data.get("pagination", {})
-            output = [f"Page {pagination.get('page', 1)} of {pagination.get('pages', 1)} ({pagination.get('items', 0)} total)\n"]
-
-            for r in releases:
-                info = r.get("basic_information", {})
-                artists = ", ".join([a.get("name") for a in info.get("artists", [])])
-                output.append(f"[Release ID: {info.get('id')}] {info.get('title')} - {artists} ({info.get('year', '')})")
-
-            return [TextContent(type="text", text="\n".join(output) or "No releases")]
-        except Exception as e:
-            return [TextContent(type="text", text=f"Error: {e}")]
-
-    elif name == "discogs_add_to_collection":
-        if not record_crate: return [TextContent(type="text", text="Record Crate not configured")]
-        try:
-            identity = await record_crate.get_identity()
-            username = identity.get("username")
-            if not username: return [TextContent(type="text", text="No username found")]
-
-            release_id = arguments["release_id"]
-            folder_id = arguments.get("folder_id", 1)
-
-            if folder_id == 0:
-                return [TextContent(type="text", text="Cannot add to folder 0 (All). Use folder 1 or another specific folder.")]
-
-            result = await record_crate.add_to_collection(username, folder_id, release_id)
-            instance_id = result.get("instance_id")
-            return [TextContent(type="text", text=f"Added to Collection! Release ID: {release_id}, Instance ID: {instance_id}, Folder ID: {folder_id}")]
-        except Exception as e:
-            return [TextContent(type="text", text=f"Error: {e}")]
-
-    elif name == "discogs_move_release":
-        if not record_crate: return [TextContent(type="text", text="Record Crate not configured")]
-        try:
-            identity = await record_crate.get_identity()
-            username = identity.get("username")
-            if not username: return [TextContent(type="text", text="No username found")]
-
-            release_id = arguments["release_id"]
-            new_folder_id = arguments["new_folder_id"]
-
-            # Find the instance
-            info = await record_crate.get_instance_info(username, release_id)
-            if not info:
-                return [TextContent(type="text", text=f"Release {release_id} not found in collection (checked first 1000 items).")]
-            
-            instance_id = info["instance_id"]
-            current_folder_id = info["folder_id"]
-
-            if current_folder_id == new_folder_id:
-                return [TextContent(type="text", text=f"Release {release_id} is already in folder {new_folder_id}.")]
-
-            await record_crate.move_release_instance(username, current_folder_id, release_id, instance_id, new_folder_id)
-            return [TextContent(type="text", text=f"Moved release {release_id} from folder {current_folder_id} to {new_folder_id}.")]
-
-        except Exception as e:
-            return [TextContent(type="text", text=f"Error: {e}")]
-
-    # Echo Locate Handlers
-    elif name.startswith("echolocate_"):
+    if name.startswith("echolocate_"):
         if not echo_locate: return [TextContent(type="text", text="Echo Locate not configured")]
         try:
             if name == "echolocate_generate_playlist":
@@ -688,9 +339,9 @@ async def call_tool(name: str, arguments: dict):
 
             elif name == "echolocate_sample":
                 res = await echo_locate.sample_db(
-                    limit=arguments.get("limit", 20), 
-                    offset=arguments.get("offset", 0), 
-                    random_sample=arguments.get("random", True), 
+                    limit=arguments.get("limit", 20),
+                    offset=arguments.get("offset", 0),
+                    random_sample=arguments.get("random", True),
                     source=arguments.get("source", "library")
                 )
                 lines = []
@@ -703,8 +354,8 @@ async def call_tool(name: str, arguments: dict):
 
             elif name == "echolocate_similar":
                 res = await echo_locate.find_similar_tracks(
-                    arguments["track_id"], 
-                    limit=arguments.get("limit", 5), 
+                    arguments["track_id"],
+                    limit=arguments.get("limit", 5),
                     source=arguments.get("source", "library")
                 )
                 lines = []
@@ -750,23 +401,23 @@ async def call_tool(name: str, arguments: dict):
                     source=arguments.get("source", "library"),
                     enhance=arguments.get("enhance", True)
                 )
-                
+
                 # Handle new response format (dict vs list)
                 results_list = res
                 enhanced_text = ""
-                
+
                 if isinstance(res, dict):
                     results_list = res.get("results", [])
                     if res.get("enhanced_query"):
-                        enhanced_text = f"🤖 Enhanced Query: '{res.get('enhanced_query')}'\n\n"
-                
+                        enhanced_text = f"Enhanced Query: '{res.get('enhanced_query')}'\n\n"
+
                 lines = []
                 for t in results_list:
                     line = f"Vector ID: {t['id']} | Sim: {t.get('similarity', 0):.3f} | {t['title']} - {t['artist']}"
                     if t.get('track_url'):
                         line += f" | {t['track_url']}"
                     lines.append(line)
-                
+
                 output = enhanced_text + ("\n".join(lines) or "No semantic matches found")
                 return [TextContent(type="text", text=output)]
 
