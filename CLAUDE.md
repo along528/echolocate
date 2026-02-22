@@ -12,7 +12,6 @@ The project consists of three main services:
 
 1. **`mcp/`** - Remote MCP server (Starlette/uvicorn)
    - OAuth2 authentication flow for MCP clients
-   - Apple Music integration via `AppleCrate` class (catalog search, library search, playlist creation)
    - Discogs integration via `RecordCrate` class (search, wantlist management)
    - Vector search proxy via `EchoLocate` class (connects to vector service)
    - Entry point: `mcp/main.py`
@@ -30,7 +29,7 @@ The project consists of three main services:
    - User identity = SHA-256 hash of Apple Music user token, stored in Firestore (`cloud_crate_users/{user_id}`)
    - `contextvars.ContextVar` threads user identity from JWT to tool handlers
    - 4 tools only: `apple_search_catalog`, `apple_search_library`, `apple_create_playlist`, `apple_get_track_context`
-   - Reuses `mcp/apple_crate.py` (copied at Docker build time)
+   - Owns `apple_crate.py` directly (colocated)
    - Entry point: `mcp-apple/main.py`
 
 4. **`embeddings/`** - Audio embedding pipeline (local processing)
@@ -100,7 +99,6 @@ All tools are strictly namespaced: `apple_*`, `discogs_*`, `echolocate_*`
 
 ### Environment Variables
 - MCP: `MCP_AUTH_SECRET`, `MCP_JWT_SECRET`, `MCP_CLIENT_ID`, `MCP_CLIENT_SECRET`
-- Apple: `APPLE_TEAM_ID`, `APPLE_KEY_ID`, `APPLE_PRIVATE_KEY`, `APPLE_MUSIC_USER_TOKEN`
 - Apple MCP: `APPLE_TEAM_ID`, `APPLE_KEY_ID`, `APPLE_PRIVATE_KEY`, `MCP_JWT_SECRET`, `MCP_CLIENT_ID`, `MCP_CLIENT_SECRET`, `GOOGLE_CLOUD_PROJECT` (for Firestore)
 - Discogs: `DISCOGS_TOKEN`
 - Vector: `LIBRARY_VECTOR_URL`, `FMA_VECTOR_URL`, or legacy `VECTOR_SERVICE_URL`
