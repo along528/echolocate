@@ -98,7 +98,7 @@ def export(output_dir: str, model_name: str = "laion/clap-htsat-unfused"):
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
-    parser.add_argument("--output-dir", default="/app/clap_text_onnx")
+    parser.add_argument("--output-dir", default="./clap_text_onnx")
     parser.add_argument("--model-name", default="laion/clap-htsat-unfused")
     args = parser.parse_args()
     export(args.output_dir, args.model_name)

@@ -22,6 +22,9 @@ data/
 # Embeddings Tmp
 embeddings/tmp/
 
+# ONNX export artifacts
+clap_text_onnx/
+
 # DuckDB
 *.duckdb
 .bucket_name
