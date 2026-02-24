@@ -14,15 +14,20 @@ pub fn get_connection(db_path: &str) -> Result<Connection> {
 /// Extract a FLOAT[] column value as Vec<f32> from a DuckDB row.
 /// DuckDB returns list columns as duckdb::types::Value::List.
 pub fn value_to_vec_f32(val: &duckdb::types::Value) -> Vec<f32> {
-    match val {
-        duckdb::types::Value::List(items) => items
-            .iter()
-            .map(|v| match v {
-                duckdb::types::Value::Float(f) => *f,
-                duckdb::types::Value::Double(d) => *d as f32,
-                _ => 0.0,
-            })
-            .collect(),
-        _ => vec![],
-    }
+    let items = match val {
+        duckdb::types::Value::List(items) => items,
+        duckdb::types::Value::Array(items) => items,
+        other => {
+            tracing::warn!("Unexpected vector Value variant: {:?}", std::mem::discriminant(other));
+            return vec![];
+        }
+    };
+    items
+        .iter()
+        .map(|v| match v {
+            duckdb::types::Value::Float(f) => *f,
+            duckdb::types::Value::Double(d) => *d as f32,
+            _ => 0.0,
+        })
+        .collect()
 }
