@@ -7,6 +7,7 @@ A high-performance vector search service built with **DuckDB** and **FastAPI**, 
 - **DuckDB Backend**: Uses `duckdb` with `vss` extension for efficient vector operations.
 - **Serverless**: Optimized for Cloud Run (stateless-ish, reads from mounted GCS bucket or local file).
 - **Sonic Interpolation**: Algorithms to find paths between songs (Greedy Walk, SLERP, etc.).
+- **ONNX Text Encoder**: CLAP text encoder exported to ONNX for fast semantic search (~25x faster inference, no PyTorch at runtime).
 
 ## API Endpoints
 
@@ -55,6 +56,24 @@ Deploy using the script in this directory:
 ### Requirements
 - A Google Cloud Storage bucket containing `cloudcrate.duckdb`.
 - The `deploy.sh` script handles mounting this bucket using gcsfuse.
+
+## ONNX Export
+
+The Docker build handles ONNX export automatically via a two-stage build. To export locally (for validation or development):
+
+```bash
+python export_clap_text.py --output-dir ./clap_text_onnx
+```
+
+To validate the ONNX model matches PyTorch output:
+
+```bash
+python validate_onnx.py --onnx-dir ./clap_text_onnx
+```
+
+### How it works
+
+The full CLAP model (`laion/clap-htsat-unfused`, ~615MB) includes both audio and text encoders, but the vector service only uses the text encoder for semantic search. The export script wraps `text_model` + `text_projection` into a single ONNX model (~478MB), eliminating the need for PyTorch and transformers at runtime. This reduces cold start time by ~4-7s on Cloud Run.
 
 ## Local Development
 
