@@ -160,11 +160,11 @@
 
     <!-- Configuration - set your vector service URL here -->
     <script>
-        // Production: relative path routed through shared load balancer
+        // Production: direct Cloud Run URL (vector service is public with CORS)
         // Local development: override if on localhost
         window.VECTOR_API_URL = (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1')
             ? 'http://localhost:8001'
-            : '/api';
+            : 'https://cloud-crate-vector-403961692263.us-central1.run.app';
     </script>
     <script src="api.js?v=8"></script>
     <script src="player.js?v=10"></script>

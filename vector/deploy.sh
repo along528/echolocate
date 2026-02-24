@@ -23,7 +23,7 @@ echo "Deploying $SERVICE_NAME using bucket $BUCKET_NAME..."
 gcloud run deploy $SERVICE_NAME \
     --source . \
     --region $REGION \
-    --no-allow-unauthenticated \
+    --allow-unauthenticated \
     --ingress all \
     --execution-environment=gen2 \
     --memory=2Gi \
@@ -34,6 +34,6 @@ gcloud run deploy $SERVICE_NAME \
     --min-instances=0 \
     --add-volume=name=db-volume,type=cloud-storage,bucket=$BUCKET_NAME \
     --add-volume-mount=volume=db-volume,mount-path=/data \
-    --set-env-vars DB_PATH=/data/cloudcrate.duckdb,GCP_PROJECT_ID=$(gcloud config get-value project)
+    --set-env-vars DB_PATH=/data/cloudcrate.duckdb,GCP_PROJECT_ID=$(gcloud config get-value project),CORS_ALLOW_ORIGINS=https://echolocate.app
 
 echo "✅ Deployment complete."
