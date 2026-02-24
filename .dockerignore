@@ -1,0 +1,6 @@
+*
+!vector/requirements.txt
+!vector/export_clap_text.py
+!vector-rs/Cargo.toml
+!vector-rs/Cargo.lock
+!vector-rs/src/
