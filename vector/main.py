@@ -11,8 +11,8 @@ import vertexai
 from vertexai.generative_models import GenerativeModel, GenerationConfig
 import numpy as np
 import math
-import torch
-from transformers import AutoProcessor, ClapModel
+import onnxruntime as ort
+from tokenizers import Tokenizer
 from google.cloud import storage
 
 # GCS Configuration for audio streaming
@@ -151,10 +151,10 @@ class SemanticSearchResponse(BaseModel):
     enhanced_query: Optional[str] = None
     original_query: str
 
-# CLAP Model (lazy-loaded on first semantic search request)
-clap_model = None
-clap_processor = None
-CLAP_MODEL_NAME = "laion/clap-htsat-unfused"
+# CLAP ONNX Model (loaded at startup)
+clap_session = None
+clap_tokenizer = None
+CLAP_ONNX_DIR = os.getenv("CLAP_ONNX_DIR", "/app/clap_text_onnx")
 
 def run_agent_enhancement(raw_query: str) -> str:
     """Runs the Gemini Agent to expand the query."""
@@ -180,20 +180,25 @@ def run_agent_enhancement(raw_query: str) -> str:
 
 def get_clap_model():
     """
-    Lazy-load the CLAP model on first use.
-    This avoids blocking startup and exceeding Cloud Run's timeout.
-    Uses local_files_only=True since model is pre-cached in Docker image.
+    Load the ONNX text encoder and tokenizer.
+    ONNX loads in ~0.3-0.5s vs 2-5s for full PyTorch CLAP model.
     """
-    global clap_model, clap_processor
-    
-    if clap_model is None:
-        print(f"Loading CLAP model: {CLAP_MODEL_NAME}...")
-        clap_model = ClapModel.from_pretrained(CLAP_MODEL_NAME, local_files_only=True)
-        clap_processor = AutoProcessor.from_pretrained(CLAP_MODEL_NAME, local_files_only=True)
-        clap_model.eval()
-        print("CLAP model loaded successfully.")
-    
-    return clap_model, clap_processor
+    global clap_session, clap_tokenizer
+
+    if clap_session is None:
+        onnx_path = os.path.join(CLAP_ONNX_DIR, "clap_text.onnx")
+        tokenizer_path = os.path.join(CLAP_ONNX_DIR, "tokenizer.json")
+        print(f"Loading CLAP ONNX model from {CLAP_ONNX_DIR}...")
+        clap_session = ort.InferenceSession(
+            onnx_path,
+            providers=["CPUExecutionProvider"],
+        )
+        clap_tokenizer = Tokenizer.from_file(tokenizer_path)
+        clap_tokenizer.enable_padding()
+        clap_tokenizer.enable_truncation(max_length=512)
+        print("CLAP ONNX model loaded successfully.")
+
+    return clap_session, clap_tokenizer
 
 @app.on_event("startup")
 async def startup_event():
@@ -232,12 +237,12 @@ async def startup_event():
     else:
         print(f"Database found at {DB_PATH}")
 
-    # 4. Eagerly load CLAP model (cpu-boost provides extra CPU during startup)
+    # 4. Eagerly load CLAP ONNX model (loads in ~0.3-0.5s)
     try:
         get_clap_model()
-        print("✅ CLAP model loaded at startup.")
+        print("✅ CLAP ONNX model loaded at startup.")
     except Exception as e:
-        print(f"⚠️ CLAP model failed to load at startup (will retry on first request): {e}")
+        print(f"⚠️ CLAP ONNX model failed to load at startup (will retry on first request): {e}")
 
 def get_db_connection():
     # Connect in Read-Only mode to allow concurrency/cloud run compatibility
@@ -560,18 +565,21 @@ def semantic_search(request: SemanticSearchRequest):
             enhanced_query_text = run_agent_enhancement(request.query)
             final_search_text = enhanced_query_text
 
-        # 2. Vectorization Layer (CLAP)
-        model, processor = get_clap_model()
-        
+        # 2. Vectorization Layer (CLAP ONNX)
+        session, tokenizer = get_clap_model()
+
         # Tokenize
-        text_inputs = processor(text=[final_search_text], padding=True, return_tensors="pt")
-        
-        # Embed & Normalize
-        with torch.no_grad():
-            text_features = model.get_text_features(**text_inputs)
-            text_features = text_features / text_features.norm(dim=-1, keepdim=True)
-        
-        query_vector = text_features.squeeze(0).cpu().numpy().tolist()
+        encoded = tokenizer.encode(final_search_text)
+        input_ids = np.array([encoded.ids], dtype=np.int64)
+        attention_mask = np.array([encoded.attention_mask], dtype=np.int64)
+
+        # Run ONNX inference (output is already L2-normalized)
+        [text_features] = session.run(
+            None,
+            {"input_ids": input_ids, "attention_mask": attention_mask},
+        )
+
+        query_vector = text_features[0].tolist()
         
         # 3. Retrieval Layer (DuckDB)
         con = get_db_connection()
