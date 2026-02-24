@@ -5,8 +5,8 @@ Cloud Crate is a music library management and discovery system powered by MCP (M
 ## Architecture
 
 - **`mcp/`**: A remote MCP server that exposes tools for Apple Music, Discogs, and Vector Search. It handles OAuth2/JWT authentication and orchestrates requests. Authenticates to the vector service using Google Cloud ID tokens.
-- **`vector/`**: A high-performance vector search service using DuckDB. It serves audio embeddings and supports sonic interpolation. Locked down to only accept traffic from the load balancer (browser) and the MCP server (service account).
-- **`frontend/`**: A browser-based UI for exploring FMA tracks with semantic search and interpolation. Served behind Identity-Aware Proxy (IAP) for access control.
+- **`vector/`**: A high-performance vector search service using DuckDB. It serves audio embeddings and supports sonic interpolation. Public with CORS restricted to the frontend domain.
+- **`frontend/`**: A browser-based UI for exploring FMA tracks with semantic search and interpolation. Protected by Cloud Run native Identity-Aware Proxy (IAP).
 - **`embeddings/`**: Scripts for processing audio files, generating embeddings (using generic audio transformers), and building the DuckDB database.
 
 ## Features
@@ -19,12 +19,11 @@ Cloud Crate is a music library management and discovery system powered by MCP (M
 
 ## Security Model
 
-The frontend and vector service sit behind a shared Google Cloud HTTPS Load Balancer with Identity-Aware Proxy (IAP):
+No load balancer — each service is accessed directly via its Cloud Run URL:
 
-- **Frontend** (`/*`): Served through the LB. IAP requires Google login before access is granted.
-- **Vector API** (`/api/*`): Routed through the same LB with a path rewrite (`/api/tracks` -> `/tracks`). IAP protects browser access. The MCP server authenticates directly via Google Cloud ID tokens (service account with `roles/run.invoker`).
-- **Vector service ingress**: Restricted to `internal-and-cloud-load-balancing` — direct access to the Cloud Run URL is blocked (returns 404).
-- **MCP server**: Remains publicly reachable for the OAuth2 handshake (`/authorize`, `/token`). All sensitive routes are protected by app-level `AuthMiddleware`.
+- **Frontend**: Protected by Cloud Run native IAP (`--iap` flag). Requires Google login before access is granted. Custom domain `echolocate.app` via Cloud Run domain mapping.
+- **Vector service**: Public (`--allow-unauthenticated`) since it's read-only search. CORS restricted to `https://echolocate.app`. The MCP server also has `roles/run.invoker` for service-to-service calls.
+- **MCP server**: Publicly reachable for the OAuth2 handshake (`/authorize`, `/token`). All sensitive routes are protected by app-level `AuthMiddleware`.
 
 ## Deployment
 
@@ -46,9 +45,9 @@ This deploys all three services:
 2. `cloud-crate-mcp` — MCP server, automatically linked to the vector service.
 3. `cloud-crate-frontend` — browser UI.
 
-### Set up Load Balancer + IAP
+### Set up IAP + Custom Domain
 
-After deploying, follow these steps to set up the shared load balancer with IAP authentication.
+After deploying, follow these steps to configure IAP authentication and the custom domain.
 
 #### Step 1: Enable the IAP API and create its service agent
 
@@ -74,7 +73,12 @@ Go to https://console.cloud.google.com/apis/credentials and:
 1. Click **"+ Create Credentials"** -> **"OAuth client ID"**
 2. Application type: **Web application**
 3. Name: `IAP-Cloud-Crate`
-4. Click **Create** and copy the **Client ID** and **Client Secret**
+4. Click **Create** and save the **Client ID** and **Client Secret**
+
+Store the client secret in Secret Manager (or pass it via `IAP_CLIENT_SECRET` env var):
+```bash
+echo -n "YOUR_CLIENT_SECRET" | gcloud secrets create iap-client-secret --data-file=- --project=cloud-crate-485418
+```
 
 #### Step 4: Run the setup script
 
@@ -83,81 +87,37 @@ Go to https://console.cloud.google.com/apis/credentials and:
 ```
 
 This script is idempotent (safe to re-run) and:
-1. Tears down any old frontend-only LB resources.
-2. Creates/reuses a static IP address.
-3. Creates serverless NEGs for both frontend and vector services.
-4. Creates a URL map with path-based routing (`/*` -> frontend, `/api/*` -> vector with path rewrite).
-5. Provisions a Google-managed SSL certificate for `echolocate.app`.
-6. Enables IAP on both backend services.
-7. Grants your email IAP access.
-8. Grants the MCP service account `roles/run.invoker` on the vector service.
+1. Grants the IAP service agent `roles/run.invoker` on the frontend.
+2. Configures the OAuth client ID/secret on the frontend's IAP settings.
+3. Grants your email IAP access on the frontend Cloud Run service.
+4. Grants the MCP service account `roles/run.invoker` on the vector service.
+5. Creates a Cloud Run domain mapping for `echolocate.app`.
 
-#### Step 4b: Configure DNS
+#### Step 5: Configure DNS
 
-Add an A record at your domain registrar pointing to the static IP:
+Add these records at your domain registrar (values from `gcloud beta run domain-mappings describe`):
 
 | Type | Name | Value |
 |------|------|-------|
-| A    | @ (or blank) | 34.149.173.190 |
+| A    | @ | 216.239.32.21 |
+| A    | @ | 216.239.34.21 |
+| A    | @ | 216.239.36.21 |
+| A    | @ | 216.239.38.21 |
+| AAAA | @ | 2001:4860:4802:32::15 |
+| AAAA | @ | 2001:4860:4802:34::15 |
+| AAAA | @ | 2001:4860:4802:36::15 |
+| AAAA | @ | 2001:4860:4802:38::15 |
 
-You can retrieve the IP with:
-```bash
-gcloud compute addresses describe cloud-crate-frontend-ip --global --project=cloud-crate-485418 --format='value(address)'
-```
+Cloud Run automatically provisions and renews a managed TLS certificate once DNS is configured.
 
+#### Step 6: Verify
 
-The Google-managed SSL certificate requires DNS to point at the load balancer IP before it will provision. The cert can take 10-60 minutes to activate after DNS propagates.
-
-#### Step 5: Attach the OAuth client to the backend services
-
-Replace `CLIENT_ID` and `CLIENT_SECRET` with the values from Step 3:
-
-```bash
-gcloud compute backend-services update cloud-crate-frontend-backend \
-    --global \
-    --iap=enabled,oauth2-client-id=CLIENT_ID,oauth2-client-secret=CLIENT_SECRET \
-    --project=cloud-crate-485418
-
-gcloud compute backend-services update cloud-crate-vector-backend \
-    --global \
-    --iap=enabled,oauth2-client-id=CLIENT_ID,oauth2-client-secret=CLIENT_SECRET \
-    --project=cloud-crate-485418
-```
-
-#### Step 6: Grant the IAP service agent permission to invoke Cloud Run
-
-```bash
-PROJECT_NUMBER=$(gcloud projects describe cloud-crate-485418 --format='value(projectNumber)')
-
-gcloud run services add-iam-policy-binding cloud-crate-frontend \
-    --region=us-central1 \
-    --member="serviceAccount:service-${PROJECT_NUMBER}@gcp-sa-iap.iam.gserviceaccount.com" \
-    --role="roles/run.invoker" \
-    --project=cloud-crate-485418
-
-gcloud run services add-iam-policy-binding cloud-crate-vector \
-    --region=us-central1 \
-    --member="serviceAccount:service-${PROJECT_NUMBER}@gcp-sa-iap.iam.gserviceaccount.com" \
-    --role="roles/run.invoker" \
-    --project=cloud-crate-485418
-```
-
-#### Step 7: Wait for SSL and verify
-
-The SSL certificate takes 10-60 minutes to provision. Check status:
-```bash
-gcloud compute ssl-certificates describe cloud-crate-cert --global --project=cloud-crate-485418 --format='value(managed.status)'
-```
-
-Once it shows `ACTIVE`, verify IAP is working:
 ```bash
 # Expect 302 (redirect to Google login)
 curl -s -o /dev/null -w '%{http_code}' https://echolocate.app/
 ```
 
-Then open `https://echolocate.app` in your browser and sign in with the email you added as a test user.
-
-**If IAP login fails with a redirect error**, update the OAuth client (from Step 3) to add `https://echolocate.app/_gcp_gatekeeper/authenticate` to the **Authorized redirect URIs** at https://console.cloud.google.com/apis/credentials?project=cloud-crate-485418.
+Open `https://echolocate.app` in your browser and sign in with the email you added as a test user.
 
 ### Connect to Claude
 Once deployed, configure your Claude Desktop or other MCP client with the Remote MCP URL:
@@ -173,13 +133,18 @@ Once deployed, configure your Claude Desktop or other MCP client with the Remote
 }
 ```
 
+### Tear down old load balancer (one-time)
+
+If migrating from the previous LB-based setup, run:
+```bash
+./teardown_lb.sh
+```
+
+This removes all old LB resources (forwarding rule, HTTPS proxy, SSL cert, URL map, backend services, NEGs, static IP).
+
 ### Local Development
 
-For local development, the frontend defaults to `/api` as the vector API base URL. Override this in the browser console or by editing `frontend/index.html`:
-
-```js
-window.VECTOR_API_URL = 'http://localhost:8001';
-```
+For local development, the frontend automatically uses `http://localhost:8001` as the vector API base URL when served from localhost.
 
 The MCP server's vector client gracefully falls back to unauthenticated requests when no Google Cloud metadata server is available (i.e., local dev).
 
@@ -188,22 +153,14 @@ The MCP server's vector client gracefully falls back to unauthenticated requests
 After deployment and IAP setup:
 
 ```bash
-# SSL cert active
-gcloud compute ssl-certificates describe cloud-crate-cert --global --project=cloud-crate-485418 --format='value(managed.status)'
-# Expected: ACTIVE
-
-# Frontend via LB (expect 302 redirect to Google login)
+# Frontend (expect 302 redirect to Google login)
 curl -s -o /dev/null -w '%{http_code}' https://echolocate.app/
 
-# Vector via LB (expect 302 when unauthenticated)
-curl -s -o /dev/null -w '%{http_code}' https://echolocate.app/api/
-
-# Vector direct access blocked (expect 404 — Cloud Run returns 404 for blocked ingress)
-VECTOR_URL=$(gcloud run services describe cloud-crate-vector --region=us-central1 --format='value(status.url)')
-curl -s -o /dev/null -w '%{http_code}' $VECTOR_URL/
+# Vector service (expect 200 — publicly accessible)
+curl -s -o /dev/null -w '%{http_code}' https://cloud-crate-vector-403961692263.us-central1.run.app/
 ```
 
-To verify the frontend works end-to-end, open `https://echolocate.app` in a browser, sign in, and confirm that search and interpolation features load data via `/api/*`.
+To verify the frontend works end-to-end, open `https://echolocate.app` in a browser, sign in, and confirm that search and interpolation features work.
 
 Use the provided scripts for deeper checks:
 - `python vector/verify_service.py <VECTOR_URL>`
@@ -211,10 +168,8 @@ Use the provided scripts for deeper checks:
 
 ## Troubleshooting
 
-### Safari: frontend loads but vector API calls fail after a redeploy
+### Vector API calls fail with CORS errors
 
-**Symptom**: The page loads and you're logged in, but search or interpolation buttons do nothing (or fail silently). Chrome works fine.
+**Cause**: The `CORS_ALLOW_ORIGINS` env var on the vector service doesn't include the frontend origin.
 
-**Cause**: The frontend and vector API are separate IAP-protected backends behind the same load balancer. Each backend requires its own IAP session cookie. Chrome silently re-authenticates both sessions via a hidden iframe on the first request. Safari's Intelligent Tracking Prevention (ITP) blocks these third-party cookie flows, so the vector backend session is never established.
-
-**Fix**: Clear your browser cookies for `echolocate.app` (or do a full Safari "Clear History and Website Data"), then reload. This forces a fresh IAP login that establishes sessions for both backends at once.
+**Fix**: Verify the vector service has `CORS_ALLOW_ORIGINS=https://echolocate.app` set. Redeploy with `cd vector && ./deploy.sh` if needed.

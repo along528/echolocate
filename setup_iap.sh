@@ -13,6 +13,17 @@ VECTOR_SERVICE="cloud-crate-vector"
 MCP_SERVICE="cloud-crate-mcp"
 DOMAIN="echolocate.app"
 
+IAP_CLIENT_ID="403961692263-2h1g7th7pebu6kc60htn1oopggcsh4tp.apps.googleusercontent.com"
+IAP_CLIENT_SECRET="${IAP_CLIENT_SECRET:-}"
+if [ -z "$IAP_CLIENT_SECRET" ]; then
+    IAP_CLIENT_SECRET=$(gcloud secrets versions access latest --secret=iap-client-secret --project=${PROJECT_ID} 2>/dev/null || true)
+fi
+if [ -z "$IAP_CLIENT_SECRET" ]; then
+    echo "Error: IAP_CLIENT_SECRET env var not set and not found in Secret Manager."
+    echo "Usage: IAP_CLIENT_SECRET=<secret> ./setup_iap.sh <your-google-email>"
+    exit 1
+fi
+
 USER_EMAIL="${1:-}"
 if [ -z "$USER_EMAIL" ]; then
     echo "Usage: ./setup_iap.sh <your-google-email>"
@@ -23,12 +34,44 @@ echo "Setting up IAP + domain mapping for Cloud Crate..."
 echo "Authorized user: ${USER_EMAIL}"
 
 # ============================================================
-# 1. Grant IAP access on frontend Cloud Run service
+# 1. Grant IAP service agent run.invoker on frontend
+# ============================================================
+echo ""
+echo "Granting IAP service agent run.invoker on frontend..."
+
+PROJECT_NUMBER=$(gcloud projects describe ${PROJECT_ID} --format='value(projectNumber)')
+IAP_SA="service-${PROJECT_NUMBER}@gcp-sa-iap.iam.gserviceaccount.com"
+
+gcloud run services add-iam-policy-binding ${FRONTEND_SERVICE} \
+    --region=${REGION} \
+    --member="serviceAccount:${IAP_SA}" \
+    --role="roles/run.invoker" \
+    --project=${PROJECT_ID}
+
+# ============================================================
+# 2. Configure IAP OAuth client on frontend
+# ============================================================
+echo ""
+echo "Configuring IAP OAuth client..."
+
+gcloud beta iap settings set /dev/stdin \
+    --project=${PROJECT_ID} \
+    --resource-type=cloud-run \
+    --service=${FRONTEND_SERVICE} \
+    --region=${REGION} <<OAUTHEOF
+accessSettings:
+  oauthSettings:
+    clientId: "${IAP_CLIENT_ID}"
+    clientSecret: "${IAP_CLIENT_SECRET}"
+OAUTHEOF
+
+# ============================================================
+# 3. Grant IAP access to user on frontend Cloud Run service
 # ============================================================
 echo ""
 echo "Granting IAP access to ${USER_EMAIL} on frontend..."
 
-gcloud iap web add-iam-policy-binding \
+gcloud beta iap web add-iam-policy-binding \
     --resource-type=cloud-run \
     --service=${FRONTEND_SERVICE} \
     --region=${REGION} \
@@ -37,7 +80,7 @@ gcloud iap web add-iam-policy-binding \
     --project=${PROJECT_ID}
 
 # ============================================================
-# 2. Grant MCP service account run.invoker on vector service
+# 4. Grant MCP service account run.invoker on vector service
 # ============================================================
 echo ""
 echo "Granting MCP service account access to vector service..."
@@ -48,7 +91,6 @@ MCP_SA=$(gcloud run services describe ${MCP_SERVICE} \
     --format='value(spec.template.spec.serviceAccountName)' 2>/dev/null || true)
 
 if [ -z "$MCP_SA" ]; then
-    PROJECT_NUMBER=$(gcloud projects describe ${PROJECT_ID} --format='value(projectNumber)')
     MCP_SA="${PROJECT_NUMBER}-compute@developer.gserviceaccount.com"
 fi
 
@@ -61,7 +103,7 @@ gcloud run services add-iam-policy-binding ${VECTOR_SERVICE} \
     --project=${PROJECT_ID}
 
 # ============================================================
-# 3. Cloud Run domain mapping for echolocate.app
+# 5. Cloud Run domain mapping for echolocate.app
 # ============================================================
 echo ""
 echo "Setting up domain mapping for ${DOMAIN}..."
