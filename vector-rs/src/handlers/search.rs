@@ -115,18 +115,18 @@ pub async fn vector_search(
             format!("WHERE source = '{}'", source)
         };
 
+        let vec_literal = vec_f32_to_sql_literal(&vector, 768);
         let query = format!(
             "SELECT id, source, title, artist, album, relative_path, track_url, album_url, artist_url, \
-                    array_cosine_similarity(v_mid, ?::FLOAT[768]) as similarity \
+                    array_cosine_similarity(v_mid, {}) as similarity \
              FROM tracks {} \
              ORDER BY similarity DESC \
              LIMIT ?",
-            source_filter
+            vec_literal, source_filter
         );
 
-        let vec_value = vec_f32_to_duckdb_list(&vector);
         let mut stmt = conn.prepare(&query)?;
-        let mut rows = stmt.query(duckdb::params![vec_value, limit])?;
+        let mut rows = stmt.query(duckdb::params![limit])?;
 
         let mut results = Vec::new();
         while let Some(row) = rows.next()? {
@@ -150,7 +150,15 @@ pub async fn vector_search(
     .map_err(|e| AppError::Internal(e.to_string()))?
 }
 
-/// Convert a Vec<f32> to a duckdb::types::Value::List for binding.
-pub fn vec_f32_to_duckdb_list(v: &[f32]) -> duckdb::types::Value {
-    duckdb::types::Value::List(v.iter().map(|f| duckdb::types::Value::Float(*f)).collect())
+/// Format a Vec<f32> as a DuckDB SQL literal: [0.1, 0.2, ...]::FLOAT[N]
+/// Used because duckdb-rs doesn't support binding Value::List as a parameter.
+pub fn vec_f32_to_sql_literal(v: &[f32], dim: usize) -> String {
+    let inner: String = v.iter().map(|f| f.to_string()).collect::<Vec<_>>().join(",");
+    format!("[{}]::FLOAT[{}]", inner, dim)
+}
+
+/// Format a Vec<String> as a DuckDB list literal for UNNEST: ['a','b',...]
+pub fn vec_str_to_sql_literal(v: &[String]) -> String {
+    let inner: String = v.iter().map(|s| format!("'{}'", s.replace('\'', "''"))).collect::<Vec<_>>().join(",");
+    format!("[{}]", inner)
 }

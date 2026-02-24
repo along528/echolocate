@@ -12,11 +12,23 @@ COPY vector/export_clap_text.py .
 RUN python export_clap_text.py --output-dir /app/clap_text_onnx
 
 # === Stage 2: Build Rust binary ===
-FROM rust:1.82-slim-bookworm AS builder
+FROM rust:1.93-slim-bookworm AS builder
 
-RUN apt-get update && apt-get install -y pkg-config libssl-dev cmake g++ && rm -rf /var/lib/apt/lists/*
+RUN apt-get update && apt-get install -y pkg-config libssl-dev cmake g++ curl unzip wget && rm -rf /var/lib/apt/lists/*
 
 WORKDIR /app
+
+# Download pre-built libduckdb (avoids compiling DuckDB C++ from source)
+ENV DUCKDB_VERSION=1.2.2
+RUN curl -L "https://github.com/duckdb/duckdb/releases/download/v${DUCKDB_VERSION}/libduckdb-linux-amd64.zip" -o /tmp/libduckdb.zip && \
+    unzip /tmp/libduckdb.zip -d /tmp/libduckdb && \
+    cp /tmp/libduckdb/libduckdb.so /usr/local/lib/ && \
+    cp /tmp/libduckdb/duckdb.h /usr/local/include/ && \
+    cp /tmp/libduckdb/duckdb.hpp /usr/local/include/ && \
+    ldconfig && \
+    rm -rf /tmp/libduckdb*
+ENV DUCKDB_LIB_DIR=/usr/local/lib
+ENV DUCKDB_INCLUDE_DIR=/usr/local/include
 
 # Cache dependencies with cargo-chef
 RUN cargo install cargo-chef --locked
@@ -34,7 +46,7 @@ COPY vector-rs/ .
 RUN cargo build --release
 
 # Download ONNX Runtime shared library for the runtime stage
-RUN ORT_VERSION="1.19.2" && \
+RUN ORT_VERSION="1.23.0" && \
     apt-get update && apt-get install -y curl && \
     curl -L "https://github.com/microsoft/onnxruntime/releases/download/v${ORT_VERSION}/onnxruntime-linux-x64-${ORT_VERSION}.tgz" \
     | tar xz -C /tmp && \
@@ -67,8 +79,10 @@ RUN ldconfig
 # Copy DuckDB extensions
 COPY --from=builder /app/duckdb_extensions/ /tmp/.duckdb/extensions/
 
-# Copy the Rust binary
+# Copy the Rust binary and libduckdb
 COPY --from=builder /app/target/release/cloud-crate-vector /app/cloud-crate-vector
+COPY --from=builder /usr/local/lib/libduckdb.so /usr/local/lib/libduckdb.so
+RUN ldconfig
 
 # Environment
 ENV DB_PATH=/data/cloudcrate.duckdb

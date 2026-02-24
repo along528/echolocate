@@ -139,7 +139,6 @@ fn build_cors_layer(config: &Config) -> CorsLayer {
                     .allow_origin(AllowOrigin::list(parsed))
                     .allow_methods(tower_http::cors::Any)
                     .allow_headers(tower_http::cors::Any)
-                    .allow_credentials(true)
             }
         }
         None => {

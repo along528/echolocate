@@ -1,7 +1,7 @@
 use std::collections::HashSet;
 
 use crate::error::AppError;
-use crate::handlers::search::vec_f32_to_duckdb_list;
+use crate::handlers::search::vec_f32_to_sql_literal;
 use crate::interpolation::math::de_casteljau_slerp;
 use crate::models::SearchResult;
 
@@ -28,13 +28,16 @@ pub fn bezier_interpolation(
         let target_vector = de_casteljau_slerp(&control_points, t);
 
         // Find nearest real song to this theoretical point
-        let query = "SELECT id, title, artist, album, relative_path, v_mid, \
-                     array_cosine_similarity(v_mid, ?::FLOAT[768]) as similarity \
-                     FROM tracks ORDER BY similarity DESC LIMIT 20";
+        let vec_literal = vec_f32_to_sql_literal(&target_vector, 768);
+        let query = format!(
+            "SELECT id, title, artist, album, relative_path, v_mid, \
+             array_cosine_similarity(v_mid, {}) as similarity \
+             FROM tracks ORDER BY similarity DESC LIMIT 20",
+            vec_literal
+        );
 
-        let vec_value = vec_f32_to_duckdb_list(&target_vector);
-        let mut stmt = conn.prepare(query)?;
-        let mut rows = stmt.query(duckdb::params![vec_value])?;
+        let mut stmt = conn.prepare(&query)?;
+        let mut rows = stmt.query([])?;
 
         while let Some(row) = rows.next()? {
             let id: String = row.get(0)?;

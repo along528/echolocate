@@ -4,7 +4,7 @@ use std::sync::Arc;
 
 use crate::db;
 use crate::error::AppError;
-use crate::handlers::search::vec_f32_to_duckdb_list;
+use crate::handlers::search::vec_f32_to_sql_literal;
 use crate::models::{SearchResult, SemanticSearchRequest, SemanticSearchResponse};
 use crate::AppState;
 
@@ -53,19 +53,19 @@ pub async fn semantic_search(
             format!("AND source = '{}'", source)
         };
 
+        let vec_literal = vec_f32_to_sql_literal(&query_vector, 512);
         let query = format!(
             "SELECT id, source, title, artist, album, relative_path, track_url, album_url, artist_url, \
-                    array_cosine_similarity(v_clap, ?::FLOAT[512]) as similarity \
+                    array_cosine_similarity(v_clap, {}) as similarity \
              FROM tracks \
              WHERE v_clap IS NOT NULL {} \
              ORDER BY similarity DESC \
              LIMIT ?",
-            source_filter
+            vec_literal, source_filter
         );
 
-        let vec_value = vec_f32_to_duckdb_list(&query_vector);
         let mut stmt = conn.prepare(&query)?;
-        let mut rows = stmt.query(duckdb::params![vec_value, limit])?;
+        let mut rows = stmt.query(duckdb::params![limit])?;
 
         let mut results = Vec::new();
         while let Some(row) = rows.next()? {

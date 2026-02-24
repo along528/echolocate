@@ -1,7 +1,7 @@
 use std::collections::HashSet;
 
 use crate::error::AppError;
-use crate::handlers::search::vec_f32_to_duckdb_list;
+use crate::handlers::search::{vec_f32_to_sql_literal, vec_str_to_sql_literal};
 use crate::models::SearchResult;
 
 pub fn greedy_walk_interpolation(
@@ -29,48 +29,45 @@ pub fn greedy_walk_interpolation(
         format!("AND source = '{}'", source)
     };
 
+    let end_literal = vec_f32_to_sql_literal(end_vec, 768);
     let mut current_vec = start_vec.to_vec();
     let mut path = Vec::new();
 
     for _ in 0..limit {
-        // Two-step query: find neighborhood (top 50 closest to current),
-        // then rank by similarity to target, excluding visited IDs.
+        let current_literal = vec_f32_to_sql_literal(&current_vec, 768);
+        let visited_literal: Vec<String> = visited_ids.iter().cloned().collect();
+        let visited_sql = vec_str_to_sql_literal(&visited_literal);
+
         let query = format!(
             "WITH neighborhood AS ( \
                 SELECT id, title, artist, album, relative_path, v_mid, source, \
                        track_url, album_url, artist_url, \
-                       array_cosine_similarity(v_mid, ?::FLOAT[768]) as sim_to_current \
+                       array_cosine_similarity(v_mid, {current}) as sim_to_current \
                 FROM tracks \
-                WHERE 1=1 {} \
+                WHERE 1=1 {source_filter} \
                 ORDER BY sim_to_current DESC \
                 LIMIT 50 \
             ) \
             SELECT id, title, artist, album, relative_path, v_mid, source, \
                    track_url, album_url, artist_url, \
-                   array_cosine_similarity(v_mid, ?::FLOAT[768]) as sim_to_target \
+                   array_cosine_similarity(v_mid, {target}) as sim_to_target \
             FROM neighborhood \
-            WHERE id NOT IN (SELECT UNNEST(?)) \
+            WHERE id NOT IN (SELECT UNNEST({visited})) \
             ORDER BY sim_to_target DESC",
-            source_filter
+            current = current_literal,
+            target = end_literal,
+            source_filter = source_filter,
+            visited = visited_sql,
         );
 
-        let current_value = vec_f32_to_duckdb_list(&current_vec);
-        let end_value = vec_f32_to_duckdb_list(end_vec);
-        let visited_list: Vec<duckdb::types::Value> = visited_ids
-            .iter()
-            .map(|s| duckdb::types::Value::Text(s.clone()))
-            .collect();
-        let visited_value = duckdb::types::Value::List(visited_list);
-
         let mut stmt = conn.prepare(&query)?;
-        let mut rows = stmt.query(duckdb::params![current_value, end_value, visited_value])?;
+        let mut rows = stmt.query([])?;
 
         let mut best_next: Option<(SearchResult, Vec<f32>, f64)> = None;
 
         while let Some(row) = rows.next()? {
             let artist: String = row.get(2)?;
 
-            // Check artist uniqueness
             if visited_artists.contains(&artist) {
                 continue;
             }
@@ -103,12 +100,11 @@ pub fn greedy_walk_interpolation(
                 path.push(result);
                 current_vec = next_vec;
 
-                // Early exit if very close to target
                 if sim > 0.98 {
                     break;
                 }
             }
-            None => break, // Dead end
+            None => break,
         }
     }
 

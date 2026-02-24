@@ -2,8 +2,9 @@ use axum::extract::{Path, Query, State};
 use axum::Json;
 use std::sync::Arc;
 
-use crate::db;
+use crate::db::{self, value_to_vec_f32};
 use crate::error::AppError;
+use crate::handlers::search::vec_f32_to_sql_literal;
 use crate::models::{SearchResult, SimilarQuery, TrackResponse, TracksQuery};
 use crate::AppState;
 
@@ -88,7 +89,9 @@ async fn find_by_similarity(
         let mut rows = stmt.query([&track_id])?;
 
         let row = rows.next()?.ok_or_else(|| AppError::NotFound("Track not found".into()))?;
-        let target_vector: duckdb::types::Value = row.get(0)?;
+        let raw_vector: duckdb::types::Value = row.get(0)?;
+        let target_vec = value_to_vec_f32(&raw_vector);
+        let vec_literal = vec_f32_to_sql_literal(&target_vec, 768);
 
         // 2. Search for similar/dissimilar tracks
         let source_filter = if source == "all" {
@@ -99,16 +102,16 @@ async fn find_by_similarity(
 
         let query = format!(
             "SELECT id, source, title, artist, album, relative_path, track_url, album_url, artist_url, \
-                    array_cosine_similarity(v_mid, ?::FLOAT[768]) as similarity \
+                    array_cosine_similarity(v_mid, {}) as similarity \
              FROM tracks \
              WHERE id != ? {} \
              ORDER BY similarity {} \
              LIMIT ?",
-            source_filter, order
+            vec_literal, source_filter, order
         );
 
         let mut stmt = conn.prepare(&query)?;
-        let mut rows = stmt.query(duckdb::params![target_vector, track_id, limit])?;
+        let mut rows = stmt.query(duckdb::params![track_id, limit])?;
 
         let mut results = Vec::new();
         while let Some(row) = rows.next()? {

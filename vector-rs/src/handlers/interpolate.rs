@@ -4,7 +4,7 @@ use std::sync::Arc;
 
 use crate::db::{self, value_to_vec_f32};
 use crate::error::AppError;
-use crate::handlers::search::vec_f32_to_duckdb_list;
+use crate::handlers::search::vec_f32_to_sql_literal;
 use crate::interpolation::math::get_midpoint;
 use crate::models::{InterpolationRequest, SearchResult};
 use crate::AppState;
@@ -46,15 +46,17 @@ pub async fn interpolate_tracks(
         let midpoint = get_midpoint(vec1, vec2, &method);
 
         // 3. Search for nearest neighbors to the midpoint
-        let query = "SELECT id, title, artist, album, relative_path, \
-                     array_cosine_similarity(v_mid, ?::FLOAT[768]) as similarity \
-                     FROM tracks WHERE id NOT IN (?, ?) \
-                     ORDER BY similarity DESC LIMIT ?";
+        let vec_literal = vec_f32_to_sql_literal(&midpoint, 768);
+        let query = format!(
+            "SELECT id, title, artist, album, relative_path, \
+             array_cosine_similarity(v_mid, {}) as similarity \
+             FROM tracks WHERE id NOT IN (?, ?) \
+             ORDER BY similarity DESC LIMIT ?",
+            vec_literal
+        );
 
-        let vec_value = vec_f32_to_duckdb_list(&midpoint);
-        let mut stmt = conn.prepare(query)?;
+        let mut stmt = conn.prepare(&query)?;
         let mut rows = stmt.query(duckdb::params![
-            vec_value,
             request.track_id_1,
             request.track_id_2,
             limit
