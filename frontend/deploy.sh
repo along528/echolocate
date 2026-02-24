@@ -11,12 +11,13 @@ echo "Building and deploying frontend..."
 gcloud builds submit --tag gcr.io/${PROJECT_ID}/${SERVICE_NAME}
 
 # Deploy to Cloud Run
-gcloud run deploy ${SERVICE_NAME} \
+gcloud beta run deploy ${SERVICE_NAME} \
     --image gcr.io/${PROJECT_ID}/${SERVICE_NAME} \
     --platform managed \
     --region ${REGION} \
     --no-allow-unauthenticated \
-    --ingress internal-and-cloud-load-balancing \
+    --ingress all \
+    --iap \
     --port 8080
 
 echo "Frontend deployed!"
