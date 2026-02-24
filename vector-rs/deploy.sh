@@ -4,17 +4,17 @@ set -e
 # Ensure we are in the script's directory
 cd "$(dirname "$0")"
 
-SERVICE_NAME="cloud-crate-vector"
+SERVICE_NAME="cloud-crate-vector-rs"
 REGION="us-central1"
 
 BUCKET_NAME="cloud-crate-vector-db"
 
 echo "Deploying $SERVICE_NAME using bucket $BUCKET_NAME..."
 
+# Build from repo root so Docker context includes both vector/ and vector-rs/
+cd ..
+
 # Deploy to Cloud Run
-# We mount the bucket to /data
-# And we use gen2 execution environment for file system mounts
-# Memory/timeout increased for CLAP model loading
 gcloud run deploy $SERVICE_NAME \
     --source . \
     --region $REGION \

@@ -30,3 +30,6 @@ clap_text_onnx/
 .bucket_name
 setup_iap_log.txt
 setup_iap_log_2.txt
+
+# Rust
+vector-rs/target/
