@@ -36,6 +36,6 @@ gcloud run deploy $SERVICE_NAME \
     --min-instances=0 \
     --add-volume=name=db-volume,type=cloud-storage,bucket=$BUCKET_NAME \
     --add-volume-mount=volume=db-volume,mount-path=/data \
-    --set-env-vars DB_PATH=/data/cloudcrate.duckdb,DB_POOL_SIZE=2,GCP_PROJECT_ID=${PROJECT_ID},CORS_ALLOW_ORIGINS=https://echolocate.app
+    --set-env-vars DB_PATH=/data/cloudcrate.duckdb,DB_POOL_SIZE=4,GCP_PROJECT_ID=${PROJECT_ID},CORS_ALLOW_ORIGINS=https://echolocate.app
 
 echo "✅ Deployment complete."
