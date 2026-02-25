@@ -4,6 +4,7 @@ Benchmark: compare latency of Python vs Rust vector services.
 
 Usage:
     python benchmark.py [--rounds 50] [--warmup 3] [--endpoint semantic-search]
+    python benchmark.py --local                   # Benchmark local run-local.sh instance
 
 Endpoints:
     semantic-search  POST /semantic-search  (CLAP text→vector + DuckDB)
@@ -27,6 +28,7 @@ import requests
 
 PYTHON_URL = "https://cloud-crate-vector-403961692263.us-central1.run.app"
 RUST_URL = "https://cloud-crate-vector-rs-403961692263.us-central1.run.app"
+LOCAL_URL = "http://localhost:8000"
 
 # Diverse queries to avoid caching effects
 SEMANTIC_QUERIES = [
@@ -181,16 +183,22 @@ def main():
     parser.add_argument("--python-url", default=PYTHON_URL, help="Python service URL")
     parser.add_argument("--rust-url", default=RUST_URL, help="Rust service URL")
     parser.add_argument("--only", choices=["python", "rust"], help="Only benchmark one service")
+    parser.add_argument("--local", action="store_true",
+                        help="Benchmark local Rust service at localhost:8000 (from run-local.sh)")
+    parser.add_argument("--local-url", default=LOCAL_URL, help="Local service URL (default: http://localhost:8000)")
     parser.add_argument("--cold-start", action="store_true",
                         help="Measure cold start latency (first request, no warmup). "
                              "Uses a 120s timeout to account for container spin-up.")
     args = parser.parse_args()
 
     services = []
-    if args.only != "rust":
-        services.append(("Python", args.python_url))
-    if args.only != "python":
-        services.append(("Rust", args.rust_url))
+    if args.local:
+        services.append(("Local", args.local_url))
+    else:
+        if args.only != "rust":
+            services.append(("Python", args.python_url))
+        if args.only != "python":
+            services.append(("Rust", args.rust_url))
 
     if args.cold_start:
         run_cold_start(services, args.endpoint)
@@ -236,7 +244,7 @@ def run_cold_start(services: list[tuple[str, str]], endpoint: str):
         else:
             print(f"  {label}: FAILED")
 
-    if len(cold_results) == 2 and all(v is not None for v in cold_results.values()):
+    if len(cold_results) == 2 and "Python" in cold_results and "Rust" in cold_results and all(v is not None for v in cold_results.values()):
         py_ms = cold_results["Python"]
         rs_ms = cold_results["Rust"]
         diff = abs(py_ms - rs_ms)
@@ -278,7 +286,7 @@ def run_warm_benchmark(services: list[tuple[str, str]], endpoint: str, rounds: i
     print()
 
     # Comparison
-    if len(results) == 2:
+    if len(results) == 2 and "Python" in results and "Rust" in results:
         py_lat = results["Python"]
         rs_lat = results["Rust"]
         if py_lat and rs_lat:
