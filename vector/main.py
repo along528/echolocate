@@ -76,6 +76,13 @@ def get_midpoint(vec_a, vec_b, method="slerp"):
         return slerp(vec_a, vec_b, 0.5)
 
 
+def table_for_source(source: str) -> str:
+    if source == "library":
+        return "tracks_library"
+    if source == "fma":
+        return "tracks_fma"
+    return "tracks"
+
 app = FastAPI()
 
 # CORS Configuration
@@ -354,24 +361,40 @@ def find_similar(track_id: str, limit: int = 10, source: Literal["library", "fma
         target_vector = vector_result[0]
         
         # 2. Search for similar tracks, excluding the track itself
-        source_filter = "" if source == "all" else f"AND source = '{source}'"
-        query = f"""
-            SELECT id, source, title, artist, album, relative_path, track_url, album_url, artist_url,
-                   array_cosine_similarity(v_mid, ?::FLOAT[768]) as similarity
-            FROM tracks
-            WHERE id != ? {source_filter}
-            ORDER BY similarity DESC
-            LIMIT ?
-        """
-        
-        results = con.execute(query, [target_vector, track_id, limit]).fetchall()
+        if source == "all":
+            combined = []
+            for tbl, src in [("tracks_library", "library"), ("tracks_fma", "fma")]:
+                query = f"""
+                    SELECT id, title, artist, album, relative_path, track_url, album_url, artist_url,
+                           array_cosine_distance(v_mid, ?::FLOAT[768]) as distance
+                    FROM {tbl}
+                    WHERE id != ?
+                    ORDER BY distance ASC
+                    LIMIT ?
+                """
+                rows = con.execute(query, [target_vector, track_id, limit]).fetchall()
+                combined.extend([(src, *r) for r in rows])
+            combined.sort(key=lambda r: r[9])  # sort by distance
+            results = combined[:limit]
+        else:
+            table = table_for_source(source)
+            query = f"""
+                SELECT id, title, artist, album, relative_path, track_url, album_url, artist_url,
+                       array_cosine_distance(v_mid, ?::FLOAT[768]) as distance
+                FROM {table}
+                WHERE id != ?
+                ORDER BY distance ASC
+                LIMIT ?
+            """
+            rows = con.execute(query, [target_vector, track_id, limit]).fetchall()
+            results = [(source, *r) for r in rows]
         con.close()
-        
+
         response = []
         for row in results:
             response.append(SearchResult(
-                id=row[0],
-                source=row[1],
+                id=row[1],
+                source=row[0],
                 title=row[2],
                 artist=row[3],
                 album=row[4],
@@ -379,7 +402,7 @@ def find_similar(track_id: str, limit: int = 10, source: Literal["library", "fma
                 track_url=row[6],
                 album_url=row[7],
                 artist_url=row[8],
-                similarity=row[9]
+                similarity=1.0 - row[9]  # convert distance to similarity
             ))
             
         return response
@@ -519,25 +542,38 @@ def vector_search_tracks(request: SearchRequest):
         if len(request.vector) != 768:
             raise HTTPException(status_code=400, detail=f"Vector must be 768 dimensions, got {len(request.vector)}")
 
-        source_filter = "" if request.source == "all" else f"WHERE source = '{request.source}'"
-        
-        query = f"""
-            SELECT id, source, title, artist, album, relative_path, track_url, album_url, artist_url,
-                   array_cosine_similarity(v_mid, ?::FLOAT[768]) as similarity
-            FROM tracks
-            {source_filter}
-            ORDER BY similarity DESC
-            LIMIT ?
-        """
-        
-        results = con.execute(query, [request.vector, request.limit]).fetchall()
+        if request.source == "all":
+            combined = []
+            for tbl, src in [("tracks_library", "library"), ("tracks_fma", "fma")]:
+                query = f"""
+                    SELECT id, title, artist, album, relative_path, track_url, album_url, artist_url,
+                           array_cosine_distance(v_mid, ?::FLOAT[768]) as distance
+                    FROM {tbl}
+                    ORDER BY distance ASC
+                    LIMIT ?
+                """
+                rows = con.execute(query, [request.vector, request.limit]).fetchall()
+                combined.extend([(src, *r) for r in rows])
+            combined.sort(key=lambda r: r[9])
+            results = combined[:request.limit]
+        else:
+            table = table_for_source(request.source)
+            query = f"""
+                SELECT id, title, artist, album, relative_path, track_url, album_url, artist_url,
+                       array_cosine_distance(v_mid, ?::FLOAT[768]) as distance
+                FROM {table}
+                ORDER BY distance ASC
+                LIMIT ?
+            """
+            rows = con.execute(query, [request.vector, request.limit]).fetchall()
+            results = [(request.source, *r) for r in rows]
         con.close()
-        
+
         response = []
         for row in results:
             response.append(SearchResult(
-                id=row[0],
-                source=row[1],
+                id=row[1],
+                source=row[0],
                 title=row[2],
                 artist=row[3],
                 album=row[4],
@@ -545,7 +581,7 @@ def vector_search_tracks(request: SearchRequest):
                 track_url=row[6],
                 album_url=row[7],
                 artist_url=row[8],
-                similarity=row[9]
+                similarity=1.0 - row[9]
             ))
             
         return response
@@ -583,28 +619,41 @@ def semantic_search(request: SemanticSearchRequest):
         
         # 3. Retrieval Layer (DuckDB)
         con = get_db_connection()
-        source_filter = "AND source = '" + request.source + "'" if request.source != "all" else ""
-        
-        # Ensure dimensions match your DB (likely 512 for HTSAT-unfused)
-        query_sql = f"""
-            SELECT id, source, title, artist, album, relative_path, track_url, album_url, artist_url,
-                   array_cosine_similarity(v_clap, ?::FLOAT[512]) as similarity
-            FROM tracks
-            WHERE v_clap IS NOT NULL {source_filter}
-            ORDER BY similarity DESC
-            LIMIT ?
-        """
-        
-        results = con.execute(query_sql, [query_vector, request.limit]).fetchall()
+
+        if request.source == "all":
+            combined = []
+            for tbl, src in [("tracks_library", "library"), ("tracks_fma", "fma")]:
+                query_sql = f"""
+                    SELECT id, title, artist, album, relative_path, track_url, album_url, artist_url,
+                           array_cosine_distance(v_clap, ?::FLOAT[512]) as distance
+                    FROM {tbl}
+                    ORDER BY distance ASC
+                    LIMIT ?
+                """
+                rows = con.execute(query_sql, [query_vector, request.limit]).fetchall()
+                combined.extend([(src, *r) for r in rows])
+            combined.sort(key=lambda r: r[9])
+            results = combined[:request.limit]
+        else:
+            table = table_for_source(request.source)
+            query_sql = f"""
+                SELECT id, title, artist, album, relative_path, track_url, album_url, artist_url,
+                       array_cosine_distance(v_clap, ?::FLOAT[512]) as distance
+                FROM {table}
+                ORDER BY distance ASC
+                LIMIT ?
+            """
+            rows = con.execute(query_sql, [query_vector, request.limit]).fetchall()
+            results = [(request.source, *r) for r in rows]
         con.close()
-        
+
         # 4. Response Construction
         track_results = []
         for row in results:
             track_results.append(SearchResult(
-                id=row[0], source=row[1], title=row[2], artist=row[3],
+                id=row[1], source=row[0], title=row[2], artist=row[3],
                 album=row[4], relative_path=row[5], track_url=row[6],
-                album_url=row[7], artist_url=row[8], similarity=row[9]
+                album_url=row[7], artist_url=row[8], similarity=1.0 - row[9]
             ))
         
         return SemanticSearchResponse(
@@ -648,16 +697,16 @@ def interpolate_tracks(request: InterpolationRequest):
         # 3. Search for nearest neighbors to the midpoint
         # We exclude the two input tracks from the results
         query = """
-            SELECT id, title, artist, album, relative_path, array_cosine_similarity(v_mid, ?::FLOAT[768]) as similarity
+            SELECT id, title, artist, album, relative_path, array_cosine_distance(v_mid, ?::FLOAT[768]) as distance
             FROM tracks
             WHERE id NOT IN (?, ?)
-            ORDER BY similarity DESC
+            ORDER BY distance ASC
             LIMIT ?
         """
-        
+
         search_results = con.execute(query, [midpoint_vector, request.track_id_1, request.track_id_2, request.limit]).fetchall()
         con.close()
-        
+
         response = []
         for row in search_results:
             response.append(SearchResult(
@@ -666,7 +715,7 @@ def interpolate_tracks(request: InterpolationRequest):
                 artist=row[2],
                 album=row[3],
                 relative_path=row[4],
-                similarity=row[5]
+                similarity=1.0 - row[5]
             ))
             
         return response
@@ -704,9 +753,9 @@ def bezier_interpolation(con, vec_start, vec_controls, vec_end, exclude_ids, lim
 
         # Find the nearest REAL song to this theoretical point
         query = """
-            SELECT id, title, artist, album, relative_path, v_mid, array_cosine_similarity(v_mid, ?::FLOAT[768]) as similarity
+            SELECT id, title, artist, album, relative_path, v_mid, array_cosine_distance(v_mid, ?::FLOAT[768]) as distance
             FROM tracks
-            ORDER BY similarity DESC
+            ORDER BY distance ASC
             LIMIT 20
         """
 
@@ -722,7 +771,7 @@ def bezier_interpolation(con, vec_start, vec_controls, vec_end, exclude_ids, lim
             exclude_ids.add(best_match[0])
             path.append(SearchResult(
                 id=best_match[0], title=best_match[1], artist=best_match[2],
-                album=best_match[3], relative_path=best_match[4], similarity=best_match[6]
+                album=best_match[3], relative_path=best_match[4], similarity=1.0 - best_match[6]
             ))
 
     return path
@@ -739,45 +788,39 @@ def greedy_walk_interpolation(con, start_vec, end_vec, start_id, end_id, start_a
     visited_ids.update({start_id, end_id})
     visited_artists.update({start_artist, end_artist})
     
-    # Pre-calculate source filter clause
-    source_filter = ""
-    source_param = []
+    # Determine which table(s) to query for the neighborhood CTE
     if source != "all":
-        source_filter = "AND source = ?"
-        source_param = [source]
+        neighborhood_table = table_for_source(source)
+    else:
+        neighborhood_table = "tracks"
 
     # We loop up to 'limit' times to generate intermediate tracks
     for _ in range(limit):
-        
+
         # 1. Efficient Two-Step Query
         # Inner Query: Find the "Neighborhood" (top 50 closest to CURRENT track)
-        # Outer Query: specific the best step towards the TARGET track
-        # We can't easily filter artists inside the subquery efficiently without blowing up the result set size checking,
-        # so we fetch candidates and filter in Python or use a WHERE clause if list is small.
-        # Passing string lists to UNNEST in DuckDB python client can sometimes be finicky with quoting, 
-        # so let's try fetch-and-filter for robustness + simplicity given the small N (limit 50).
-        
+        # Outer Query: re-rank by similarity to TARGET track
+
         query = f"""
             WITH neighborhood AS (
                 SELECT id, title, artist, album, relative_path, v_mid, source, track_url, album_url, artist_url,
-                       array_cosine_similarity(v_mid, ?::FLOAT[768]) as sim_to_current
-                FROM tracks
-                WHERE 1=1 {source_filter}
-                ORDER BY sim_to_current DESC
+                       array_cosine_distance(v_mid, ?::FLOAT[768]) as dist_to_current
+                FROM {neighborhood_table}
+                ORDER BY dist_to_current ASC
                 LIMIT 50
             )
             SELECT id, title, artist, album, relative_path, v_mid, source, track_url, album_url, artist_url,
-                   array_cosine_similarity(v_mid, ?::FLOAT[768]) as sim_to_target
+                   array_cosine_distance(v_mid, ?::FLOAT[768]) as dist_to_target
             FROM neighborhood
-            WHERE id NOT IN (SELECT UNNEST(?)) 
-            ORDER BY sim_to_target DESC
+            WHERE id NOT IN (SELECT UNNEST(?))
+            ORDER BY dist_to_target ASC
         """
-        
+
         # Convert set to list for DuckDB binding
         visited_list = list(visited_ids)
-        
-        # Execute query: [current_pos, source_param(if any), target_pos, exclude_list]
-        params = [current_vec] + source_param + [end_vec, visited_list]
+
+        # Execute query: [current_pos, target_pos, exclude_list]
+        params = [current_vec, end_vec, visited_list]
         candidates = con.execute(query, params).fetchall()
         
         best_next = None
@@ -796,27 +839,28 @@ def greedy_walk_interpolation(con, start_vec, end_vec, start_id, end_id, start_a
         if not best_next:
             break
             
-        # Parse result
+        # Parse result — best_next[10] is dist_to_target (distance)
+        target_similarity = 1.0 - best_next[10]
         next_track = SearchResult(
-            id=best_next[0], 
-            title=best_next[1], 
-            artist=best_next[2], 
-            album=best_next[3], 
+            id=best_next[0],
+            title=best_next[1],
+            artist=best_next[2],
+            album=best_next[3],
             relative_path=best_next[4],
             source=best_next[6],
             track_url=best_next[7],
             album_url=best_next[8],
             artist_url=best_next[9],
-            similarity=best_next[10] # Similarity to TARGET
+            similarity=target_similarity
         )
-        
+
         path.append(next_track)
         visited_ids.add(best_next[0])
         visited_artists.add(best_next[2])
         current_vec = best_next[5] # Move our position to this new song
-        
+
         # Optimization: Early exit if we are extremely close to the target
-        if best_next[10] > 0.98:
+        if target_similarity > 0.98:
             break
             
     return path
@@ -836,26 +880,23 @@ def recursive_interpolation(con, vec_a, vec_b, exclude_ids, exclude_artists, dep
     # To be safe and simple with DuckDB python client:
     
     query = """
-        SELECT id, title, artist, album, relative_path, v_mid, array_cosine_similarity(v_mid, ?::FLOAT[768]) as similarity
+        SELECT id, title, artist, album, relative_path, v_mid, array_cosine_distance(v_mid, ?::FLOAT[768]) as distance
         FROM tracks
-        ORDER BY similarity DESC
+        ORDER BY distance ASC
         LIMIT 20
     """
-    # Fetch a few candidates to filter out exclude_ids manually since passing a dynamic list to NOT IN is hard 
-    # with this specific driver/binding setup sometimes. 
-    
+
     candidates = con.execute(query, [midpoint_vector]).fetchall()
-    
-    best_match = None
+
     best_match = None
     for cand in candidates:
         cand_id = cand[0]
         cand_artist = cand[2]
-        
+
         if cand_id not in exclude_ids and cand_artist not in exclude_artists:
             best_match = cand
             break
-    
+
     if not best_match:
         return []
 
@@ -868,7 +909,7 @@ def recursive_interpolation(con, vec_a, vec_b, exclude_ids, exclude_artists, dep
         artist=best_match[2],
         album=best_match[3],
         relative_path=best_match[4],
-        similarity=best_match[6]
+        similarity=1.0 - best_match[6]
     )
     
     exclude_ids.add(match_id)
