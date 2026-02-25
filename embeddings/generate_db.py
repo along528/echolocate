@@ -214,7 +214,6 @@ def load_library_data():
                 
                 track_data_list.append((
                     track_id,
-                    'library',
                     title,
                     artist,
                     album,
