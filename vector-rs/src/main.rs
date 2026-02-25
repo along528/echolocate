@@ -25,7 +25,7 @@ pub struct AppState {
     pub db_pool: Arc<DbPool>,
     pub onnx: Arc<ClapOnnxModel>,
     pub gemini: Arc<Option<GeminiClient>>,
-    pub gcs: Arc<GcsClient>,
+    pub gcs: Arc<Option<GcsClient>>,
 }
 
 #[tokio::main]
@@ -98,9 +98,12 @@ async fn main() {
     let gcs = match gcs_result {
         Ok(client) => {
             tracing::info!("GCS client initialized.");
-            client
+            Some(client)
         }
-        Err(e) => panic!("Cannot start without GCS client: {e}"),
+        Err(e) => {
+            tracing::warn!("GCS client not available: {e}. Audio streaming will be disabled.");
+            None
+        }
     };
 
     let port = config.port;

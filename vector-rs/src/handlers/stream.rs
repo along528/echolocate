@@ -15,10 +15,13 @@ pub async fn stream_audio(
     let padded = format!("{:0>6}", num_id);
     let prefix = &padded[..3];
 
+    let gcs = state.gcs.as_ref().as_ref().ok_or_else(|| {
+        AppError::ServiceUnavailable("Audio streaming is not available (GCS not configured)".into())
+    })?;
+
     let blob_path = format!("{}/{}/{}.mp3", state.config.gcs_audio_prefix, prefix, padded);
 
-    let bytes = state
-        .gcs
+    let bytes = gcs
         .download_blob(&state.config.gcs_bucket_name, &blob_path)
         .await
         .map_err(|e| {
