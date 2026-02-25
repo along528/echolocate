@@ -40,12 +40,46 @@ async fn main() {
     let config = Config::from_env();
     tracing::info!("Starting cloud-crate-vector (Rust) on port {}", config.port);
 
-    // 1. Initialize DuckDB connection pool with VSS pre-loaded
+    // Run all 4 initializations in parallel
     let pool_size = std::env::var("DB_POOL_SIZE")
         .ok()
         .and_then(|s| s.parse().ok())
         .unwrap_or(4usize);
-    let db_pool = match DbPool::new(&config.db_path, pool_size) {
+
+    let (db_result, onnx_result, gemini, gcs_result) = tokio::join!(
+        // 1. DuckDB pool (blocking)
+        tokio::task::spawn_blocking({
+            let db_path = config.db_path.clone();
+            move || DbPool::new(&db_path, pool_size)
+        }),
+        // 2. ONNX model (blocking)
+        tokio::task::spawn_blocking({
+            let onnx_dir = config.clap_onnx_dir.clone();
+            move || ClapOnnxModel::load(&onnx_dir)
+        }),
+        // 3. Gemini (async, optional)
+        async {
+            if let Some(ref project_id) = config.gcp_project_id {
+                match GeminiClient::new(project_id, &config.gcp_location).await {
+                    Ok(client) => {
+                        tracing::info!("Vertex AI Agent initialized: {project_id}");
+                        Some(client)
+                    }
+                    Err(e) => {
+                        tracing::warn!("Vertex AI failed to initialize: {e}");
+                        None
+                    }
+                }
+            } else {
+                tracing::info!("GCP_PROJECT_ID not set. Enhanced search disabled.");
+                None
+            }
+        },
+        // 4. GCS (async)
+        GcsClient::new(),
+    );
+
+    let db_pool = match db_result.expect("DuckDB init task panicked") {
         Ok(pool) => {
             tracing::info!("DuckDB connection pool initialized (size={pool_size}), database: {}", config.db_path);
             pool
@@ -53,48 +87,20 @@ async fn main() {
         Err(e) => panic!("Failed to initialize DuckDB connection pool: {e}"),
     };
 
-    // 2. Load CLAP ONNX model
-    let onnx = match ClapOnnxModel::load(&config.clap_onnx_dir) {
+    let onnx = match onnx_result.expect("ONNX init task panicked") {
         Ok(model) => {
             tracing::info!("CLAP ONNX model loaded at startup.");
             model
         }
-        Err(e) => {
-            tracing::warn!("CLAP ONNX model failed to load: {e}");
-            // Create a dummy that will fail on use — matches Python's lazy-load fallback
-            panic!("Cannot start without CLAP model: {e}");
-        }
+        Err(e) => panic!("Cannot start without CLAP model: {e}"),
     };
 
-    // 3. Initialize Gemini client (optional)
-    let gemini = if let Some(ref project_id) = config.gcp_project_id {
-        match GeminiClient::new(project_id, &config.gcp_location).await {
-            Ok(client) => {
-                tracing::info!("Vertex AI Agent initialized: {project_id}");
-                Some(client)
-            }
-            Err(e) => {
-                tracing::warn!("Vertex AI failed to initialize: {e}");
-                None
-            }
-        }
-    } else {
-        tracing::info!("GCP_PROJECT_ID not set. Enhanced search disabled.");
-        None
-    };
-
-    // 4. Initialize GCS client
-    let gcs = match GcsClient::new().await {
+    let gcs = match gcs_result {
         Ok(client) => {
             tracing::info!("GCS client initialized.");
             client
         }
-        Err(e) => {
-            tracing::warn!("GCS client failed to initialize (streaming disabled): {e}");
-            // We'll panic here since the service is somewhat broken without GCS
-            // but in reality the Python service also just fails at request time
-            panic!("Cannot start without GCS client: {e}");
-        }
+        Err(e) => panic!("Cannot start without GCS client: {e}"),
     };
 
     let port = config.port;
