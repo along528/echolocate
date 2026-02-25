@@ -1,5 +1,6 @@
 use std::collections::HashSet;
 
+use crate::db::table_for_source;
 use crate::error::AppError;
 use crate::handlers::search::{vec_f32_to_sql_literal, vec_str_to_sql_literal};
 use crate::models::SearchResult;
@@ -23,11 +24,7 @@ pub fn greedy_walk_interpolation(
     visited_artists.insert(start_artist.to_string());
     visited_artists.insert(end_artist.to_string());
 
-    let source_filter = if source == "all" {
-        String::new()
-    } else {
-        format!("AND source = '{}'", source)
-    };
+    let table = table_for_source(source);
 
     let end_literal = vec_f32_to_sql_literal(end_vec, 768);
     let mut current_vec = start_vec.to_vec();
@@ -38,17 +35,18 @@ pub fn greedy_walk_interpolation(
         let visited_literal: Vec<String> = visited_ids.iter().cloned().collect();
         let visited_sql = vec_str_to_sql_literal(&visited_literal);
 
+        // Use per-source table in the CTE for HNSW acceleration on the
+        // neighborhood fetch, then re-rank by target similarity in Rust.
         let query = format!(
             "WITH neighborhood AS ( \
-                SELECT id, title, artist, album, relative_path, v_mid, source, \
+                SELECT id, title, artist, album, relative_path, v_mid, \
                        track_url, album_url, artist_url, \
-                       array_cosine_similarity(v_mid, {current}) as sim_to_current \
-                FROM tracks \
-                WHERE 1=1 {source_filter} \
-                ORDER BY sim_to_current DESC \
+                       array_cosine_distance(v_mid, {current}) as dist_to_current \
+                FROM {table} \
+                ORDER BY dist_to_current ASC \
                 LIMIT 50 \
             ) \
-            SELECT id, title, artist, album, relative_path, v_mid, source, \
+            SELECT id, title, artist, album, relative_path, v_mid, \
                    track_url, album_url, artist_url, \
                    array_cosine_similarity(v_mid, {target}) as sim_to_target \
             FROM neighborhood \
@@ -56,7 +54,7 @@ pub fn greedy_walk_interpolation(
             ORDER BY sim_to_target DESC",
             current = current_literal,
             target = end_literal,
-            source_filter = source_filter,
+            table = table,
             visited = visited_sql,
         );
 
@@ -74,7 +72,13 @@ pub fn greedy_walk_interpolation(
 
             let v_raw: duckdb::types::Value = row.get(5)?;
             let v_mid = crate::db::value_to_vec_f32(&v_raw);
-            let sim_to_target: f64 = row.get(10)?;
+            let sim_to_target: f64 = row.get(9)?;
+
+            let src_label = match source {
+                "library" => Some("library".to_string()),
+                "fma" => Some("fma".to_string()),
+                _ => None,
+            };
 
             let result = SearchResult {
                 id: row.get(0)?,
@@ -82,10 +86,10 @@ pub fn greedy_walk_interpolation(
                 artist: artist.clone(),
                 album: row.get(3)?,
                 relative_path: row.get(4)?,
-                source: row.get(6)?,
-                track_url: row.get(7)?,
-                album_url: row.get(8)?,
-                artist_url: row.get(9)?,
+                source: src_label,
+                track_url: row.get(6)?,
+                album_url: row.get(7)?,
+                artist_url: row.get(8)?,
                 similarity: sim_to_target,
             };
 

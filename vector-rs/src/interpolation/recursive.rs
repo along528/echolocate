@@ -24,9 +24,10 @@ pub fn recursive_interpolation(
     // Find nearest neighbor to midpoint, fetch top 20 and filter in Rust
     let vec_literal = vec_f32_to_sql_literal(&midpoint, 768);
     let query = format!(
-        "SELECT id, title, artist, album, relative_path, v_mid, \
-         array_cosine_similarity(v_mid, {}) as similarity \
-         FROM tracks ORDER BY similarity DESC LIMIT 20",
+        "SELECT id, source, title, artist, album, relative_path, v_mid, \
+         track_url, album_url, artist_url, \
+         array_cosine_distance(v_mid, {}) as distance \
+         FROM tracks ORDER BY distance ASC LIMIT 20",
         vec_literal
     );
 
@@ -37,23 +38,24 @@ pub fn recursive_interpolation(
 
     while let Some(row) = rows.next()? {
         let id: String = row.get(0)?;
-        let artist: String = row.get(2)?;
+        let artist: String = row.get(3)?;
 
         if !exclude_ids.contains(&id) && !exclude_artists.contains(&artist) {
-            let v_raw: duckdb::types::Value = row.get(5)?;
+            let v_raw: duckdb::types::Value = row.get(6)?;
             let match_vec = value_to_vec_f32(&v_raw);
+            let dist: f64 = row.get(10)?;
 
             let result = SearchResult {
                 id: id.clone(),
-                source: None,
-                title: row.get(1)?,
+                source: row.get(1)?,
+                title: row.get(2)?,
                 artist: artist.clone(),
-                album: row.get(3)?,
-                relative_path: row.get(4)?,
-                similarity: row.get(6)?,
-                track_url: None,
-                album_url: None,
-                artist_url: None,
+                album: row.get(4)?,
+                relative_path: row.get(5)?,
+                track_url: row.get(7)?,
+                album_url: row.get(8)?,
+                artist_url: row.get(9)?,
+                similarity: 1.0 - dist,
             };
 
             exclude_ids.insert(id);

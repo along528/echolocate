@@ -46,12 +46,14 @@ pub async fn interpolate_tracks(
         let midpoint = get_midpoint(vec1, vec2, &method);
 
         // 3. Search for nearest neighbors to the midpoint
+        //    Use the view (no source filter) — HNSW won't kick in but interpolate
+        //    is a low-frequency endpoint; correctness over speed here.
         let vec_literal = vec_f32_to_sql_literal(&midpoint, 768);
         let query = format!(
-            "SELECT id, title, artist, album, relative_path, \
-             array_cosine_similarity(v_mid, {}) as similarity \
+            "SELECT id, source, title, artist, album, relative_path, track_url, album_url, artist_url, \
+             array_cosine_distance(v_mid, {}) as distance \
              FROM tracks WHERE id NOT IN (?, ?) \
-             ORDER BY similarity DESC LIMIT ?",
+             ORDER BY distance ASC LIMIT ?",
             vec_literal
         );
 
@@ -64,17 +66,18 @@ pub async fn interpolate_tracks(
 
         let mut results = Vec::new();
         while let Some(row) = rows.next()? {
+            let dist: f64 = row.get(9)?;
             results.push(SearchResult {
                 id: row.get(0)?,
-                source: None,
-                title: row.get(1)?,
-                artist: row.get(2)?,
-                album: row.get(3)?,
-                relative_path: row.get(4)?,
-                similarity: row.get(5)?,
-                track_url: None,
-                album_url: None,
-                artist_url: None,
+                source: row.get(1)?,
+                title: row.get(2)?,
+                artist: row.get(3)?,
+                album: row.get(4)?,
+                relative_path: row.get(5)?,
+                track_url: row.get(6)?,
+                album_url: row.get(7)?,
+                artist_url: row.get(8)?,
+                similarity: 1.0 - dist,
             });
         }
 

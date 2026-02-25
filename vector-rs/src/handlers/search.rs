@@ -2,6 +2,7 @@ use axum::extract::{Query, State};
 use axum::Json;
 use std::sync::Arc;
 
+use crate::db::table_for_source;
 use crate::error::AppError;
 use crate::models::{SearchRequest, SearchResult, TextSearchQuery, TrackResponse};
 use crate::AppState;
@@ -109,44 +110,73 @@ pub async fn vector_search(
 
     tokio::task::spawn_blocking(move || {
         let conn = pool.get()?;
+        let vec_literal = vec_f32_to_sql_literal(&vector, 768);
 
-        let source_filter = if source == "all" {
-            String::new()
+        let results = if source == "all" {
+            let mut combined = Vec::new();
+            for table in &["tracks_library", "tracks_fma"] {
+                let src = if *table == "tracks_library" { "library" } else { "fma" };
+                let q = format!(
+                    "SELECT id, title, artist, album, relative_path, track_url, album_url, artist_url, \
+                            array_cosine_distance(v_mid, {vec}) as distance \
+                     FROM {table} \
+                     ORDER BY distance ASC \
+                     LIMIT {limit}",
+                    vec = vec_literal, table = table, limit = limit
+                );
+                let mut stmt = conn.prepare(&q)?;
+                let mut rows = stmt.query([])?;
+                while let Some(row) = rows.next()? {
+                    let dist: f64 = row.get(8)?;
+                    combined.push(SearchResult {
+                        id: row.get(0)?,
+                        source: Some(src.to_string()),
+                        title: row.get(1)?,
+                        artist: row.get(2)?,
+                        album: row.get(3)?,
+                        relative_path: row.get(4)?,
+                        track_url: row.get(5)?,
+                        album_url: row.get(6)?,
+                        artist_url: row.get(7)?,
+                        similarity: 1.0 - dist,
+                    });
+                }
+            }
+            combined.sort_by(|a, b| b.similarity.partial_cmp(&a.similarity).unwrap_or(std::cmp::Ordering::Equal));
+            combined.truncate(limit as usize);
+            combined
         } else {
-            format!("WHERE source = '{}'", source)
+            let table = table_for_source(&source);
+            let src_label = source.clone();
+            let q = format!(
+                "SELECT id, title, artist, album, relative_path, track_url, album_url, artist_url, \
+                        array_cosine_distance(v_mid, {vec}) as distance \
+                 FROM {table} \
+                 ORDER BY distance ASC \
+                 LIMIT {limit}",
+                vec = vec_literal, table = table, limit = limit
+            );
+            let mut stmt = conn.prepare(&q)?;
+            let mut rows = stmt.query([])?;
+            let mut res = Vec::new();
+            while let Some(row) = rows.next()? {
+                let dist: f64 = row.get(8)?;
+                res.push(SearchResult {
+                    id: row.get(0)?,
+                    source: Some(src_label.clone()),
+                    title: row.get(1)?,
+                    artist: row.get(2)?,
+                    album: row.get(3)?,
+                    relative_path: row.get(4)?,
+                    track_url: row.get(5)?,
+                    album_url: row.get(6)?,
+                    artist_url: row.get(7)?,
+                    similarity: 1.0 - dist,
+                });
+            }
+            res
         };
 
-        let vec_literal = vec_f32_to_sql_literal(&vector, 768);
-        let query = format!(
-            "SELECT id, source, title, artist, album, relative_path, track_url, album_url, artist_url, \
-                    array_cosine_similarity(v_mid, {}) as similarity \
-             FROM tracks {} \
-             ORDER BY similarity DESC \
-             LIMIT ?",
-            vec_literal, source_filter
-        );
-
-        let mut stmt = conn.prepare(&query)?;
-        let mut rows = stmt.query(duckdb::params![limit])?;
-
-        let mut results = Vec::new();
-        while let Some(row) = rows.next()? {
-            results.push(SearchResult {
-                id: row.get(0)?,
-                source: row.get(1)?,
-                title: row.get(2)?,
-                artist: row.get(3)?,
-                album: row.get(4)?,
-                relative_path: row.get(5)?,
-                track_url: row.get(6)?,
-                album_url: row.get(7)?,
-                artist_url: row.get(8)?,
-                similarity: row.get(9)?,
-            });
-        }
-
-        drop(rows);
-        drop(stmt);
         pool.put(conn);
         Ok(Json(results))
     })

@@ -49,6 +49,16 @@ impl DbPool {
     }
 }
 
+/// Return the per-source table name for HNSW-indexed queries.
+/// For "all", returns the union view (no HNSW, used for text search / sample).
+pub fn table_for_source(source: &str) -> &str {
+    match source {
+        "library" => "tracks_library",
+        "fma" => "tracks_fma",
+        _ => "tracks",
+    }
+}
+
 /// Extract a FLOAT[] column value as Vec<f32> from a DuckDB row.
 /// DuckDB returns list columns as duckdb::types::Value::List.
 pub fn value_to_vec_f32(val: &duckdb::types::Value) -> Vec<f32> {

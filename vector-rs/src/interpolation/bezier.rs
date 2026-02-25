@@ -30,9 +30,10 @@ pub fn bezier_interpolation(
         // Find nearest real song to this theoretical point
         let vec_literal = vec_f32_to_sql_literal(&target_vector, 768);
         let query = format!(
-            "SELECT id, title, artist, album, relative_path, v_mid, \
-             array_cosine_similarity(v_mid, {}) as similarity \
-             FROM tracks ORDER BY similarity DESC LIMIT 20",
+            "SELECT id, source, title, artist, album, relative_path, v_mid, \
+             track_url, album_url, artist_url, \
+             array_cosine_distance(v_mid, {}) as distance \
+             FROM tracks ORDER BY distance ASC LIMIT 20",
             vec_literal
         );
 
@@ -42,19 +43,20 @@ pub fn bezier_interpolation(
         while let Some(row) = rows.next()? {
             let id: String = row.get(0)?;
             if !exclude_ids.contains(&id) {
-                let _v_raw: duckdb::types::Value = row.get(5)?;
+                let _v_raw: duckdb::types::Value = row.get(6)?;
+                let dist: f64 = row.get(10)?;
                 exclude_ids.insert(id.clone());
                 path.push(SearchResult {
                     id,
-                    source: None,
-                    title: row.get(1)?,
-                    artist: row.get(2)?,
-                    album: row.get(3)?,
-                    relative_path: row.get(4)?,
-                    similarity: row.get(6)?,
-                    track_url: None,
-                    album_url: None,
-                    artist_url: None,
+                    source: row.get(1)?,
+                    title: row.get(2)?,
+                    artist: row.get(3)?,
+                    album: row.get(4)?,
+                    relative_path: row.get(5)?,
+                    track_url: row.get(7)?,
+                    album_url: row.get(8)?,
+                    artist_url: row.get(9)?,
+                    similarity: 1.0 - dist,
                 });
                 break;
             }

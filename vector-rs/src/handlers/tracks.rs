@@ -2,7 +2,7 @@ use axum::extract::{Path, Query, State};
 use axum::Json;
 use std::sync::Arc;
 
-use crate::db::value_to_vec_f32;
+use crate::db::{table_for_source, value_to_vec_f32};
 use crate::error::AppError;
 use crate::handlers::search::vec_f32_to_sql_literal;
 use crate::models::{SearchResult, SimilarQuery, TrackResponse, TracksQuery};
@@ -95,43 +95,116 @@ async fn find_by_similarity(
         let vec_literal = vec_f32_to_sql_literal(&target_vec, 768);
 
         // 2. Search for similar/dissimilar tracks
-        let source_filter = if source == "all" {
-            String::new()
+        // "DESC" (similar) can use HNSW via distance ASC; "ASC" (dissimilar) stays brute-force
+        let is_similar = order == "DESC";
+
+        let results = if is_similar {
+            // Use HNSW-compatible query: distance ASC, request extra to filter out self
+            if source == "all" {
+                let mut combined = Vec::new();
+                for table in &["tracks_library", "tracks_fma"] {
+                    let src = if *table == "tracks_library" { "library" } else { "fma" };
+                    let q = format!(
+                        "SELECT id, title, artist, album, relative_path, track_url, album_url, artist_url, \
+                                array_cosine_distance(v_mid, {vec}) as distance \
+                         FROM {table} \
+                         ORDER BY distance ASC \
+                         LIMIT {lim}",
+                        vec = vec_literal, table = table, lim = limit + 1
+                    );
+                    let mut stmt = conn.prepare(&q)?;
+                    let mut rows = stmt.query([])?;
+                    while let Some(row) = rows.next()? {
+                        let id: String = row.get(0)?;
+                        if id == track_id { continue; }
+                        let dist: f64 = row.get(8)?;
+                        combined.push(SearchResult {
+                            id,
+                            source: Some(src.to_string()),
+                            title: row.get(1)?,
+                            artist: row.get(2)?,
+                            album: row.get(3)?,
+                            relative_path: row.get(4)?,
+                            track_url: row.get(5)?,
+                            album_url: row.get(6)?,
+                            artist_url: row.get(7)?,
+                            similarity: 1.0 - dist,
+                        });
+                    }
+                }
+                combined.sort_by(|a, b| b.similarity.partial_cmp(&a.similarity).unwrap_or(std::cmp::Ordering::Equal));
+                combined.truncate(limit as usize);
+                combined
+            } else {
+                let table = table_for_source(&source);
+                let src_label = source.clone();
+                let q = format!(
+                    "SELECT id, title, artist, album, relative_path, track_url, album_url, artist_url, \
+                            array_cosine_distance(v_mid, {vec}) as distance \
+                     FROM {table} \
+                     ORDER BY distance ASC \
+                     LIMIT {lim}",
+                    vec = vec_literal, table = table, lim = limit + 1
+                );
+                let mut stmt = conn.prepare(&q)?;
+                let mut rows = stmt.query([])?;
+                let mut res = Vec::new();
+                while let Some(row) = rows.next()? {
+                    let id: String = row.get(0)?;
+                    if id == track_id { continue; }
+                    if res.len() >= limit as usize { break; }
+                    let dist: f64 = row.get(8)?;
+                    res.push(SearchResult {
+                        id,
+                        source: Some(src_label.clone()),
+                        title: row.get(1)?,
+                        artist: row.get(2)?,
+                        album: row.get(3)?,
+                        relative_path: row.get(4)?,
+                        track_url: row.get(5)?,
+                        album_url: row.get(6)?,
+                        artist_url: row.get(7)?,
+                        similarity: 1.0 - dist,
+                    });
+                }
+                res
+            }
         } else {
-            format!("AND source = '{}'", source)
+            // Dissimilar: brute-force on view (rare query, no HNSW needed)
+            let source_filter = if source == "all" {
+                String::new()
+            } else {
+                format!("AND source = '{}'", source)
+            };
+            let query = format!(
+                "SELECT id, source, title, artist, album, relative_path, track_url, album_url, artist_url, \
+                        array_cosine_similarity(v_mid, {}) as similarity \
+                 FROM tracks \
+                 WHERE id != ? {} \
+                 ORDER BY similarity ASC \
+                 LIMIT ?",
+                vec_literal, source_filter
+            );
+            let mut stmt = conn.prepare(&query)?;
+            let mut rows = stmt.query(duckdb::params![track_id, limit])?;
+            let mut res = Vec::new();
+            while let Some(row) = rows.next()? {
+                res.push(SearchResult {
+                    id: row.get(0)?,
+                    source: row.get(1)?,
+                    title: row.get(2)?,
+                    artist: row.get(3)?,
+                    album: row.get(4)?,
+                    relative_path: row.get(5)?,
+                    track_url: row.get(6)?,
+                    album_url: row.get(7)?,
+                    artist_url: row.get(8)?,
+                    similarity: row.get(9)?,
+                });
+            }
+            res
         };
 
-        let query = format!(
-            "SELECT id, source, title, artist, album, relative_path, track_url, album_url, artist_url, \
-                    array_cosine_similarity(v_mid, {}) as similarity \
-             FROM tracks \
-             WHERE id != ? {} \
-             ORDER BY similarity {} \
-             LIMIT ?",
-            vec_literal, source_filter, order
-        );
-
-        let mut stmt = conn.prepare(&query)?;
-        let mut rows = stmt.query(duckdb::params![track_id, limit])?;
-
-        let mut results = Vec::new();
-        while let Some(row) = rows.next()? {
-            results.push(SearchResult {
-                id: row.get(0)?,
-                source: row.get(1)?,
-                title: row.get(2)?,
-                artist: row.get(3)?,
-                album: row.get(4)?,
-                relative_path: row.get(5)?,
-                track_url: row.get(6)?,
-                album_url: row.get(7)?,
-                artist_url: row.get(8)?,
-                similarity: row.get(9)?,
-            });
-        }
-
-        drop(rows);
-        drop(stmt);
         pool.put(conn);
         Ok(Json(results))
     })
