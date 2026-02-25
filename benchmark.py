@@ -128,7 +128,7 @@ def warmup(url: str, endpoint: str, rounds: int, label: str):
     print(f"  Warming up {label} ({rounds} requests)...", end=" ", flush=True)
     for _ in range(rounds):
         try:
-            make_request(url, endpoint)
+            make_request(url, endpoint, timeout=120)
         except Exception as e:
             print(f"\n    Warning: warmup request failed: {e}")
     print("done")

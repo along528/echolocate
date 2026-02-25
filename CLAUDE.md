@@ -96,7 +96,7 @@ The `tracks` table has columns:
 - `id`: MD5 hash of artist|album|title
 - `v_intro`, `v_mid`, `v_outro`: FLOAT[768] (MERT embeddings)
 - `v_clap`: FLOAT[512] (CLAP embeddings for semantic search)
-- HNSW index on `v_mid` with cosine metric
+- HNSW indexes on `v_mid` (cosine) and `v_clap` (cosine) per source table
 
 ### Interpolation Methods
 - **greedy_walk**: Graph traversal finding neighbors closest to target (default)

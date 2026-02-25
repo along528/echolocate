@@ -8,7 +8,7 @@ pub fn get_connection(db_path: &str) -> Result<Connection> {
         duckdb::Config::default()
             .access_mode(duckdb::AccessMode::ReadOnly)?,
     )?;
-    conn.execute_batch("INSTALL vss; LOAD vss;")?;
+    conn.execute_batch("INSTALL vss; LOAD vss; SET hnsw_enable_experimental_persistence = true;")?;
     Ok(conn)
 }
 

@@ -28,14 +28,14 @@ gcloud run deploy $SERVICE_NAME \
     --allow-unauthenticated \
     --ingress all \
     --execution-environment=gen2 \
-    --memory=2Gi \
-    --cpu=1 \
+    --memory=8Gi \
+    --cpu=2 \
     --timeout=900 \
     --cpu-boost \
     --cpu-throttling \
     --min-instances=0 \
     --add-volume=name=db-volume,type=cloud-storage,bucket=$BUCKET_NAME \
     --add-volume-mount=volume=db-volume,mount-path=/data \
-    --set-env-vars DB_PATH=/data/cloudcrate.duckdb,GCP_PROJECT_ID=${PROJECT_ID},CORS_ALLOW_ORIGINS=https://echolocate.app
+    --set-env-vars DB_PATH=/data/cloudcrate.duckdb,DB_POOL_SIZE=2,GCP_PROJECT_ID=${PROJECT_ID},CORS_ALLOW_ORIGINS=https://echolocate.app
 
 echo "✅ Deployment complete."

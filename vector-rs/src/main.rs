@@ -107,11 +107,55 @@ async fn main() {
     };
 
     let port = config.port;
+    let db_pool = Arc::new(db_pool);
+    let onnx = Arc::new(onnx);
+
+    // Warmup: pre-load HNSW indexes so the first real request is fast
+    {
+        let warmup_start = std::time::Instant::now();
+        tracing::info!("Warming up HNSW indexes...");
+
+        let onnx_ref = onnx.clone();
+        let pool_ref = db_pool.clone();
+        let warmup_result = tokio::task::spawn_blocking(move || -> Result<(), String> {
+            let query_vector = onnx_ref
+                .encode_text("warmup")
+                .map_err(|e| format!("Warmup CLAP encode failed: {e}"))?;
+
+            let vec_literal = handlers::search::vec_f32_to_sql_literal(&query_vector, 512);
+
+            let conn = pool_ref.get().map_err(|e| format!("Warmup DB conn failed: {e}"))?;
+            for table in &["tracks_library", "tracks_fma"] {
+                let q = format!(
+                    "SELECT id FROM {table} ORDER BY array_cosine_distance(v_clap, {vec}) LIMIT 1",
+                    table = table,
+                    vec = vec_literal,
+                );
+                let mut stmt = conn.prepare(&q)
+                    .map_err(|e| format!("Warmup prepare on {table} failed: {e}"))?;
+                let mut rows = stmt.query([])
+                    .map_err(|e| format!("Warmup query on {table} failed: {e}"))?;
+                // Consume at least one row to force HNSW index load
+                let _ = rows.next();
+            }
+            pool_ref.put(conn);
+            Ok(())
+        })
+        .await
+        .map_err(|e| format!("Warmup task panicked: {e}"));
+
+        match warmup_result {
+            Ok(Ok(())) => tracing::info!("HNSW warmup complete in {:.2?}", warmup_start.elapsed()),
+            Ok(Err(e)) => tracing::warn!("HNSW warmup failed: {e}"),
+            Err(e) => tracing::warn!("HNSW warmup failed: {e}"),
+        }
+    }
+
     let state = Arc::new(AppState {
         db_path: config.db_path.clone(),
-        db_pool: Arc::new(db_pool),
+        db_pool,
         config: Arc::new(config.clone()),
-        onnx: Arc::new(onnx),
+        onnx,
         gemini: Arc::new(gemini),
         gcs: Arc::new(gcs),
     });
