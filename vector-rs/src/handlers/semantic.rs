@@ -2,7 +2,6 @@ use axum::extract::State;
 use axum::Json;
 use std::sync::Arc;
 
-use crate::db;
 use crate::error::AppError;
 use crate::handlers::search::vec_f32_to_sql_literal;
 use crate::models::{SearchResult, SemanticSearchRequest, SemanticSearchResponse};
@@ -35,17 +34,17 @@ pub async fn semantic_search(
         }
     }
 
-    // 2. Vectorization layer (CLAP ONNX)
-    let query_vector = state
-        .onnx
-        .encode_text(&final_search_text)
-        .map_err(|e| AppError::Internal(format!("CLAP encoding failed: {e}")))?;
-
-    // 3. Retrieval layer (DuckDB)
-    let db_path = state.db_path.clone();
+    // 2. ONNX encoding + DuckDB query in a single blocking task
+    let onnx = state.onnx.clone();
+    let pool = state.db_pool.clone();
+    let search_text = final_search_text.clone();
 
     let results = tokio::task::spawn_blocking(move || {
-        let conn = db::get_connection(&db_path)?;
+        let query_vector = onnx
+            .encode_text(&search_text)
+            .map_err(|e| AppError::Internal(format!("CLAP encoding failed: {e}")))?;
+
+        let conn = pool.get()?;
 
         let source_filter = if source == "all" {
             String::new()
@@ -83,6 +82,7 @@ pub async fn semantic_search(
             });
         }
 
+        pool.put(conn);
         Ok::<_, AppError>(results)
     })
     .await

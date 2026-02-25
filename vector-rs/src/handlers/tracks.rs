@@ -2,7 +2,7 @@ use axum::extract::{Path, Query, State};
 use axum::Json;
 use std::sync::Arc;
 
-use crate::db::{self, value_to_vec_f32};
+use crate::db::value_to_vec_f32;
 use crate::error::AppError;
 use crate::handlers::search::vec_f32_to_sql_literal;
 use crate::models::{SearchResult, SimilarQuery, TrackResponse, TracksQuery};
@@ -12,14 +12,14 @@ pub async fn list_tracks(
     State(state): State<Arc<AppState>>,
     Query(params): Query<TracksQuery>,
 ) -> Result<Json<Vec<TrackResponse>>, AppError> {
-    let db_path = state.db_path.clone();
+    let pool = state.db_pool.clone();
     let limit = params.limit.unwrap_or(50);
     let offset = params.offset.unwrap_or(0);
     let random = params.random.unwrap_or(true);
     let source = params.source.unwrap_or_else(|| "library".into());
 
     tokio::task::spawn_blocking(move || {
-        let conn = db::get_connection(&db_path)?;
+        let conn = pool.get()?;
 
         let results = if random {
             if source == "all" {
@@ -49,6 +49,7 @@ pub async fn list_tracks(
             }
         };
 
+        pool.put(conn);
         Ok(Json(results))
     })
     .await
@@ -77,12 +78,12 @@ async fn find_by_similarity(
     params: SimilarQuery,
     order: &'static str,
 ) -> Result<Json<Vec<SearchResult>>, AppError> {
-    let db_path = state.db_path.clone();
+    let pool = state.db_pool.clone();
     let limit = params.limit.unwrap_or(10);
     let source = params.source.unwrap_or_else(|| "library".into());
 
     tokio::task::spawn_blocking(move || {
-        let conn = db::get_connection(&db_path)?;
+        let conn = pool.get()?;
 
         // 1. Get the vector for the target track
         let mut stmt = conn.prepare("SELECT v_mid FROM tracks WHERE id = ?")?;
@@ -129,6 +130,9 @@ async fn find_by_similarity(
             });
         }
 
+        drop(rows);
+        drop(stmt);
+        pool.put(conn);
         Ok(Json(results))
     })
     .await

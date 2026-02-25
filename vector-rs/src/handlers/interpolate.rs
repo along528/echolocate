@@ -2,7 +2,7 @@ use axum::extract::State;
 use axum::Json;
 use std::sync::Arc;
 
-use crate::db::{self, value_to_vec_f32};
+use crate::db::value_to_vec_f32;
 use crate::error::AppError;
 use crate::handlers::search::vec_f32_to_sql_literal;
 use crate::interpolation::math::get_midpoint;
@@ -13,12 +13,12 @@ pub async fn interpolate_tracks(
     State(state): State<Arc<AppState>>,
     Json(request): Json<InterpolationRequest>,
 ) -> Result<Json<Vec<SearchResult>>, AppError> {
-    let db_path = state.db_path.clone();
+    let pool = state.db_pool.clone();
     let limit = request.limit.unwrap_or(10);
     let method = request.method.unwrap_or_else(|| "greedy_walk".into());
 
     tokio::task::spawn_blocking(move || {
-        let conn = db::get_connection(&db_path)?;
+        let conn = pool.get()?;
 
         // 1. Get vectors for both tracks
         let mut stmt = conn.prepare("SELECT id, v_mid FROM tracks WHERE id IN (?, ?)")?;
@@ -78,6 +78,9 @@ pub async fn interpolate_tracks(
             });
         }
 
+        drop(rows);
+        drop(stmt);
+        pool.put(conn);
         Ok(Json(results))
     })
     .await

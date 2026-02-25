@@ -3,7 +3,7 @@ use axum::Json;
 use std::collections::HashSet;
 use std::sync::Arc;
 
-use crate::db::{self, value_to_vec_f32};
+use crate::db::value_to_vec_f32;
 use crate::error::AppError;
 use crate::interpolation::{bezier, greedy_walk, recursive};
 use crate::models::{InterpolationPlaylistRequest, SearchResult};
@@ -61,14 +61,14 @@ pub async fn interpolate_playlist(
     State(state): State<Arc<AppState>>,
     Json(request): Json<InterpolationPlaylistRequest>,
 ) -> Result<Json<Vec<SearchResult>>, AppError> {
-    let db_path = state.db_path.clone();
+    let pool = state.db_pool.clone();
     let limit = request.limit.unwrap_or(10) as usize;
     let method = request.method.unwrap_or_else(|| "greedy_walk".into());
     let source = request.source.unwrap_or_else(|| "all".into());
     let steer_ids = request.steer_track_ids.unwrap_or_default();
 
     tokio::task::spawn_blocking(move || {
-        let conn = db::get_connection(&db_path)?;
+        let conn = pool.get()?;
 
         // 1. Get start and end tracks
         let track_query = "SELECT id, v_mid, title, artist, album, relative_path, source, \
@@ -148,6 +148,7 @@ pub async fn interpolate_playlist(
         full_playlist.extend(path);
         full_playlist.push(end_obj);
 
+        pool.put(conn);
         Ok(Json(full_playlist))
     })
     .await

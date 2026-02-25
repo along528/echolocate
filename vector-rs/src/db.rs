@@ -1,4 +1,5 @@
 use duckdb::{Connection, Result};
+use std::sync::Mutex;
 
 /// Open a read-only DuckDB connection and load the VSS extension.
 pub fn get_connection(db_path: &str) -> Result<Connection> {
@@ -9,6 +10,43 @@ pub fn get_connection(db_path: &str) -> Result<Connection> {
     )?;
     conn.execute_batch("INSTALL vss; LOAD vss;")?;
     Ok(conn)
+}
+
+/// A simple connection pool for DuckDB. Each connection has VSS pre-loaded.
+pub struct DbPool {
+    db_path: String,
+    pool: Mutex<Vec<Connection>>,
+}
+
+impl DbPool {
+    /// Create a new pool with `size` pre-initialized connections.
+    pub fn new(db_path: &str, size: usize) -> Result<Self> {
+        let mut conns = Vec::with_capacity(size);
+        for _ in 0..size {
+            conns.push(get_connection(db_path)?);
+        }
+        Ok(Self {
+            db_path: db_path.to_string(),
+            pool: Mutex::new(conns),
+        })
+    }
+
+    /// Get a connection from the pool, or create a new one if empty.
+    pub fn get(&self) -> Result<Connection> {
+        let mut pool = self.pool.lock().unwrap();
+        if let Some(conn) = pool.pop() {
+            Ok(conn)
+        } else {
+            drop(pool);
+            get_connection(&self.db_path)
+        }
+    }
+
+    /// Return a connection to the pool.
+    pub fn put(&self, conn: Connection) {
+        let mut pool = self.pool.lock().unwrap();
+        pool.push(conn);
+    }
 }
 
 /// Extract a FLOAT[] column value as Vec<f32> from a DuckDB row.

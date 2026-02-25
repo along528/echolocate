@@ -15,12 +15,14 @@ use tower_http::cors::{AllowOrigin, CorsLayer};
 
 use clap_onnx::ClapOnnxModel;
 use config::Config;
+use db::DbPool;
 use gcs::GcsClient;
 use gemini::GeminiClient;
 
 pub struct AppState {
     pub config: Arc<Config>,
     pub db_path: String,
+    pub db_pool: Arc<DbPool>,
     pub onnx: Arc<ClapOnnxModel>,
     pub gemini: Arc<Option<GeminiClient>>,
     pub gcs: Arc<GcsClient>,
@@ -38,11 +40,18 @@ async fn main() {
     let config = Config::from_env();
     tracing::info!("Starting cloud-crate-vector (Rust) on port {}", config.port);
 
-    // 1. Pre-install DuckDB VSS extension
-    match db::get_connection(&config.db_path) {
-        Ok(_) => tracing::info!("DuckDB VSS extension installed, database: {}", config.db_path),
-        Err(e) => tracing::warn!("DuckDB VSS pre-install failed: {e}"),
-    }
+    // 1. Initialize DuckDB connection pool with VSS pre-loaded
+    let pool_size = std::env::var("DB_POOL_SIZE")
+        .ok()
+        .and_then(|s| s.parse().ok())
+        .unwrap_or(4usize);
+    let db_pool = match DbPool::new(&config.db_path, pool_size) {
+        Ok(pool) => {
+            tracing::info!("DuckDB connection pool initialized (size={pool_size}), database: {}", config.db_path);
+            pool
+        }
+        Err(e) => panic!("Failed to initialize DuckDB connection pool: {e}"),
+    };
 
     // 2. Load CLAP ONNX model
     let onnx = match ClapOnnxModel::load(&config.clap_onnx_dir) {
@@ -91,6 +100,7 @@ async fn main() {
     let port = config.port;
     let state = Arc::new(AppState {
         db_path: config.db_path.clone(),
+        db_pool: Arc::new(db_pool),
         config: Arc::new(config.clone()),
         onnx: Arc::new(onnx),
         gemini: Arc::new(gemini),

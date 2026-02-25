@@ -2,7 +2,6 @@ use axum::extract::{Query, State};
 use axum::Json;
 use std::sync::Arc;
 
-use crate::db;
 use crate::error::AppError;
 use crate::models::{SearchRequest, SearchResult, TextSearchQuery, TrackResponse};
 use crate::AppState;
@@ -11,8 +10,6 @@ pub async fn search_tracks_text(
     State(state): State<Arc<AppState>>,
     Query(params): Query<TextSearchQuery>,
 ) -> Result<Json<Vec<TrackResponse>>, AppError> {
-    let db_path = state.db_path.clone();
-
     // Validate at least one search param
     if params.query.is_none() && params.artist.is_none() && params.album.is_none() && params.title.is_none() {
         return Err(AppError::BadRequest(
@@ -22,9 +19,10 @@ pub async fn search_tracks_text(
 
     let limit = params.limit.unwrap_or(20);
     let source = params.source.unwrap_or_else(|| "library".into());
+    let pool = state.db_pool.clone();
 
     tokio::task::spawn_blocking(move || {
-        let conn = db::get_connection(&db_path)?;
+        let conn = pool.get()?;
 
         let mut conditions: Vec<String> = Vec::new();
         let mut param_values: Vec<String> = Vec::new();
@@ -84,6 +82,9 @@ pub async fn search_tracks_text(
             });
         }
 
+        drop(rows);
+        drop(stmt);
+        pool.put(conn);
         Ok(Json(results))
     })
     .await
@@ -101,13 +102,13 @@ pub async fn vector_search(
         )));
     }
 
-    let db_path = state.db_path.clone();
+    let pool = state.db_pool.clone();
     let limit = request.limit.unwrap_or(10);
     let source = request.source.unwrap_or_else(|| "library".into());
     let vector = request.vector;
 
     tokio::task::spawn_blocking(move || {
-        let conn = db::get_connection(&db_path)?;
+        let conn = pool.get()?;
 
         let source_filter = if source == "all" {
             String::new()
@@ -144,6 +145,9 @@ pub async fn vector_search(
             });
         }
 
+        drop(rows);
+        drop(stmt);
+        pool.put(conn);
         Ok(Json(results))
     })
     .await
