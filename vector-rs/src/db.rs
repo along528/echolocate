@@ -49,6 +49,16 @@ impl DbPool {
     }
 }
 
+/// Build a distance expression. When `use_hnsw` is false, wraps the call so
+/// the HNSW optimizer cannot pattern-match it, forcing a sequential scan.
+pub fn dist_expr(col: &str, vec_literal: &str, use_hnsw: bool) -> String {
+    if use_hnsw {
+        format!("array_cosine_distance({col}, {vec_literal})")
+    } else {
+        format!("(0.0 + array_cosine_distance({col}, {vec_literal}))")
+    }
+}
+
 /// Return the per-source table name for HNSW-indexed queries.
 /// For "all", returns the union view (no HNSW, used for text search / sample).
 pub fn table_for_source(source: &str) -> &str {

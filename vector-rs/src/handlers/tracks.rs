@@ -2,7 +2,9 @@ use axum::extract::{Path, Query, State};
 use axum::Json;
 use std::sync::Arc;
 
-use crate::db::{table_for_source, value_to_vec_f32};
+use std::sync::atomic::Ordering;
+
+use crate::db::{dist_expr, table_for_source, value_to_vec_f32};
 use crate::error::AppError;
 use crate::handlers::search::vec_f32_to_sql_literal;
 use crate::models::{SearchResult, SimilarQuery, TrackResponse, TracksQuery};
@@ -81,6 +83,7 @@ async fn find_by_similarity(
     let pool = state.db_pool.clone();
     let limit = params.limit.unwrap_or(10);
     let source = params.source.unwrap_or_else(|| "library".into());
+    let use_hnsw = state.v_mid_warm.load(Ordering::Relaxed);
 
     tokio::task::spawn_blocking(move || {
         let conn = pool.get()?;
@@ -104,13 +107,14 @@ async fn find_by_similarity(
                 let mut combined = Vec::new();
                 for table in &["tracks_library", "tracks_fma"] {
                     let src = if *table == "tracks_library" { "library" } else { "fma" };
+                    let dist = dist_expr("v_mid", &vec_literal, use_hnsw);
                     let q = format!(
                         "SELECT id, title, artist, album, relative_path, track_url, album_url, artist_url, \
-                                array_cosine_distance(v_mid, {vec}) as distance \
+                                {dist} as distance \
                          FROM {table} \
                          ORDER BY distance ASC \
                          LIMIT {lim}",
-                        vec = vec_literal, table = table, lim = limit + 1
+                        dist = dist, table = table, lim = limit + 1
                     );
                     let mut stmt = conn.prepare(&q)?;
                     let mut rows = stmt.query([])?;
@@ -138,13 +142,14 @@ async fn find_by_similarity(
             } else {
                 let table = table_for_source(&source);
                 let src_label = source.clone();
+                let dist = dist_expr("v_mid", &vec_literal, use_hnsw);
                 let q = format!(
                     "SELECT id, title, artist, album, relative_path, track_url, album_url, artist_url, \
-                            array_cosine_distance(v_mid, {vec}) as distance \
+                            {dist} as distance \
                      FROM {table} \
                      ORDER BY distance ASC \
                      LIMIT {lim}",
-                    vec = vec_literal, table = table, lim = limit + 1
+                    dist = dist, table = table, lim = limit + 1
                 );
                 let mut stmt = conn.prepare(&q)?;
                 let mut rows = stmt.query([])?;

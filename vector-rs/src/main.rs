@@ -10,6 +10,7 @@ mod models;
 
 use axum::routing::{get, post};
 use axum::Router;
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
 use tower_http::cors::{AllowOrigin, CorsLayer};
 
@@ -26,6 +27,8 @@ pub struct AppState {
     pub onnx: Arc<ClapOnnxModel>,
     pub gemini: Arc<Option<GeminiClient>>,
     pub gcs: Arc<Option<GcsClient>>,
+    pub v_mid_warm: Arc<AtomicBool>,
+    pub v_clap_warm: Arc<AtomicBool>,
 }
 
 #[tokio::main]
@@ -110,54 +113,18 @@ async fn main() {
     let db_pool = Arc::new(db_pool);
     let onnx = Arc::new(onnx);
 
-    // Warmup: pre-load HNSW indexes so the first real request is fast
-    {
-        let warmup_start = std::time::Instant::now();
-        tracing::info!("Warming up HNSW indexes...");
-
-        let onnx_ref = onnx.clone();
-        let pool_ref = db_pool.clone();
-        let warmup_result = tokio::task::spawn_blocking(move || -> Result<(), String> {
-            let query_vector = onnx_ref
-                .encode_text("warmup")
-                .map_err(|e| format!("Warmup CLAP encode failed: {e}"))?;
-
-            let vec_literal = handlers::search::vec_f32_to_sql_literal(&query_vector, 512);
-
-            let conn = pool_ref.get().map_err(|e| format!("Warmup DB conn failed: {e}"))?;
-            for table in &["tracks_library", "tracks_fma"] {
-                let q = format!(
-                    "SELECT id FROM {table} ORDER BY array_cosine_distance(v_clap, {vec}) LIMIT 1",
-                    table = table,
-                    vec = vec_literal,
-                );
-                let mut stmt = conn.prepare(&q)
-                    .map_err(|e| format!("Warmup prepare on {table} failed: {e}"))?;
-                let mut rows = stmt.query([])
-                    .map_err(|e| format!("Warmup query on {table} failed: {e}"))?;
-                // Consume at least one row to force HNSW index load
-                let _ = rows.next();
-            }
-            pool_ref.put(conn);
-            Ok(())
-        })
-        .await
-        .map_err(|e| format!("Warmup task panicked: {e}"));
-
-        match warmup_result {
-            Ok(Ok(())) => tracing::info!("HNSW warmup complete in {:.2?}", warmup_start.elapsed()),
-            Ok(Err(e)) => tracing::warn!("HNSW warmup failed: {e}"),
-            Err(e) => tracing::warn!("HNSW warmup failed: {e}"),
-        }
-    }
+    let v_mid_warm = Arc::new(AtomicBool::new(false));
+    let v_clap_warm = Arc::new(AtomicBool::new(false));
 
     let state = Arc::new(AppState {
         db_path: config.db_path.clone(),
-        db_pool,
+        db_pool: db_pool.clone(),
         config: Arc::new(config.clone()),
-        onnx,
+        onnx: onnx.clone(),
         gemini: Arc::new(gemini),
         gcs: Arc::new(gcs),
+        v_mid_warm: v_mid_warm.clone(),
+        v_clap_warm: v_clap_warm.clone(),
     });
 
     // CORS
@@ -182,6 +149,72 @@ async fn main() {
         .expect("Failed to bind");
 
     tracing::info!("Listening on 0.0.0.0:{port}");
+
+    // Background HNSW warmup: run two parallel warmup queries (v_clap + v_mid)
+    // so the server can accept requests immediately (brute-force fallback until warm).
+    {
+        let pool_clap = db_pool.clone();
+        let onnx_clap = onnx.clone();
+        let flag_clap = v_clap_warm.clone();
+        tokio::task::spawn(async move {
+            let start = std::time::Instant::now();
+            tracing::info!("Background warmup: v_clap starting...");
+            let result = tokio::task::spawn_blocking(move || -> Result<(), String> {
+                let query_vector = onnx_clap
+                    .encode_text("warmup")
+                    .map_err(|e| format!("Warmup CLAP encode failed: {e}"))?;
+                let vec_literal = handlers::search::vec_f32_to_sql_literal(&query_vector, 512);
+                let conn = pool_clap.get().map_err(|e| format!("Warmup DB conn failed: {e}"))?;
+                let q = format!(
+                    "SELECT id FROM tracks_fma ORDER BY array_cosine_distance(v_clap, {vec}) LIMIT 1",
+                    vec = vec_literal,
+                );
+                let mut stmt = conn.prepare(&q).map_err(|e| format!("v_clap warmup prepare: {e}"))?;
+                let mut rows = stmt.query([]).map_err(|e| format!("v_clap warmup query: {e}"))?;
+                let _ = rows.next();
+                pool_clap.put(conn);
+                Ok(())
+            }).await.map_err(|e| format!("v_clap warmup panicked: {e}"));
+            match result {
+                Ok(Ok(())) => {
+                    flag_clap.store(true, Ordering::Release);
+                    tracing::info!("Background warmup: v_clap complete in {:.2?}", start.elapsed());
+                }
+                Ok(Err(e)) => tracing::warn!("Background warmup: v_clap failed: {e}"),
+                Err(e) => tracing::warn!("Background warmup: v_clap failed: {e}"),
+            }
+        });
+
+        let pool_mid = db_pool.clone();
+        let flag_mid = v_mid_warm.clone();
+        tokio::task::spawn(async move {
+            let start = std::time::Instant::now();
+            tracing::info!("Background warmup: v_mid starting...");
+            let result = tokio::task::spawn_blocking(move || -> Result<(), String> {
+                let zero_vec = vec![0.0f32; 768];
+                let vec_literal = handlers::search::vec_f32_to_sql_literal(&zero_vec, 768);
+                let conn = pool_mid.get().map_err(|e| format!("Warmup DB conn failed: {e}"))?;
+                let q = format!(
+                    "SELECT id FROM tracks_fma ORDER BY array_cosine_distance(v_mid, {vec}) LIMIT 1",
+                    vec = vec_literal,
+                );
+                let mut stmt = conn.prepare(&q).map_err(|e| format!("v_mid warmup prepare: {e}"))?;
+                let mut rows = stmt.query([]).map_err(|e| format!("v_mid warmup query: {e}"))?;
+                let _ = rows.next();
+                pool_mid.put(conn);
+                Ok(())
+            }).await.map_err(|e| format!("v_mid warmup panicked: {e}"));
+            match result {
+                Ok(Ok(())) => {
+                    flag_mid.store(true, Ordering::Release);
+                    tracing::info!("Background warmup: v_mid complete in {:.2?}", start.elapsed());
+                }
+                Ok(Err(e)) => tracing::warn!("Background warmup: v_mid failed: {e}"),
+                Err(e) => tracing::warn!("Background warmup: v_mid failed: {e}"),
+            }
+        });
+    }
+
     axum::serve(listener, app).await.expect("Server error");
 }
 

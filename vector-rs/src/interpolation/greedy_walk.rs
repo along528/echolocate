@@ -1,6 +1,6 @@
 use std::collections::HashSet;
 
-use crate::db::table_for_source;
+use crate::db::{dist_expr, table_for_source};
 use crate::error::AppError;
 use crate::handlers::search::{vec_f32_to_sql_literal, vec_str_to_sql_literal};
 use crate::models::SearchResult;
@@ -17,6 +17,7 @@ pub fn greedy_walk_interpolation(
     source: &str,
     visited_ids: &mut HashSet<String>,
     visited_artists: &mut HashSet<String>,
+    use_hnsw: bool,
 ) -> Result<Vec<SearchResult>, AppError> {
     // Ensure start/end are in visited sets
     visited_ids.insert(start_id.to_string());
@@ -37,11 +38,12 @@ pub fn greedy_walk_interpolation(
 
         // Use per-source table in the CTE for HNSW acceleration on the
         // neighborhood fetch, then re-rank by target similarity in Rust.
+        let dist_current = dist_expr("v_mid", &current_literal, use_hnsw);
         let query = format!(
             "WITH neighborhood AS ( \
                 SELECT id, title, artist, album, relative_path, v_mid, \
                        track_url, album_url, artist_url, \
-                       array_cosine_distance(v_mid, {current}) as dist_to_current \
+                       {dist_current} as dist_to_current \
                 FROM {table} \
                 ORDER BY dist_to_current ASC \
                 LIMIT 50 \
@@ -52,7 +54,7 @@ pub fn greedy_walk_interpolation(
             FROM neighborhood \
             WHERE id NOT IN (SELECT UNNEST({visited})) \
             ORDER BY sim_to_target DESC",
-            current = current_literal,
+            dist_current = dist_current,
             target = end_literal,
             table = table,
             visited = visited_sql,

@@ -2,7 +2,9 @@ use axum::extract::State;
 use axum::Json;
 use std::sync::Arc;
 
-use crate::db::table_for_source;
+use std::sync::atomic::Ordering;
+
+use crate::db::{dist_expr, table_for_source};
 use crate::error::AppError;
 use crate::handlers::search::vec_f32_to_sql_literal;
 use crate::models::{SearchResult, SemanticSearchRequest, SemanticSearchResponse};
@@ -39,6 +41,7 @@ pub async fn semantic_search(
     let onnx = state.onnx.clone();
     let pool = state.db_pool.clone();
     let search_text = final_search_text.clone();
+    let use_hnsw = state.v_clap_warm.load(Ordering::Relaxed);
 
     let results = tokio::task::spawn_blocking(move || {
         let query_vector = onnx
@@ -53,13 +56,14 @@ pub async fn semantic_search(
             let mut combined = Vec::new();
             for table in &["tracks_library", "tracks_fma"] {
                 let src = if *table == "tracks_library" { "library" } else { "fma" };
+                let dist = dist_expr("v_clap", &vec_literal, use_hnsw);
                 let q = format!(
                     "SELECT id, title, artist, album, relative_path, track_url, album_url, artist_url, \
-                            array_cosine_distance(v_clap, {vec}) as distance \
+                            {dist} as distance \
                      FROM {table} \
                      ORDER BY distance ASC \
                      LIMIT {limit}",
-                    vec = vec_literal, table = table, limit = limit
+                    dist = dist, table = table, limit = limit
                 );
                 let mut stmt = conn.prepare(&q)?;
                 let mut rows = stmt.query([])?;
@@ -85,13 +89,14 @@ pub async fn semantic_search(
         } else {
             let table = table_for_source(&source);
             let src_label = source.clone();
+            let dist = dist_expr("v_clap", &vec_literal, use_hnsw);
             let q = format!(
                 "SELECT id, title, artist, album, relative_path, track_url, album_url, artist_url, \
-                        array_cosine_distance(v_clap, {vec}) as distance \
+                        {dist} as distance \
                  FROM {table} \
                  ORDER BY distance ASC \
                  LIMIT {limit}",
-                vec = vec_literal, table = table, limit = limit
+                dist = dist, table = table, limit = limit
             );
             let mut stmt = conn.prepare(&q)?;
             let mut rows = stmt.query([])?;

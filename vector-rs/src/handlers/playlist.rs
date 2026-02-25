@@ -1,6 +1,7 @@
 use axum::extract::State;
 use axum::Json;
 use std::collections::HashSet;
+use std::sync::atomic::Ordering;
 use std::sync::Arc;
 
 use crate::db::value_to_vec_f32;
@@ -67,6 +68,8 @@ pub async fn interpolate_playlist(
     let source = request.source.unwrap_or_else(|| "all".into());
     let steer_ids = request.steer_track_ids.unwrap_or_default();
 
+    let use_hnsw = state.v_mid_warm.load(Ordering::Relaxed);
+
     tokio::task::spawn_blocking(move || {
         let conn = pool.get()?;
 
@@ -128,6 +131,7 @@ pub async fn interpolate_playlist(
                 &steer_rows,
                 limit,
                 &source,
+                use_hnsw,
             )?
         } else {
             generate_geometric_path(
@@ -162,6 +166,7 @@ fn generate_greedy_walk_path(
     steer_rows: &[TrackRow],
     limit: usize,
     source: &str,
+    use_hnsw: bool,
 ) -> Result<Vec<SearchResult>, AppError> {
     if !steer_rows.is_empty() {
         // Multi-segment walk: Start -> S1 -> S2 -> ... -> SN -> End
@@ -202,6 +207,7 @@ fn generate_greedy_walk_path(
                 source,
                 &mut visited_ids,
                 &mut visited_artists,
+                use_hnsw,
             )?;
             path.extend(seg_path);
 
@@ -231,6 +237,7 @@ fn generate_greedy_walk_path(
             source,
             &mut visited_ids,
             &mut visited_artists,
+            use_hnsw,
         )
     }
 }
