@@ -31,11 +31,28 @@ The Python vector service spent most of its cold start time on interpreter start
 
 ## Local Development
 
-```bash
-# Build
-cargo build --release
+### Docker (recommended)
 
-# Run (requires a local cloudcrate.duckdb and CLAP ONNX model)
+The easiest way to run locally — no need to install `libduckdb` or `libonnxruntime`:
+
+```bash
+cd vector-rs && ./run-local.sh
+```
+
+This builds the Docker image, mounts your local database read-only, and starts the service on port 8000. Override defaults with environment variables:
+
+```bash
+PORT=9000 DB_PATH=/path/to/cloudcrate.duckdb ./run-local.sh
+```
+
+Defaults: `PORT=8000`, `DB_PATH=../data/cloudcrate.duckdb` (relative to repo root).
+
+### Native
+
+Requires `libduckdb` v1.2.2 and `libonnxruntime` v1.23.0 on your library path, plus a CLAP ONNX model directory (generate with `python vector/export_clap_text.py`).
+
+```bash
+cargo build --release
 DB_PATH=./cloudcrate.duckdb CLAP_ONNX_DIR=./clap_text_onnx PORT=8000 cargo run
 ```
 
