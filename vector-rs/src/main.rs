@@ -13,6 +13,8 @@ use axum::Router;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
 use tower_http::cors::{AllowOrigin, CorsLayer};
+use tower_http::trace::{DefaultOnResponse, TraceLayer};
+use tracing::Level;
 
 use clap_onnx::ClapOnnxModel;
 use config::Config;
@@ -142,6 +144,17 @@ async fn main() {
         .route("/interpolate/playlist", post(handlers::playlist::interpolate_playlist))
         .route("/stream/{track_id}", get(handlers::stream::stream_audio))
         .layer(cors)
+        .layer(
+            TraceLayer::new_for_http()
+                .make_span_with(|request: &axum::http::Request<_>| {
+                    tracing::info_span!(
+                        "request",
+                        method = %request.method(),
+                        uri = %request.uri(),
+                    )
+                })
+                .on_response(DefaultOnResponse::new().level(Level::INFO)),
+        )
         .with_state(state);
 
     let listener = tokio::net::TcpListener::bind(format!("0.0.0.0:{port}"))
