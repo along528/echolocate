@@ -60,6 +60,28 @@ async fn main() {
     let v_mid_warm = Arc::new(AtomicBool::new(false));
     let v_clap_warm = Arc::new(AtomicBool::new(false));
 
+    // Preload index file into OS page cache (sequential read is much faster
+    // than DuckDB's random page access on Cloud Run's streamed container images)
+    let preload_path = effective_db_path.clone();
+    tokio::task::spawn_blocking(move || {
+        let start = std::time::Instant::now();
+        tracing::info!("Preloading index file into page cache: {preload_path}");
+        match std::fs::read(&preload_path) {
+            Ok(bytes) => {
+                tracing::info!(
+                    "Index preload complete: {:.1} MB in {:.2?}",
+                    bytes.len() as f64 / 1_048_576.0,
+                    start.elapsed()
+                );
+            }
+            Err(e) => {
+                tracing::warn!("Index preload failed (non-fatal): {e}");
+            }
+        }
+    })
+    .await
+    .expect("Preload task panicked");
+
     // Fire HNSW warmup immediately — dedicated connections, no pool needed.
     // These run in parallel with all other init (pool, ONNX, Gemini, GCS).
     for (col, dim, flag) in [
