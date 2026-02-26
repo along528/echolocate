@@ -39,13 +39,13 @@ The easiest way to run locally — no need to install `libduckdb` or `libonnxrun
 cd vector-rs && ./run-local.sh
 ```
 
-This builds the Docker image, mounts your local database read-only, and starts the service on port 8000. Override defaults with environment variables:
+This builds the Docker image (with the baked index), mounts your local database directory read-only, and starts the service on port 8000. The baked index inside the image is used by default.
 
 ```bash
-PORT=9000 DB_PATH=/path/to/cloudcrate.duckdb ./run-local.sh
+PORT=9000 ./run-local.sh
 ```
 
-Defaults: `PORT=8000`, `DB_PATH=../data/cloudcrate.duckdb` (relative to repo root).
+Defaults: `PORT=8000`. Requires `data/index.duckdb` to exist (see [Baked-Index Architecture](#baked-index-architecture)).
 
 ### Native
 
@@ -53,12 +53,27 @@ Requires `libduckdb` v1.2.2 and `libonnxruntime` v1.23.0 on your library path, p
 
 ```bash
 cargo build --release
-DB_PATH=./cloudcrate.duckdb CLAP_ONNX_DIR=./clap_text_onnx PORT=8000 cargo run
+INDEX_DB_PATH=../data/index.duckdb CLAP_ONNX_DIR=./clap_text_onnx PORT=8000 cargo run
+```
+
+## Baked-Index Architecture
+
+The full `cloudcrate.duckdb` (~23GB) is too large for fast cold starts on Cloud Run — GCS FUSE random I/O for HNSW index traversal caused ~250s cold starts. The solution: bake a stripped index DB into the Docker image.
+
+**How it works:**
+- `embeddings/generate_index_db.py` builds `data/index.duckdb` (~1.4GB) from the full DB, keeping all metadata + `v_mid` + `v_clap` with HNSW indexes, but dropping `v_intro` and `v_outro` (unused by this service).
+- The index DB is `COPY`'d into the Docker image as its own layer.
+- Cloud Run gen2's container image streaming lazy-loads only the needed blocks from the registry — no FUSE, no full download.
+- `INDEX_DB_PATH` env var points to the baked index; falls back to `DB_PATH` when unset (backward compatible).
+
+**Generating the index DB:**
+```bash
+cd embeddings && python generate_index_db.py
 ```
 
 ## Docker Build
 
-The Dockerfile is a 3-stage build that must be run from the **repo root** (needs access to `vector/` for the ONNX export):
+The Dockerfile is a 3-stage build that must be run from the **repo root** (needs access to `vector/` for the ONNX export and `data/` for the baked index):
 
 ```bash
 docker build -f vector-rs/Dockerfile -t cloud-crate-vector-rs .
@@ -67,7 +82,9 @@ docker build -f vector-rs/Dockerfile -t cloud-crate-vector-rs .
 **Stages:**
 1. **Python exporter** — runs `export_clap_text.py` to produce the ONNX model + tokenizer
 2. **Rust builder** — downloads pre-built `libduckdb`, compiles the binary with cargo-chef for layer caching
-3. **Runtime** — `debian:bookworm-slim` with just the binary, ONNX model, and shared libraries
+3. **Runtime** — `debian:bookworm-slim` with the binary, ONNX model, baked index DB, and shared libraries
+
+**Layer caching:** The baked index (~1.4GB) is a separate layer placed before the binary. Code changes only rebuild the binary layer; the index layer is cached unless `data/index.duckdb` changes.
 
 ## Deployment
 
@@ -75,7 +92,7 @@ docker build -f vector-rs/Dockerfile -t cloud-crate-vector-rs .
 cd vector-rs && ./deploy.sh
 ```
 
-Deploys as `cloud-crate-vector-rs` on Cloud Run alongside the existing Python service. Uses the same GCS-mounted DuckDB database.
+Deploys as `cloud-crate-vector-rs` on Cloud Run with the baked index. GCS mount is retained at `/data/cloudcrate.duckdb` as a fallback. Uses `--no-cpu-throttling` for consistent performance.
 
 ## Validation
 
@@ -91,7 +108,8 @@ python vector/verify_service.py https://cloud-crate-vector-ie7zxu4hbq-uc.a.run.a
 
 | Variable | Default | Description |
 |----------|---------|-------------|
-| `DB_PATH` | `cloudcrate.duckdb` | Path to DuckDB database file |
+| `INDEX_DB_PATH` | — | Path to baked index DB (takes precedence over `DB_PATH`) |
+| `DB_PATH` | `cloudcrate.duckdb` | Path to full DuckDB database (fallback) |
 | `PORT` | `8080` | HTTP listen port |
 | `GCP_PROJECT_ID` | — | Enables Gemini query enhancement |
 | `GCP_LOCATION` | `us-central1` | Vertex AI region |
