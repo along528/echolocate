@@ -51,10 +51,16 @@ async fn main() {
         .and_then(|s| s.parse().ok())
         .unwrap_or(4usize);
 
+    // Use baked index DB if available, otherwise fall back to DB_PATH (GCS mount)
+    let effective_db_path = config
+        .index_db_path
+        .clone()
+        .unwrap_or_else(|| config.db_path.clone());
+
     let (db_result, onnx_result, gemini, gcs_result) = tokio::join!(
         // 1. DuckDB pool (blocking)
         tokio::task::spawn_blocking({
-            let db_path = config.db_path.clone();
+            let db_path = effective_db_path.clone();
             move || DbPool::new(&db_path, pool_size)
         }),
         // 2. ONNX model (blocking)
@@ -86,7 +92,7 @@ async fn main() {
 
     let db_pool = match db_result.expect("DuckDB init task panicked") {
         Ok(pool) => {
-            tracing::info!("DuckDB connection pool initialized (size={pool_size}), database: {}", config.db_path);
+            tracing::info!("DuckDB connection pool initialized (size={pool_size}), database: {effective_db_path}");
             pool
         }
         Err(e) => panic!("Failed to initialize DuckDB connection pool: {e}"),

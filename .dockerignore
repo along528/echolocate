@@ -1,4 +1,5 @@
 *
+!data/index.duckdb
 !vector/requirements.txt
 !vector/export_clap_text.py
 !vector-rs/Cargo.toml

@@ -79,6 +79,9 @@ RUN ldconfig
 # Copy DuckDB extensions
 COPY --from=builder /app/duckdb_extensions/ /tmp/.duckdb/extensions/
 
+# Copy baked search index (~4GB, rarely changes — its own layer for caching)
+COPY data/index.duckdb /app/index.duckdb
+
 # Copy the Rust binary and libduckdb
 COPY --from=builder /app/target/release/cloud-crate-vector /app/cloud-crate-vector
 COPY --from=builder /usr/local/lib/libduckdb.so /usr/local/lib/libduckdb.so
@@ -86,6 +89,7 @@ RUN ldconfig
 
 # Environment
 ENV DB_PATH=/data/cloudcrate.duckdb
+ENV INDEX_DB_PATH=/app/index.duckdb
 ENV CLAP_ONNX_DIR=/app/clap_text_onnx
 ENV HOME=/tmp
 ENV PORT=8080

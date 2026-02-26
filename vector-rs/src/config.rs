@@ -3,6 +3,7 @@ use std::env;
 #[derive(Debug, Clone)]
 pub struct Config {
     pub db_path: String,
+    pub index_db_path: Option<String>,
     pub port: u16,
     pub gcp_project_id: Option<String>,
     pub gcp_location: String,
@@ -16,6 +17,7 @@ impl Config {
     pub fn from_env() -> Self {
         Self {
             db_path: env::var("DB_PATH").unwrap_or_else(|_| "cloudcrate.duckdb".into()),
+            index_db_path: env::var("INDEX_DB_PATH").ok(),
             port: env::var("PORT")
                 .ok()
                 .and_then(|p| p.parse().ok())
