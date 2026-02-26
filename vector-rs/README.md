@@ -65,6 +65,7 @@ The full `cloudcrate.duckdb` (~23GB) is too large for fast cold starts on Cloud 
 - The index DB is `COPY`'d into the Docker image as its own layer.
 - Cloud Run gen2's container image streaming lazy-loads only the needed blocks from the registry — no FUSE, no full download.
 - `INDEX_DB_PATH` env var points to the baked index; falls back to `DB_PATH` when unset (backward compatible).
+- No GCS FUSE mount needed — audio streaming uses the GCS client API directly.
 
 **Generating the index DB:**
 ```bash
@@ -92,7 +93,7 @@ docker build -f vector-rs/Dockerfile -t cloud-crate-vector-rs .
 cd vector-rs && ./deploy.sh
 ```
 
-Deploys as `cloud-crate-vector-rs` on Cloud Run with the baked index. GCS mount is retained at `/data/cloudcrate.duckdb` as a fallback. Uses `--no-cpu-throttling` for consistent performance.
+Deploys as `cloud-crate-vector-rs` on Cloud Run with the baked index. No GCS FUSE mount — audio streaming uses the GCS client API directly. Uses `--no-cpu-throttling` for consistent performance.
 
 ## Validation
 

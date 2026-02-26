@@ -33,7 +33,7 @@ The project consists of four main services:
    - Same DuckDB/VSS stack, rewritten in Rust with Axum
    - **Baked-index architecture**: A stripped index DB (`data/index.duckdb`, ~1.4GB) containing only `v_mid` + `v_clap` + metadata is baked into the Docker image. Cloud Run streams container image blocks on demand, eliminating GCS FUSE cold-start latency.
    - `INDEX_DB_PATH` env var points to the baked index; falls back to `DB_PATH` (GCS mount) when unset
-   - GCS mount retained at `/data/cloudcrate.duckdb` as fallback with full vectors (`v_intro`, `v_outro`)
+   - No GCS FUSE mount needed — audio streaming uses the GCS client API directly
    - Entry point: `vector-rs/src/main.rs`
 
 4. **`mcp-apple/`** - Dedicated Apple Music MCP server (Starlette/uvicorn)

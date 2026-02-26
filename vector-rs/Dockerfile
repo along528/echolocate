@@ -88,7 +88,6 @@ COPY --from=builder /usr/local/lib/libduckdb.so /usr/local/lib/libduckdb.so
 RUN ldconfig
 
 # Environment
-ENV DB_PATH=/data/cloudcrate.duckdb
 ENV INDEX_DB_PATH=/app/index.duckdb
 ENV CLAP_ONNX_DIR=/app/clap_text_onnx
 ENV HOME=/tmp
