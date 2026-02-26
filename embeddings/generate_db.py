@@ -61,8 +61,16 @@ def initialize_db():
     print("Creating table 'tracks_fma'...")
     con.execute(table_ddl.format(table="tracks_fma"))
 
-    # Create HNSW indexes on each table for v_mid and v_clap
-    print("Creating HNSW indexes...")
+    return con
+
+
+def create_indexes(con):
+    """Create HNSW, text indexes, and union view.
+
+    Called AFTER all data is inserted so HNSW indexes are bulk-built
+    rather than incrementally updated per-row (much smaller on disk).
+    """
+    print("\nCreating HNSW indexes (bulk build)...")
     con.execute("CREATE INDEX idx_library_mid ON tracks_library USING HNSW (v_mid) WITH (metric = 'cosine');")
     con.execute("CREATE INDEX idx_library_clap ON tracks_library USING HNSW (v_clap) WITH (metric = 'cosine');")
     con.execute("CREATE INDEX idx_fma_mid ON tracks_fma USING HNSW (v_mid) WITH (metric = 'cosine');")
@@ -83,8 +91,6 @@ def initialize_db():
         con.execute(f"CREATE INDEX IF NOT EXISTS idx_{table}_title ON {table} (title);")
         con.execute(f"CREATE INDEX IF NOT EXISTS idx_{table}_artist ON {table} (artist);")
         con.execute(f"CREATE INDEX IF NOT EXISTS idx_{table}_album ON {table} (album);")
-
-    return con
 
 
 def generate_track_id(source, artist, album, title):
@@ -382,7 +388,10 @@ def main(limit=None):
         if limit:
             fma_tracks = fma_tracks[:limit]
         insert_tracks(con, fma_tracks, "FMA")
-        
+
+        # Build indexes after all data is loaded (bulk build)
+        create_indexes(con)
+
         # Force write to disk
         print("\nCheckpointing to disk...")
         con.execute("CHECKPOINT;")
