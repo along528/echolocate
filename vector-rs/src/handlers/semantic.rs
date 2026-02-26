@@ -44,6 +44,7 @@ pub async fn semantic_search(
     let use_hnsw = state.v_clap_warm.load(Ordering::Relaxed);
 
     let results = tokio::task::spawn_blocking(move || {
+        let query_start = std::time::Instant::now();
         let query_vector = onnx
             .encode_text(&search_text)
             .map_err(|e| AppError::Internal(format!("CLAP encoding failed: {e}")))?;
@@ -119,6 +120,7 @@ pub async fn semantic_search(
             res
         };
 
+        tracing::info!("semantic_search completed in {:.2?} (hnsw={})", query_start.elapsed(), use_hnsw);
         pool.put(conn);
         Ok::<_, AppError>(results)
     })

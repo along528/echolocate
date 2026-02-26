@@ -171,19 +171,21 @@ async fn main() {
 
     // Background HNSW warmup: run two parallel warmup queries (v_clap + v_mid)
     // so the server can accept requests immediately (brute-force fallback until warm).
+    // Uses dedicated connections (not from pool) so all pool connections stay available for requests.
     {
-        let pool_clap = db_pool.clone();
+        let warmup_db_path_clap = effective_db_path.clone();
         let onnx_clap = onnx.clone();
         let flag_clap = v_clap_warm.clone();
         tokio::task::spawn(async move {
             let start = std::time::Instant::now();
-            tracing::info!("Background warmup: v_clap starting...");
+            tracing::info!("Background warmup: v_clap starting (dedicated connection)...");
             let result = tokio::task::spawn_blocking(move || -> Result<(), String> {
                 let query_vector = onnx_clap
                     .encode_text("warmup")
                     .map_err(|e| format!("Warmup CLAP encode failed: {e}"))?;
                 let vec_literal = handlers::search::vec_f32_to_sql_literal(&query_vector, 512);
-                let conn = pool_clap.get().map_err(|e| format!("Warmup DB conn failed: {e}"))?;
+                let conn = db::get_connection(&warmup_db_path_clap)
+                    .map_err(|e| format!("Warmup DB conn failed: {e}"))?;
                 let q = format!(
                     "SELECT id FROM tracks_fma ORDER BY array_cosine_distance(v_clap, {vec}) LIMIT 1",
                     vec = vec_literal,
@@ -191,7 +193,7 @@ async fn main() {
                 let mut stmt = conn.prepare(&q).map_err(|e| format!("v_clap warmup prepare: {e}"))?;
                 let mut rows = stmt.query([]).map_err(|e| format!("v_clap warmup query: {e}"))?;
                 let _ = rows.next();
-                pool_clap.put(conn);
+                // Dedicated connection — just drop it, don't return to pool
                 Ok(())
             }).await.map_err(|e| format!("v_clap warmup panicked: {e}"));
             match result {
@@ -204,15 +206,16 @@ async fn main() {
             }
         });
 
-        let pool_mid = db_pool.clone();
+        let warmup_db_path_mid = effective_db_path.clone();
         let flag_mid = v_mid_warm.clone();
         tokio::task::spawn(async move {
             let start = std::time::Instant::now();
-            tracing::info!("Background warmup: v_mid starting...");
+            tracing::info!("Background warmup: v_mid starting (dedicated connection)...");
             let result = tokio::task::spawn_blocking(move || -> Result<(), String> {
                 let zero_vec = vec![0.0f32; 768];
                 let vec_literal = handlers::search::vec_f32_to_sql_literal(&zero_vec, 768);
-                let conn = pool_mid.get().map_err(|e| format!("Warmup DB conn failed: {e}"))?;
+                let conn = db::get_connection(&warmup_db_path_mid)
+                    .map_err(|e| format!("Warmup DB conn failed: {e}"))?;
                 let q = format!(
                     "SELECT id FROM tracks_fma ORDER BY array_cosine_distance(v_mid, {vec}) LIMIT 1",
                     vec = vec_literal,
@@ -220,7 +223,7 @@ async fn main() {
                 let mut stmt = conn.prepare(&q).map_err(|e| format!("v_mid warmup prepare: {e}"))?;
                 let mut rows = stmt.query([]).map_err(|e| format!("v_mid warmup query: {e}"))?;
                 let _ = rows.next();
-                pool_mid.put(conn);
+                // Dedicated connection — just drop it, don't return to pool
                 Ok(())
             }).await.map_err(|e| format!("v_mid warmup panicked: {e}"));
             match result {

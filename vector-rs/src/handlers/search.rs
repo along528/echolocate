@@ -112,6 +112,7 @@ pub async fn vector_search(
     let use_hnsw = state.v_mid_warm.load(Ordering::Relaxed);
 
     tokio::task::spawn_blocking(move || {
+        let query_start = std::time::Instant::now();
         let conn = pool.get()?;
         let vec_literal = vec_f32_to_sql_literal(&vector, 768);
 
@@ -182,6 +183,7 @@ pub async fn vector_search(
             res
         };
 
+        tracing::info!("vector_search completed in {:.2?} (hnsw={})", query_start.elapsed(), use_hnsw);
         pool.put(conn);
         Ok(Json(results))
     })

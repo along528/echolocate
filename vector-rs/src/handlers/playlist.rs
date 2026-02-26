@@ -71,6 +71,7 @@ pub async fn interpolate_playlist(
     let use_hnsw = state.v_mid_warm.load(Ordering::Relaxed);
 
     tokio::task::spawn_blocking(move || {
+        let query_start = std::time::Instant::now();
         let conn = pool.get()?;
 
         // 1. Get start and end tracks
@@ -152,6 +153,7 @@ pub async fn interpolate_playlist(
         full_playlist.extend(path);
         full_playlist.push(end_obj);
 
+        tracing::info!("interpolate_playlist completed in {:.2?} (hnsw={})", query_start.elapsed(), use_hnsw);
         pool.put(conn);
         Ok(Json(full_playlist))
     })

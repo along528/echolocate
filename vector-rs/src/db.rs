@@ -53,8 +53,10 @@ impl DbPool {
 /// the HNSW optimizer cannot pattern-match it, forcing a sequential scan.
 pub fn dist_expr(col: &str, vec_literal: &str, use_hnsw: bool) -> String {
     if use_hnsw {
+        tracing::debug!("query mode: HNSW index ({col})");
         format!("array_cosine_distance({col}, {vec_literal})")
     } else {
+        tracing::info!("query mode: brute-force scan ({col})");
         format!("(0.0 + array_cosine_distance({col}, {vec_literal}))")
     }
 }

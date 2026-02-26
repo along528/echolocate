@@ -86,6 +86,7 @@ async fn find_by_similarity(
     let use_hnsw = state.v_mid_warm.load(Ordering::Relaxed);
 
     tokio::task::spawn_blocking(move || {
+        let query_start = std::time::Instant::now();
         let conn = pool.get()?;
 
         // 1. Get the vector for the target track
@@ -210,6 +211,7 @@ async fn find_by_similarity(
             res
         };
 
+        tracing::info!("find_by_similarity completed in {:.2?} (hnsw={})", query_start.elapsed(), use_hnsw);
         pool.put(conn);
         Ok(Json(results))
     })
