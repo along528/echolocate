@@ -24,7 +24,7 @@ DEFAULT_ENHANCE = True
 def cache_key(query: str, source: str, limit: int, enhance: bool) -> str:
     """Deterministic SHA-256 key matching cache.js _cacheKey()."""
     obj = {"enhance": enhance, "limit": limit, "query": query, "source": source}
-    raw = json.dumps(obj, sort_keys=False)  # keys already in sorted order
+    raw = json.dumps(obj, separators=(',', ':'))  # compact, matches JS JSON.stringify
     return hashlib.sha256(raw.encode()).hexdigest()
 
 
