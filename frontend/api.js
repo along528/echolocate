@@ -35,9 +35,27 @@ const API = {
         return this.request('GET', '/search', null, { query, source, limit });
     },
 
-    // Semantic search with natural language
+    // Semantic search with natural language (checks Firestore cache first)
     async semanticSearch(query, source = 'fma', limit = 50, enhance = false) {
-        return this.request('POST', '/semantic-search', { query, source, limit, enhance });
+        const body = { query, source, limit, enhance };
+
+        // Always fire the live request to keep vector-rs warm
+        const liveRequest = this.request('POST', '/semantic-search', body);
+
+        // Check cache (fast path)
+        try {
+            const cached = await SearchCache.get(query, source, limit, enhance);
+            if (cached) {
+                // Let the live request complete in the background (warm-up)
+                liveRequest.catch(err => console.warn('[API] Background warm-up failed:', err));
+                return cached;
+            }
+        } catch (e) {
+            console.warn('[API] Cache lookup failed, falling through to live:', e);
+        }
+
+        // Cache miss — await the live request
+        return liveRequest;
     },
 
     // Get random tracks
