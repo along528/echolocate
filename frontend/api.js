@@ -49,7 +49,7 @@ const API = {
                 // Let the live request complete in the background (warm-up)
                 liveRequest.catch(err => console.warn('[API] Background warm-up failed:', err));
                 // Small delay so UX feels similar to a live request
-                await new Promise(r => setTimeout(r, 250));
+                await new Promise(r => setTimeout(r, 500));
                 return cached;
             }
         } catch (e) {
