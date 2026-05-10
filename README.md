@@ -1,6 +1,12 @@
+<p align="center">
+  <a href="https://echolocate.app/">
+    <img src="frontend/artwork.svg" alt="EchoLocate" width="140"/>
+  </a>
+</p>
+
 # EchoLocate
 
-EchoLocate is a music discovery system powered by MCP (Model Context Protocol), Google Cloud Run, DuckDB, and audio vector search. It exposes sonic similarity search and playlist generation via an MCP server, backed by a high-performance vector search service.
+**[echolocate.app](https://echolocate.app/)** — EchoLocate is a music discovery system powered by MCP (Model Context Protocol), Google Cloud Run, DuckDB, and audio vector search. It exposes sonic similarity search and playlist generation via an MCP server, backed by a high-performance vector search service.
 
 ## Architecture
 
