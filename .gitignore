@@ -22,8 +22,14 @@ data/
 # Embeddings Tmp
 embeddings/tmp/
 
+# ONNX export artifacts
+clap_text_onnx/
+
 # DuckDB
 *.duckdb
 .bucket_name
 setup_iap_log.txt
 setup_iap_log_2.txt
+
+# Rust
+vector-rs/target/

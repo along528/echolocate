@@ -18,7 +18,14 @@ const App = {
 
 
     init() {
+        SearchCache.init();
         Player.init();
+
+        // Load seed queries from shared JSON (async, non-blocking)
+        fetch('seed_queries.json')
+            .then(r => r.json())
+            .then(q => { this.seedQueries = q; })
+            .catch(e => console.warn('Failed to load seed queries:', e));
         const restored = this.restoreState();
         this.setupEventListeners();
         this.setupMobileNavigation();
@@ -492,48 +499,8 @@ const App = {
         }
     },
 
-    seedQueries: [
-        'dreamy lo-fi with warm vinyl crackle',
-        'heavy distorted guitars and pounding drums',
-        'smooth jazz saxophone late at night',
-        'glitchy IDM with stuttering beats',
-        'haunting ambient drone textures',
-        'funky bass grooves and tight percussion',
-        'ethereal vocals floating over synth pads',
-        'raw punk energy and shouted vocals',
-        'melancholic piano with strings',
-        'tropical rhythms and steel drums',
-        'dark industrial machinery sounds',
-        'bright acoustic fingerpicking',
-        'spacey cosmic synth arpeggios',
-        'soulful organ and gospel choir',
-        'minimal techno with hypnotic loops',
-        'chaotic free jazz improvisation',
-        'lush orchestral swells and crescendos',
-        'dusty boom bap hip hop beats',
-        'shimmering shoegaze wall of sound',
-        'eerie field recordings and found sounds',
-        'wobbly tape-warped synths and delay',
-        'driving krautrock motorik beat',
-        'gentle bossa nova guitar and brushes',
-        'massive sub bass and skittering hi-hats',
-        'twangy country slide guitar',
-        'polyrhythmic afrobeat horns and percussion',
-        'meditative singing bowls and drones',
-        'crunchy breakbeats and jungle rollers',
-        'wistful accordion and strings waltz',
-        'fizzy power pop with jangly guitars',
-        'deep dub reggae with heavy reverb',
-        'noisy feedback and dissonant chords',
-        'chiptune arpeggios and 8-bit drums',
-        'thunderous orchestral percussion',
-        'whispery folk and fingerpicked banjo',
-        'acid house squelchy 303 bassline',
-        'cinematic tension with low cello',
-        'sun-drenched surf rock reverb',
-        'brittle prepared piano and silence',
-        'sparse minimal classical with solo violin'
-    ],
+    // Seed queries loaded from seed_queries.json at init(); fallback for immediate use
+    seedQueries: ['warm jazz saxophone', 'dreamy lo-fi beats', 'heavy distorted guitars'],
 
     async loadInitialTracks() {
         try {

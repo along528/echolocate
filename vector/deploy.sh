@@ -7,12 +7,7 @@ cd "$(dirname "$0")"
 SERVICE_NAME="cloud-crate-vector"
 REGION="us-central1"
 
-# Get bucket name
-if [ ! -f .bucket_name ]; then
-    echo "Error: .bucket_name file not found. Run setup_infra.sh first."
-    exit 1
-fi
-BUCKET_NAME=$(cat .bucket_name)
+BUCKET_NAME="cloud-crate-vector-db"
 
 echo "Deploying $SERVICE_NAME using bucket $BUCKET_NAME..."
 

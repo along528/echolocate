@@ -1,0 +1,16 @@
+rules_version = '2';
+
+service cloud.firestore {
+  match /databases/{database}/documents {
+    // Allow public read-only access to the semantic search cache
+    match /semantic_search_cache/{document=**} {
+      allow read: if true;
+      allow write: if false;
+    }
+
+    // Existing collections retain default deny
+    match /{document=**} {
+      allow read, write: if false;
+    }
+  }
+}

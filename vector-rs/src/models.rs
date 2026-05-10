@@ -1,0 +1,104 @@
+use serde::{Deserialize, Serialize};
+
+#[derive(Debug, Serialize, Clone)]
+pub struct TrackResponse {
+    pub id: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub source: Option<String>,
+    pub title: String,
+    pub artist: String,
+    pub album: String,
+    pub relative_path: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub track_url: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub album_url: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub artist_url: Option<String>,
+}
+
+#[derive(Debug, Serialize, Clone)]
+pub struct SearchResult {
+    pub id: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub source: Option<String>,
+    pub title: String,
+    pub artist: String,
+    pub album: String,
+    pub relative_path: String,
+    pub similarity: f64,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub track_url: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub album_url: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub artist_url: Option<String>,
+}
+
+#[derive(Debug, Deserialize)]
+pub struct SearchRequest {
+    pub vector: Vec<f32>,
+    pub limit: Option<i64>,
+    pub source: Option<String>,
+}
+
+#[derive(Debug, Deserialize)]
+pub struct InterpolationRequest {
+    pub track_id_1: String,
+    pub track_id_2: String,
+    pub limit: Option<i64>,
+    pub method: Option<String>,
+}
+
+#[derive(Debug, Deserialize)]
+pub struct InterpolationPlaylistRequest {
+    pub track_id_1: String,
+    pub track_id_2: String,
+    pub limit: Option<i64>,
+    pub method: Option<String>,
+    pub steer_track_ids: Option<Vec<String>>,
+    pub source: Option<String>,
+}
+
+#[derive(Debug, Deserialize)]
+pub struct SemanticSearchRequest {
+    pub query: String,
+    pub limit: Option<i64>,
+    pub source: Option<String>,
+    pub enhance: Option<bool>,
+}
+
+#[derive(Debug, Serialize)]
+pub struct SemanticSearchResponse {
+    pub results: Vec<SearchResult>,
+    pub original_query: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub enhanced_query: Option<String>,
+}
+
+/// Query parameters for GET /tracks
+#[derive(Debug, Deserialize)]
+pub struct TracksQuery {
+    pub limit: Option<i64>,
+    pub offset: Option<i64>,
+    pub random: Option<bool>,
+    pub source: Option<String>,
+}
+
+/// Query parameters for GET /search
+#[derive(Debug, Deserialize)]
+pub struct TextSearchQuery {
+    pub query: Option<String>,
+    pub artist: Option<String>,
+    pub album: Option<String>,
+    pub title: Option<String>,
+    pub limit: Option<i64>,
+    pub source: Option<String>,
+}
+
+/// Query parameters for GET /tracks/{id}/similar and /dissimilar
+#[derive(Debug, Deserialize)]
+pub struct SimilarQuery {
+    pub limit: Option<i64>,
+    pub source: Option<String>,
+}

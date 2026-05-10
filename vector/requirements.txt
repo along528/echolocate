@@ -9,4 +9,7 @@ google-cloud-storage
 numpy
 torch
 transformers==4.46.0
+onnx
+onnxscript
+onnxruntime
 google-cloud-aiplatform>=1.38.0

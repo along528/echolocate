@@ -38,12 +38,10 @@ def initialize_db():
     # ENABLE PERSISTENCE (Critical for saving vector index to disk)
     con.execute("SET hnsw_enable_experimental_persistence = true;")
     
-    # Create the schema with source and URL columns
-    print("Creating table 'tracks'...")
-    con.execute("""
-        CREATE TABLE IF NOT EXISTS tracks (
+    # Create per-source tables (no source column needed)
+    table_ddl = """
+        CREATE TABLE IF NOT EXISTS {table} (
             id VARCHAR PRIMARY KEY,
-            source VARCHAR,
             title VARCHAR,
             artist VARCHAR,
             album VARCHAR,
@@ -56,24 +54,43 @@ def initialize_db():
             v_outro FLOAT[768],
             v_clap FLOAT[512]
         );
-    """)
-    
-    # Create HNSW Indexes for vector columns
-    print("Creating HNSW indexes...")
-    con.execute("""
-        CREATE INDEX IF NOT EXISTS idx_mid 
-        ON tracks USING HNSW (v_mid) 
-        WITH (metric = 'cosine');
-    """)
-    
-    # Create text and filter indexes
-    print("Creating text indexes...")
-    con.execute("CREATE INDEX IF NOT EXISTS idx_source ON tracks (source);")
-    con.execute("CREATE INDEX IF NOT EXISTS idx_title ON tracks (title);")
-    con.execute("CREATE INDEX IF NOT EXISTS idx_artist ON tracks (artist);")
-    con.execute("CREATE INDEX IF NOT EXISTS idx_album ON tracks (album);")
-    
+    """
+
+    print("Creating table 'tracks_library'...")
+    con.execute(table_ddl.format(table="tracks_library"))
+    print("Creating table 'tracks_fma'...")
+    con.execute(table_ddl.format(table="tracks_fma"))
+
     return con
+
+
+def create_indexes(con):
+    """Create HNSW, text indexes, and union view.
+
+    Called AFTER all data is inserted so HNSW indexes are bulk-built
+    rather than incrementally updated per-row (much smaller on disk).
+    """
+    print("\nCreating HNSW indexes (bulk build)...")
+    con.execute("CREATE INDEX idx_library_mid ON tracks_library USING HNSW (v_mid) WITH (metric = 'cosine');")
+    con.execute("CREATE INDEX idx_library_clap ON tracks_library USING HNSW (v_clap) WITH (metric = 'cosine');")
+    con.execute("CREATE INDEX idx_fma_mid ON tracks_fma USING HNSW (v_mid) WITH (metric = 'cosine');")
+    con.execute("CREATE INDEX idx_fma_clap ON tracks_fma USING HNSW (v_clap) WITH (metric = 'cosine');")
+
+    # Union view for backward compatibility (text search, sample, etc.)
+    print("Creating union view 'tracks'...")
+    con.execute("""
+        CREATE VIEW tracks AS
+          SELECT *, 'library' as source FROM tracks_library
+          UNION ALL
+          SELECT *, 'fma' as source FROM tracks_fma;
+    """)
+
+    # Create text indexes on both tables
+    print("Creating text indexes...")
+    for table in ("tracks_library", "tracks_fma"):
+        con.execute(f"CREATE INDEX IF NOT EXISTS idx_{table}_title ON {table} (title);")
+        con.execute(f"CREATE INDEX IF NOT EXISTS idx_{table}_artist ON {table} (artist);")
+        con.execute(f"CREATE INDEX IF NOT EXISTS idx_{table}_album ON {table} (album);")
 
 
 def generate_track_id(source, artist, album, title):
@@ -159,7 +176,6 @@ def load_library_data():
             
             track_data_list.append((
                 track_id,
-                'library',
                 title,
                 artist,
                 album,
@@ -204,7 +220,6 @@ def load_library_data():
                 
                 track_data_list.append((
                     track_id,
-                    'library',
                     title,
                     artist,
                     album,
@@ -319,7 +334,6 @@ def load_fma_data():
             
             track_data_list.append((
                 track_id,
-                'fma',  # source
                 title,
                 artist,
                 album,
@@ -341,20 +355,21 @@ def load_fma_data():
 
 
 def insert_tracks(con, track_data_list, source_name, chunk_size=1000):
-    """Batch insert tracks into the database with progress tracking."""
+    """Batch insert tracks into the appropriate per-source table."""
     if not track_data_list:
         return
-    
+
+    table = "tracks_library" if source_name == "library" else "tracks_fma"
     total = len(track_data_list)
-    print(f"Inserting {total} {source_name} tracks...")
-    
+    print(f"Inserting {total} {source_name} tracks into {table}...")
+
     # Insert in chunks with progress bar
     for i in tqdm(range(0, total, chunk_size), desc=f"  Inserting {source_name}", unit="batch"):
         chunk = track_data_list[i:i + chunk_size]
-        con.executemany("""
-            INSERT OR IGNORE INTO tracks 
-            (id, source, title, artist, album, relative_path, track_url, album_url, artist_url, v_intro, v_mid, v_outro, v_clap) 
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        con.executemany(f"""
+            INSERT OR IGNORE INTO {table}
+            (id, title, artist, album, relative_path, track_url, album_url, artist_url, v_intro, v_mid, v_outro, v_clap)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         """, chunk)
 
 
@@ -373,7 +388,10 @@ def main(limit=None):
         if limit:
             fma_tracks = fma_tracks[:limit]
         insert_tracks(con, fma_tracks, "FMA")
-        
+
+        # Build indexes after all data is loaded (bulk build)
+        create_indexes(con)
+
         # Force write to disk
         print("\nCheckpointing to disk...")
         con.execute("CHECKPOINT;")
@@ -381,14 +399,15 @@ def main(limit=None):
         # Verify counts
         print("\n" + "=" * 50)
         print("📊 Database Summary:")
-        total = con.execute("SELECT COUNT(*) FROM tracks").fetchone()[0]
-        print(f"   Total tracks: {total}")
-        
-        source_counts = con.execute(
-            "SELECT source, COUNT(*) FROM tracks GROUP BY source ORDER BY source"
-        ).fetchall()
-        for source, count in source_counts:
-            print(f"   - {source}: {count}")
+        lib_count = con.execute("SELECT COUNT(*) FROM tracks_library").fetchone()[0]
+        fma_count = con.execute("SELECT COUNT(*) FROM tracks_fma").fetchone()[0]
+        print(f"   Total tracks: {lib_count + fma_count}")
+        print(f"   - library: {lib_count}")
+        print(f"   - fma: {fma_count}")
+
+        # Verify HNSW indexes
+        indexes = con.execute("SELECT index_name FROM duckdb_indexes()").fetchall()
+        print(f"   Indexes: {[idx[0] for idx in indexes]}")
         
         con.close()
         print(f"\n✅ Database created at {DB_PATH}")

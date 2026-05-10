@@ -1,0 +1,33 @@
+[package]
+name = "cloud-crate-vector"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+# HTTP
+axum = { version = "0.8", features = ["macros"] }
+tokio = { version = "1", features = ["full"] }
+tower-http = { version = "0.6", features = ["cors", "trace"] }
+
+# Serialization
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+
+# DuckDB
+duckdb = { version = "1.2" }
+
+# ONNX Runtime
+ort = { version = "2.0.0-rc.11", features = ["load-dynamic"] }
+tokenizers = { version = "0.21", features = ["http"] }
+ndarray = "0.16"
+
+# GCS streaming
+google-cloud-storage = { version = "0.22" }
+
+# Gemini / Google auth
+google-cloud-auth = { version = "0.18" }
+reqwest = { version = "0.12", features = ["json", "stream"] }
+
+# Utilities
+tracing = "0.1"
+tracing-subscriber = { version = "0.3", features = ["env-filter"] }

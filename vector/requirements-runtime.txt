@@ -1,0 +1,10 @@
+duckdb>=1.0.0
+fastapi
+uvicorn
+pydantic
+python-multipart
+google-cloud-storage
+numpy
+onnxruntime
+tokenizers
+google-cloud-aiplatform>=1.38.0

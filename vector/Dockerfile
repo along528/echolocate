@@ -1,36 +1,27 @@
-FROM python:3.11-slim AS builder
+# === Stage 1: Export CLAP text encoder to ONNX ===
+FROM python:3.11-slim AS exporter
 
 WORKDIR /app
 
-# Install system dependencies
-RUN apt-get update && apt-get install -y wget && rm -rf /var/lib/apt/lists/*
-
-# Install python dependencies
+# Install build-time dependencies (torch + transformers + onnx)
 COPY requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
 
-# Set cache directory for model downloads
-ENV HF_HOME=/app/.cache/huggingface
-ENV TRANSFORMERS_CACHE=/app/.cache/huggingface
+# Export text encoder to ONNX
+COPY export_clap_text.py .
+RUN python export_clap_text.py --output-dir /app/clap_text_onnx
 
-# Pre-download CLAP model during build (avoids HuggingFace rate limits at runtime)
-RUN python -c "from transformers import AutoProcessor, ClapModel; \
-    ClapModel.from_pretrained('laion/clap-htsat-unfused'); \
-    AutoProcessor.from_pretrained('laion/clap-htsat-unfused')"
-
-# --- Final stage ---
+# === Stage 2: Lightweight runtime (no torch) ===
 FROM python:3.11-slim
 
 WORKDIR /app
 
-# Copy installed packages and cached model from builder
-COPY --from=builder /usr/local/lib/python3.11/site-packages /usr/local/lib/python3.11/site-packages
-COPY --from=builder /usr/local/bin /usr/local/bin
-COPY --from=builder /app/.cache /app/.cache
+# Install runtime-only dependencies
+COPY requirements-runtime.txt .
+RUN pip install --no-cache-dir -r requirements-runtime.txt
 
-# Set cache directory so transformers finds the pre-cached model
-ENV HF_HOME=/app/.cache/huggingface
-ENV TRANSFORMERS_CACHE=/app/.cache/huggingface
+# Copy ONNX model + tokenizer from exporter stage
+COPY --from=exporter /app/clap_text_onnx /app/clap_text_onnx
 
 # Default to creating a writable directory for DuckDB extensions
 # Cloud Run filesystem is read-only except for /tmp (memory) or mounts.
@@ -46,5 +37,5 @@ ENV DB_PATH=/data/cloudcrate.duckdb
 ENV PORT=8080
 EXPOSE 8080
 
-# Run commands
+# Run
 CMD ["uvicorn", "main:app", "--host", "0.0.0.0", "--port", "8080"]
