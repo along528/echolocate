@@ -15,9 +15,9 @@ gcloud beta run deploy ${SERVICE_NAME} \
     --image gcr.io/${PROJECT_ID}/${SERVICE_NAME} \
     --platform managed \
     --region ${REGION} \
-    --no-allow-unauthenticated \
+    --allow-unauthenticated \
+    --no-iap \
     --ingress all \
-    --iap \
     --port 8080
 
 echo "Frontend deployed!"

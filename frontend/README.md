@@ -37,4 +37,4 @@ The frontend is deployed as part of the full stack. From the repo root:
 ./deploy.sh
 ```
 
-In production, the frontend sits behind a shared load balancer with IAP authentication. API calls use the relative path `/api/*`, which the LB routes to the vector service. See the [root README](../README.md#set-up-load-balancer--iap) for full setup instructions.
+In production, the frontend is publicly accessible at [echolocate.app](https://echolocate.app/) — no authentication required. It calls the vector service directly via `window.VECTOR_API_URL`. See the [root README](../README.md) for full setup instructions.
