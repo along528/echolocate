@@ -1,38 +1,40 @@
-# Cloud Crate
+# EchoLocate
 
-Cloud Crate is a music library management and discovery system powered by MCP (Model Context Protocol), Google Cloud Run, DuckDB, and Vector Search. This repository contains the code for the backend MCP server, the vector search service, a browser-based frontend, and the audio embedding pipeline.
+EchoLocate is a music discovery system powered by MCP (Model Context Protocol), Google Cloud Run, DuckDB, and audio vector search. It exposes sonic similarity search and playlist generation via an MCP server, backed by a high-performance vector search service.
 
 ## Architecture
 
-- **`mcp/`**: A remote MCP server that exposes tools for Apple Music, Discogs, and Vector Search. It handles OAuth2/JWT authentication and orchestrates requests. Authenticates to the vector service using Google Cloud ID tokens.
-- **`vector/`**: A high-performance vector search service using DuckDB. It serves audio embeddings and supports sonic interpolation. Public with CORS restricted to the frontend domain.
-- **`frontend/`**: A browser-based UI for exploring FMA tracks with semantic search and interpolation. Protected by Cloud Run native Identity-Aware Proxy (IAP).
-- **`embeddings/`**: Scripts for processing audio files, generating embeddings (using generic audio transformers), and building the DuckDB database.
+- **`mcp/`**: Remote MCP server exposing 6 EchoLocate tools (`echolocate_*`). Handles OAuth2/JWT authentication and proxies requests to the vector service using Google Cloud ID tokens.
+- **`vector/`**: Python vector search service using DuckDB. Serves audio embeddings and supports sonic interpolation. Used as a build dependency for the Rust service.
+- **`vector-rs/`**: Rust/Axum vector search service (primary deployment). Baked-index architecture — DuckDB index is embedded in the container image, eliminating cold-start latency.
+- **`frontend/`**: Browser UI for exploring tracks with semantic search and interpolation. Protected by Cloud Run native IAP.
+- **`embeddings/`**: Scripts for processing audio files, generating MERT and CLAP embeddings, and building the DuckDB database.
+- **`fma-ingest/`**: Cloud Run job for ingesting Free Music Archive data from GCS.
+- **`firestore/`**: Firestore security rules and deployment config (used by the semantic search cache).
 
 ## Features
 
-- **Apple Music**: Search catalog, manage library, create playlists.
-- **Discogs**: Search database, fetch release details, manage wantlist.
-- **Echo Locate**: "Sonic" search finding similar tracks based on audio analysis, and "Sonic Interpolation" to generate smooth playlists between two tracks.
-- **Frontend Explorer**: Browser UI with text search, semantic (CLAP) search, and interpolation playlist builder.
-- **Strict Naming**: All MCP tools are namespaced (`apple_*`, `discogs_*`, `echolocate_*`).
+- **Sonic Search**: Find similar tracks based on audio embeddings (MERT model, 768-dim).
+- **Semantic Search**: Text-to-audio search using CLAP embeddings (512-dim).
+- **Sonic Interpolation**: Generate smooth playlists between two tracks using greedy walk, SLERP, or linear interpolation.
+- **Frontend Explorer**: Browser UI with text search, semantic search, and interpolation playlist builder.
 
 ## Security Model
 
 No load balancer — each service is accessed directly via its Cloud Run URL:
 
-- **Frontend**: Protected by Cloud Run native IAP (`--iap` flag). Requires Google login before access is granted. Custom domain `echolocate.app` via Cloud Run domain mapping.
-- **Vector service**: Public (`--allow-unauthenticated`) since it's read-only search. CORS restricted to `https://echolocate.app`. The MCP server also has `roles/run.invoker` for service-to-service calls.
-- **MCP server**: Publicly reachable for the OAuth2 handshake (`/authorize`, `/token`). All sensitive routes are protected by app-level `AuthMiddleware`.
+- **Frontend**: Protected by Cloud Run native IAP (`--iap` flag). Custom domain `echolocate.app` via Cloud Run domain mapping.
+- **Vector service**: Public (`--allow-unauthenticated`) — read-only search. CORS restricted to `https://echolocate.app`. The MCP server has `roles/run.invoker` for service-to-service calls.
+- **MCP server**: Publicly reachable for the OAuth2 handshake (`/authorize`, `/token`). All sensitive routes protected by `AuthMiddleware`.
 
 ## Deployment
 
-The entire stack is designed to be deployed to Google Cloud Run.
+The entire stack deploys to Google Cloud Run.
 
 ### Prerequisites
-- Google Cloud SDK (`gcloud`) with beta component installed and authenticated.
+- Google Cloud SDK (`gcloud`) with beta component, authenticated.
 - A Google Cloud Project with Cloud Run and Secret Manager enabled.
-- A GCS bucket containing your `cloudcrate.duckdb` file (for the vector service).
+- A GCS bucket containing your DuckDB file (for the vector service), or a baked `data/index.duckdb` for the Rust service.
 
 ### Deploy all services
 
@@ -40,44 +42,29 @@ The entire stack is designed to be deployed to Google Cloud Run.
 ./deploy.sh
 ```
 
-This deploys all three services:
-1. `cloud-crate-vector` — vector search (requires a GCS bucket with `cloudcrate.duckdb`).
-2. `cloud-crate-mcp` — MCP server, automatically linked to the vector service.
-3. `cloud-crate-frontend` — browser UI.
+This deploys in order: vector service → MCP server → frontend.
 
 ### Set up IAP + Custom Domain
 
-After deploying, follow these steps to configure IAP authentication and the custom domain.
+After deploying, configure IAP and the custom domain:
 
-#### Step 1: Enable the IAP API and create its service agent
+#### Step 1: Enable the IAP API
 
 ```bash
-gcloud services enable iap.googleapis.com --project=cloud-crate-485418
-gcloud beta services identity create --service=iap.googleapis.com --project=cloud-crate-485418
+gcloud services enable iap.googleapis.com --project=<YOUR_PROJECT>
+gcloud beta services identity create --service=iap.googleapis.com --project=<YOUR_PROJECT>
 ```
 
 #### Step 2: Configure the OAuth consent screen
 
-Go to https://console.cloud.google.com/apis/credentials/consent and set up:
-- **App name**: `Cloud Crate`
-- **User support email**: your email
-- **Audience/User type**: External
-- **Developer contact email**: your email
-- **Test users**: add your email
-
-Skip the Scopes page. The app stays in "Testing" mode, so only the test users you add can log in.
+Go to the GCP Console → APIs & Services → OAuth consent screen. Set up an external app with your email as a test user.
 
 #### Step 3: Create an OAuth client
 
-Go to https://console.cloud.google.com/apis/credentials and:
-1. Click **"+ Create Credentials"** -> **"OAuth client ID"**
-2. Application type: **Web application**
-3. Name: `IAP-Cloud-Crate`
-4. Click **Create** and save the **Client ID** and **Client Secret**
+Go to APIs & Services → Credentials → Create OAuth client ID (Web application). Store the client secret in Secret Manager:
 
-Store the client secret in Secret Manager (or pass it via `IAP_CLIENT_SECRET` env var):
 ```bash
-echo -n "YOUR_CLIENT_SECRET" | gcloud secrets create iap-client-secret --data-file=- --project=cloud-crate-485418
+echo -n "YOUR_CLIENT_SECRET" | gcloud secrets create iap-client-secret --data-file=- --project=<YOUR_PROJECT>
 ```
 
 #### Step 4: Run the setup script
@@ -86,29 +73,9 @@ echo -n "YOUR_CLIENT_SECRET" | gcloud secrets create iap-client-secret --data-fi
 ./setup_iap.sh <your-google-email>
 ```
 
-This script is idempotent (safe to re-run) and:
-1. Grants the IAP service agent `roles/run.invoker` on the frontend.
-2. Configures the OAuth client ID/secret on the frontend's IAP settings.
-3. Grants your email IAP access on the frontend Cloud Run service.
-4. Grants the MCP service account `roles/run.invoker` on the vector service.
-5. Creates a Cloud Run domain mapping for `echolocate.app`.
-
 #### Step 5: Configure DNS
 
-Add these records at your domain registrar (values from `gcloud beta run domain-mappings describe`):
-
-| Type | Name | Value |
-|------|------|-------|
-| A    | @ | 216.239.32.21 |
-| A    | @ | 216.239.34.21 |
-| A    | @ | 216.239.36.21 |
-| A    | @ | 216.239.38.21 |
-| AAAA | @ | 2001:4860:4802:32::15 |
-| AAAA | @ | 2001:4860:4802:34::15 |
-| AAAA | @ | 2001:4860:4802:36::15 |
-| AAAA | @ | 2001:4860:4802:38::15 |
-
-Cloud Run automatically provisions and renews a managed TLS certificate once DNS is configured.
+Add the A/AAAA records from `gcloud beta run domain-mappings describe` at your domain registrar. Cloud Run provisions a managed TLS certificate automatically.
 
 #### Step 6: Verify
 
@@ -117,59 +84,41 @@ Cloud Run automatically provisions and renews a managed TLS certificate once DNS
 curl -s -o /dev/null -w '%{http_code}' https://echolocate.app/
 ```
 
-Open `https://echolocate.app` in your browser and sign in with the email you added as a test user.
-
-### Connect to Claude
-Once deployed, configure your Claude Desktop or other MCP client with the Remote MCP URL:
-
-```json
-{
-  "mcpServers": {
-    "cloud-crate": {
-      "command": "npx",
-      "args": ["-y", "@modelcontextprotocol/server-sse", "<YOUR_MCP_URL>/sse"]
-    }
-  }
-}
-```
-
 ### Tear down old load balancer (one-time)
 
-If migrating from the previous LB-based setup, run:
 ```bash
 ./teardown_lb.sh
 ```
 
-This removes all old LB resources (forwarding rule, HTTPS proxy, SSL cert, URL map, backend services, NEGs, static IP).
-
 ### Local Development
 
-For local development, the frontend automatically uses `http://localhost:8001` as the vector API base URL when served from localhost.
+```bash
+# EchoLocate MCP Server (port 8080)
+cd mcp && python main.py
 
-The MCP server's vector client gracefully falls back to unauthenticated requests when no Google Cloud metadata server is available (i.e., local dev).
+# Vector Service — Rust (port 8080)
+cd vector-rs && INDEX_DB_PATH=../data/index.duckdb cargo run
+
+# Vector Service — Python legacy (port 8000)
+cd vector && uvicorn main:app --reload
+```
+
+The frontend automatically uses `http://localhost:8001` as the vector API base when served from localhost.
 
 ## Verification
 
-After deployment and IAP setup:
-
 ```bash
+python vector/verify_service.py <VECTOR_URL>
+python mcp/verify_auth.py <MCP_URL>
+
 # Frontend (expect 302 redirect to Google login)
 curl -s -o /dev/null -w '%{http_code}' https://echolocate.app/
-
-# Vector service (expect 200 — publicly accessible)
-curl -s -o /dev/null -w '%{http_code}' https://cloud-crate-vector-403961692263.us-central1.run.app/
 ```
-
-To verify the frontend works end-to-end, open `https://echolocate.app` in a browser, sign in, and confirm that search and interpolation features work.
-
-Use the provided scripts for deeper checks:
-- `python vector/verify_service.py <VECTOR_URL>`
-- `python mcp/verify_auth.py <MCP_URL>`
 
 ## Troubleshooting
 
 ### Vector API calls fail with CORS errors
 
-**Cause**: The `CORS_ALLOW_ORIGINS` env var on the vector service doesn't include the frontend origin.
+**Cause**: `CORS_ALLOW_ORIGINS` on the vector service doesn't include the frontend origin.
 
-**Fix**: Verify the vector service has `CORS_ALLOW_ORIGINS=https://echolocate.app` set. Redeploy with `cd vector && ./deploy.sh` if needed.
+**Fix**: Verify the vector service has `CORS_ALLOW_ORIGINS=https://echolocate.app`. Redeploy with `cd vector && ./deploy.sh` if needed.
