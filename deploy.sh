@@ -5,7 +5,7 @@ echo "🚀 Starting EchoLocate Deployment..."
 
 # 1. Deploy Vector Service
 echo "📦 Deploying Vector Service..."
-cd vector
+cd vector-rs
 ./deploy.sh
 cd ..
 
@@ -26,6 +26,12 @@ cd ..
 # 3. Deploy Frontend
 echo "📦 Deploying Frontend..."
 cd frontend
+./deploy.sh
+cd ..
+
+# 4. Deploy Firestore Rules
+echo "📦 Deploying Firestore Rules..."
+cd firestore
 ./deploy.sh
 cd ..
 
