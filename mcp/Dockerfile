@@ -8,10 +8,8 @@ RUN pip install --no-cache-dir -r requirements.txt
 COPY main.py .
 COPY echo_locate.py .
 
-# Environment variables to disable MCP host validation
-# Cloud Run handles security at the load balancer level
-ENV MCP_ENABLE_HOST_VALIDATION=false
-ENV ENABLE_HOST_VALIDATION=false
+RUN useradd -m -u 1000 appuser
+USER appuser
 
 EXPOSE 8080
 

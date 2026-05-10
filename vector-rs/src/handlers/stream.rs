@@ -12,6 +12,9 @@ pub async fn stream_audio(
 ) -> Result<impl IntoResponse, AppError> {
     // Extract numeric ID: fma_50833 -> 50833
     let num_id = track_id.replace("fma_", "");
+    if !num_id.chars().all(|c| c.is_ascii_digit()) {
+        return Err(AppError::BadRequest("Invalid track ID format".into()));
+    }
     let padded = format!("{:0>6}", num_id);
     let prefix = &padded[..3];
 

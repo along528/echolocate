@@ -67,6 +67,9 @@ pub async fn interpolate_playlist(
     let method = request.method.unwrap_or_else(|| "greedy_walk".into());
     let source = request.source.unwrap_or_else(|| "all".into());
     let steer_ids = request.steer_track_ids.unwrap_or_default();
+    if steer_ids.len() > 50 {
+        return Err(AppError::BadRequest("Too many steering tracks (max 50)".into()));
+    }
 
     let use_hnsw = state.v_mid_warm.load(Ordering::Relaxed);
 

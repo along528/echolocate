@@ -518,7 +518,11 @@ const App = {
             if (response.results) {
                 tracks = response.results;
                 if (response.enhanced_query && this.enhanceQuery) {
-                    enhancedDisplay.innerHTML = `<strong>Enhanced:</strong> "${response.enhanced_query}"`;
+                    enhancedDisplay.textContent = '';
+                    const strong = document.createElement('strong');
+                    strong.textContent = 'Enhanced:';
+                    enhancedDisplay.appendChild(strong);
+                    enhancedDisplay.appendChild(document.createTextNode(` "${response.enhanced_query}"`));
                     enhancedDisplay.style.visibility = 'visible';
                     enhancedDisplay.style.opacity = '1';
                 }

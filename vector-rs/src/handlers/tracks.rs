@@ -177,36 +177,59 @@ async fn find_by_similarity(
             }
         } else {
             // Dissimilar: brute-force on view (rare query, no HNSW needed)
-            let source_filter = if source == "all" {
-                String::new()
-            } else {
-                format!("AND source = '{}'", source)
-            };
-            let query = format!(
-                "SELECT id, source, title, artist, album, relative_path, track_url, album_url, artist_url, \
-                        array_cosine_similarity(v_mid, {}) as similarity \
-                 FROM tracks \
-                 WHERE id != ? {} \
-                 ORDER BY similarity ASC \
-                 LIMIT ?",
-                vec_literal, source_filter
-            );
-            let mut stmt = conn.prepare(&query)?;
-            let mut rows = stmt.query(duckdb::params![track_id, limit])?;
             let mut res = Vec::new();
-            while let Some(row) = rows.next()? {
-                res.push(SearchResult {
-                    id: row.get(0)?,
-                    source: row.get(1)?,
-                    title: row.get(2)?,
-                    artist: row.get(3)?,
-                    album: row.get(4)?,
-                    relative_path: row.get(5)?,
-                    track_url: row.get(6)?,
-                    album_url: row.get(7)?,
-                    artist_url: row.get(8)?,
-                    similarity: row.get(9)?,
-                });
+            if source == "all" {
+                let query = format!(
+                    "SELECT id, source, title, artist, album, relative_path, track_url, album_url, artist_url, \
+                            array_cosine_similarity(v_mid, {}) as similarity \
+                     FROM tracks \
+                     WHERE id != ? \
+                     ORDER BY similarity ASC \
+                     LIMIT ?",
+                    vec_literal
+                );
+                let mut stmt = conn.prepare(&query)?;
+                let mut rows = stmt.query(duckdb::params![track_id, limit])?;
+                while let Some(row) = rows.next()? {
+                    res.push(SearchResult {
+                        id: row.get(0)?,
+                        source: row.get(1)?,
+                        title: row.get(2)?,
+                        artist: row.get(3)?,
+                        album: row.get(4)?,
+                        relative_path: row.get(5)?,
+                        track_url: row.get(6)?,
+                        album_url: row.get(7)?,
+                        artist_url: row.get(8)?,
+                        similarity: row.get(9)?,
+                    });
+                }
+            } else {
+                let query = format!(
+                    "SELECT id, source, title, artist, album, relative_path, track_url, album_url, artist_url, \
+                            array_cosine_similarity(v_mid, {}) as similarity \
+                     FROM tracks \
+                     WHERE id != ? AND source = ? \
+                     ORDER BY similarity ASC \
+                     LIMIT ?",
+                    vec_literal
+                );
+                let mut stmt = conn.prepare(&query)?;
+                let mut rows = stmt.query(duckdb::params![track_id, source, limit])?;
+                while let Some(row) = rows.next()? {
+                    res.push(SearchResult {
+                        id: row.get(0)?,
+                        source: row.get(1)?,
+                        title: row.get(2)?,
+                        artist: row.get(3)?,
+                        album: row.get(4)?,
+                        relative_path: row.get(5)?,
+                        track_url: row.get(6)?,
+                        album_url: row.get(7)?,
+                        artist_url: row.get(8)?,
+                        similarity: row.get(9)?,
+                    });
+                }
             }
             res
         };

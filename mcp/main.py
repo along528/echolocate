@@ -1,7 +1,10 @@
 import os
+import logging
 import uvicorn
 import contextlib
 import time
+from html import escape as html_escape
+from urllib.parse import urlparse
 from starlette.applications import Starlette
 from starlette.routing import Route, Mount
 from starlette.responses import JSONResponse, HTMLResponse, RedirectResponse
@@ -9,11 +12,11 @@ from starlette.requests import Request
 from starlette.middleware import Middleware
 from starlette.middleware.base import BaseHTTPMiddleware
 
+logger = logging.getLogger("echolocate.security")
+
 from jose import jwt, JWSError
 from mcp.server import Server
 from mcp.server.streamable_http_manager import StreamableHTTPSessionManager
-from mcp.server.transport_security import TransportSecuritySettings
-
 from echo_locate import EchoLocate
 
 # --- Secret Configuration ---
@@ -40,11 +43,16 @@ def get_secret(secret_name, default=None, force_gsm=False):
 
     return default
 
-# Load Secrets
+# Load Secrets — fail fast if required secrets are absent
 MCP_AUTH_SECRET = get_secret("MCP_AUTH_SECRET")
 MCP_JWT_SECRET = get_secret("MCP_JWT_SECRET")
 MCP_CLIENT_ID = get_secret("MCP_CLIENT_ID")
 MCP_CLIENT_SECRET = get_secret("MCP_CLIENT_SECRET")
+
+if not MCP_AUTH_SECRET:
+    raise RuntimeError("Required secret MCP_AUTH_SECRET is not configured")
+if not MCP_JWT_SECRET:
+    raise RuntimeError("Required secret MCP_JWT_SECRET is not configured")
 
 # Vector Service Configuration
 VECTOR_SERVICE_URL = os.getenv("VECTOR_SERVICE_URL") or get_secret("VECTOR_SERVICE_URL")
@@ -60,7 +68,31 @@ else:
 
 
 ALGORITHM = "HS256"
-ACCESS_TOKEN_EXPIRE_MINUTES = 60 * 24 * 30  # 30 days
+ACCESS_TOKEN_EXPIRE_MINUTES = 60 * 24  # 24 hours
+
+
+def _is_safe_redirect_uri(uri: str) -> bool:
+    """Reject redirect URIs that could be used for open-redirect phishing."""
+    if not uri:
+        return False
+    try:
+        parsed = urlparse(uri)
+        if parsed.scheme not in ("http", "https"):
+            return False
+        # Reject URIs with embedded credentials (user@host tricks)
+        if "@" in (parsed.netloc or ""):
+            return False
+        return True
+    except Exception:
+        return False
+
+
+def _is_safe_next_url(url: str) -> bool:
+    """Allow only relative paths for the post-login redirect."""
+    if not url:
+        return False
+    # Must start with / but not // (protocol-relative)
+    return url.startswith("/") and not url.startswith("//")
 
 # --- OAuth Endpoints ---
 
@@ -70,7 +102,12 @@ async def authorize_page(request: Request):
     state = request.query_params.get("state")
 
     if MCP_CLIENT_ID and client_id and client_id != MCP_CLIENT_ID:
-         return HTMLResponse(f"Invalid Client ID: {client_id}", status_code=400)
+        logger.warning("authorize_page: invalid client_id=%r", client_id)
+        return HTMLResponse("Invalid Client ID", status_code=400)
+
+    safe_client_id = html_escape(client_id or "")
+    safe_redirect_uri = html_escape(redirect_uri or "")
+    safe_state = html_escape(state or "")
 
     html = f"""
     <!DOCTYPE html>
@@ -89,9 +126,9 @@ async def authorize_page(request: Request):
         <div class="card">
             <h1>Cloud Crate Login</h1>
             <form method="POST" action="/authorize">
-                <input type="hidden" name="client_id" value="{client_id or ''}">
-                <input type="hidden" name="redirect_uri" value="{redirect_uri or ''}">
-                <input type="hidden" name="state" value="{state or ''}">
+                <input type="hidden" name="client_id" value="{safe_client_id}">
+                <input type="hidden" name="redirect_uri" value="{safe_redirect_uri}">
+                <input type="hidden" name="state" value="{safe_state}">
                 <input type="password" name="password" placeholder="Enter Secret Password" required autofocus>
                 <button type="submit">Authorize</button>
             </form>
@@ -108,9 +145,11 @@ async def authorize_submit(request: Request):
     state = form.get("state")
 
     if password != MCP_AUTH_SECRET:
-         return HTMLResponse("Invalid Password", status_code=401)
-    if not redirect_uri:
-        return HTMLResponse("Missing redirect_uri", status_code=400)
+        logger.warning("authorize_submit: failed auth attempt")
+        return HTMLResponse("Invalid Password", status_code=401)
+    if not redirect_uri or not _is_safe_redirect_uri(redirect_uri):
+        logger.warning("authorize_submit: unsafe redirect_uri=%r", redirect_uri)
+        return HTMLResponse("Invalid or missing redirect_uri", status_code=400)
 
     code_payload = {"sub": "auth_code", "exp": time.time() + 300, "type": "code"}
     code = jwt.encode(code_payload, MCP_JWT_SECRET, algorithm=ALGORITHM)
@@ -128,9 +167,13 @@ async def token_endpoint(request: Request):
     client_secret = form.get("client_secret")
 
     if MCP_CLIENT_ID and client_id != MCP_CLIENT_ID:
-         return JSONResponse({"error": "invalid_client"}, status_code=401)
+        logger.warning("token_endpoint: invalid client_id")
+        return JSONResponse({"error": "invalid_client"}, status_code=401)
     if MCP_CLIENT_SECRET and client_secret != MCP_CLIENT_SECRET:
-         return JSONResponse({"error": "invalid_client"}, status_code=401)
+        logger.warning("token_endpoint: invalid client_secret")
+        return JSONResponse({"error": "invalid_client"}, status_code=401)
+    elif not MCP_CLIENT_SECRET:
+        logger.warning("token_endpoint: MCP_CLIENT_SECRET not configured, skipping client secret check")
 
     try:
         payload = jwt.decode(code, MCP_JWT_SECRET, algorithms=[ALGORITHM])
@@ -148,13 +191,14 @@ async def token_endpoint(request: Request):
 # --- Admin Auth ---
 async def login_page(request: Request):
     next_url = request.query_params.get("next", "/")
+    safe_next = html_escape(next_url if _is_safe_next_url(next_url) else "/")
     html = f"""
     <!DOCTYPE html>
     <html>
     <body>
         <form method="POST" action="/login">
             <h2>Admin Login</h2>
-            <input type="hidden" name="next" value="{next_url}">
+            <input type="hidden" name="next" value="{safe_next}">
             <input type="password" name="password" placeholder="Password" required autofocus>
             <button type="submit">Log In</button>
         </form>
@@ -169,12 +213,14 @@ async def login_submit(request: Request):
     next_url = form.get("next", "/")
 
     if password != MCP_AUTH_SECRET:
-         return HTMLResponse("Invalid Password", status_code=401)
+        logger.warning("login_submit: failed auth attempt")
+        return HTMLResponse("Invalid Password", status_code=401)
 
+    safe_next = next_url if _is_safe_next_url(next_url) else "/"
     now = time.time()
     token = jwt.encode({"sub": "admin", "iat": now, "exp": now + 86400, "type": "access"}, MCP_JWT_SECRET, algorithm=ALGORITHM)
-    response = RedirectResponse(next_url, status_code=303)
-    response.set_cookie("access_token", token, httponly=True, secure=True)
+    response = RedirectResponse(safe_next, status_code=303)
+    response.set_cookie("access_token", token, httponly=True, secure=True, samesite="Strict")
     return response
 
 async def client_log(request: Request):
@@ -427,8 +473,7 @@ async def call_tool(name: str, arguments: dict):
     return [TextContent(type="text", text=f"Unknown tool: {name}")]
 
 # --- Starlette App ---
-host_settings = TransportSecuritySettings(enable_dns_rebinding_protection=False)
-manager = StreamableHTTPSessionManager(server, security_settings=host_settings)
+manager = StreamableHTTPSessionManager(server)
 
 @contextlib.asynccontextmanager
 async def lifespan(app):

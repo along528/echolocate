@@ -231,8 +231,7 @@ fn build_cors_layer(config: &Config) -> CorsLayer {
         Some(origins_str) => {
             let origins: Vec<&str> = origins_str.split(',').collect();
             if origins.contains(&"*") {
-                tracing::info!("CORS Allowed Origins: [*]");
-                CorsLayer::permissive()
+                panic!("CORS_ALLOW_ORIGINS=* is not allowed in production; specify explicit origins");
             } else {
                 let parsed: Vec<_> = origins
                     .iter()
