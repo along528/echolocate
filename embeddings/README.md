@@ -1,6 +1,6 @@
 # Audio Embedding Prototype
 
-This directory contains the proof-of-concept pipeline for generating semantic music embeddings using the **MERT-v1-95M** model.
+This directory contains the proof-of-concept pipeline for generating semantic music embeddings using the **[MERT-v1-95M](https://arxiv.org/abs/2604.20270)** model.
 
 ## Overview
 

@@ -10,7 +10,7 @@ The Python vector service spent most of its cold start time on interpreter start
 
 - **HTTP**: axum + tokio
 - **DuckDB**: `duckdb` crate (links against pre-built `libduckdb`)
-- **ONNX**: `ort` crate + `tokenizers` crate for CLAP text-to-audio embeddings
+- **ONNX**: `ort` crate + `tokenizers` crate for [CLAP](https://arxiv.org/abs/2206.04769) text-to-audio embeddings
 - **GCS**: `google-cloud-storage` crate for audio streaming
 - **Gemini**: `reqwest` + `google-cloud-auth` for query enhancement via Vertex AI
 
@@ -61,7 +61,7 @@ INDEX_DB_PATH=../data/index.duckdb CLAP_ONNX_DIR=./clap_text_onnx PORT=8000 carg
 The full `cloudcrate.duckdb` (~23GB) is too large for fast cold starts on Cloud Run — GCS FUSE random I/O for HNSW index traversal caused ~250s cold starts. The solution: bake a stripped index DB into the Docker image.
 
 **How it works:**
-- `embeddings/generate_index_db.py` builds `data/index.duckdb` (~1.4GB) from the full DB, keeping all metadata + `v_mid` + `v_clap` with HNSW indexes, but dropping `v_intro` and `v_outro` (unused by this service).
+- `embeddings/generate_index_db.py` builds `data/index.duckdb` (~1.4GB) from the full DB, keeping all metadata + `v_mid` + `v_clap` with [HNSW](https://arxiv.org/abs/1603.09320) indexes, but dropping `v_intro` and `v_outro` (unused by this service).
 - The index DB is `COPY`'d into the Docker image as its own layer.
 - Cloud Run gen2's container image streaming lazy-loads only the needed blocks from the registry — no FUSE, no full download.
 - `INDEX_DB_PATH` env var points to the baked index; falls back to `DB_PATH` when unset (backward compatible).
