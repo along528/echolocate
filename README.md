@@ -21,9 +21,21 @@
 ## Features
 
 - **Sonic Search**: Find similar tracks based on audio embeddings ([MERT](https://arxiv.org/abs/2604.20270) model, 768-dim).
-- **Semantic Search**: Text-to-audio search using [CLAP](https://arxiv.org/abs/2206.04769) embeddings (512-dim).
-- **Sonic Interpolation**: Generate smooth playlists between two tracks using greedy walk, SLERP, or linear interpolation.
+- **Semantic Search**: Text-to-audio search using [CLAP](https://arxiv.org/abs/2206.04769) embeddings (512-dim). Queries are expanded by Vertex AI before embedding to improve recall on short or terse descriptions.
+- **Sonic Interpolation**: Generate smooth playlists between two tracks using recursive bisection — each step finds the nearest real track to the vector midpoint of the current segment, producing a gradual sonic path between two very different starting points. Supports an optional steering track to bend the path via Bézier interpolation.
 - **Frontend Explorer**: Browser UI with text search, semantic search, and interpolation playlist builder.
+
+## Performance
+
+Cold start was reduced from ~45–60s to ~10–15s through: baked-index architecture (DuckDB index embedded in the container image), parallelised HNSW index warming with ONNX model loading, and migration to Rust for the vector service.
+
+| Metric | Value |
+|--------|-------|
+| Cold start | ~10–15s |
+| Semantic search p50 | ~250ms |
+| Semantic search p99 | ~600ms |
+| Compute cost | ~$0–$0.10/user/day (Cloud Run, min 0 instances) |
+| Audio storage | ~$0.30/day (~1TB FMA audio, GCS nearline) |
 
 ## Security Model
 
@@ -102,6 +114,20 @@ curl -s -o /dev/null -w '%{http_code}' https://echolocate.app/
 **Cause**: `CORS_ALLOW_ORIGINS` on the vector service doesn't include the frontend origin.
 
 **Fix**: Verify the vector service has `CORS_ALLOW_ORIGINS=https://echolocate.app`. Redeploy with `cd vector && ./deploy.sh` if needed.
+
+## Roadmap
+
+### Interpolation
+- **Asymmetric phase matching** — Score transitions using the delta between outro and intro segment vectors, treating similarity as directional rather than symmetric.
+- **k-NN shortest path** — Build a nearest-neighbor graph and find actual shortest paths rather than recursive bisection.
+- **Maximum marginal relevance** — Balance similarity to the target path with diversity to avoid repetitive track selections.
+
+### Explainability
+- **Audio-to-text generation** — Generate natural language descriptions from audio embeddings to explain why tracks are considered similar.
+
+### Embeddings
+- **Wider audio sampling** — Average embeddings across multiple windows per track rather than a single 5-second segment.
+- **CLAP for interpolation** — Explore using CLAP embeddings alongside MERT for the interpolation path.
 
 ## Acknowledgements
 
