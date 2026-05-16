@@ -62,9 +62,6 @@ pub async fn search_tracks_text(
             where_clause, limit
         );
 
-        // Remove the limit from param_values (we inlined it)
-        param_values.pop();
-
         let mut stmt = conn.prepare(&sql_with_limit)?;
         let param_refs: Vec<&dyn duckdb::ToSql> =
             param_values.iter().map(|s| s as &dyn duckdb::ToSql).collect();
