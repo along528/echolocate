@@ -750,7 +750,7 @@ const App = {
 
 
     getSelectedSource() {
-        return document.querySelector('input[name="source"]:checked').value;
+        return 'fma';
     },
 
     renderResults() {

@@ -76,7 +76,7 @@ const API = {
     },
 
     // Interpolate playlist between two tracks
-    async interpolatePlaylist(trackId1, trackId2, limit = 10, method = 'greedy_walk', source = 'all', steerTrackIds = []) {
+    async interpolatePlaylist(trackId1, trackId2, limit = 10, method = 'greedy_walk', source = 'fma', steerTrackIds = []) {
         const body = {
             track_id_1: trackId1,
             track_id_2: trackId2,
