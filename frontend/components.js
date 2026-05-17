@@ -172,22 +172,32 @@ const Components = {
         // Borderline / Wrong open an inline note row beneath the actions
         // (no browser modal). The label is recorded immediately on click so
         // navigating away still captures the rating; the note is appended
-        // when the user presses Save or Enter.
+        // when the user presses Save or Enter. Clicking the already-selected
+        // rating toggles the note row open/closed (it does NOT clear);
+        // clicking a different rating replaces the selection.
         div.querySelectorAll('.label-action').forEach(btn => {
             btn.addEventListener('click', (e) => {
                 e.stopPropagation();
                 const signal = btn.dataset.signal;
                 const group = btn.parentElement;
                 const wasSelected = btn.classList.contains('selected');
-                group.querySelectorAll('.label-action').forEach(b => b.classList.remove('selected'));
-
-                // Always remove any open note row before re-evaluating
-                this._closeNoteRow(div);
+                const noteRowOpen = !!div.querySelector('.note-row');
 
                 if (wasSelected) {
-                    Labels.recordLabel(track, 'cleared', null);
+                    // Same-rating click → toggle the note row (no clear).
+                    if (signal === 'borderline' || signal === 'wrong') {
+                        if (noteRowOpen) {
+                            this._closeNoteRow(div);
+                        } else {
+                            this._openNoteRow(div, track, signal);
+                        }
+                    }
                     return;
                 }
+
+                // Different rating → swap selection, close any prior row.
+                group.querySelectorAll('.label-action').forEach(b => b.classList.remove('selected'));
+                this._closeNoteRow(div);
                 btn.classList.add('selected');
 
                 // Record immediately with no note. If the user types one in the
@@ -232,13 +242,16 @@ const Components = {
         const placeholder = signal === 'borderline'
             ? 'e.g. "right vibe, wrong era"'
             : 'e.g. "too rock"';
+        // Restore any previously saved note so re-opening shows it.
+        const savedNote = track._noteText || '';
 
         const row = document.createElement('div');
         row.className = `note-row ${tone}`;
         row.innerHTML = `
             <span class="note-prompt">${prompt}<span class="note-optional"> · optional</span></span>
-            <input type="text" class="note-input ${tone}" placeholder="${placeholder}" />
+            <input type="text" class="note-input ${tone}" />
             <button type="button" class="note-save ${tone}">Save</button>
+            <button type="button" class="note-close" aria-label="Hide note">${TRACK_ICONS.close}</button>
         `;
 
         // Stop clicks inside the note row from bubbling up and triggering
@@ -247,36 +260,81 @@ const Components = {
 
         const input = row.querySelector('.note-input');
         const save  = row.querySelector('.note-save');
+        const close = row.querySelector('.note-close');
 
-        // Always commit whatever's in the input (empty = no note). The label
-        // itself was already recorded on the rate-button click; this only
-        // attaches the optional note.
-        let committed = false;
-        const commit = () => {
-            if (committed) return;
-            committed = true;
+        // Set placeholder + value via DOM props so quotes in the example
+        // text don't have to be HTML-attribute-escaped.
+        input.placeholder = placeholder;
+        input.value = savedNote;
+
+        // Reflect save state: "Saved" (gray, disabled) when input matches
+        // the stored note; otherwise "Save" (enabled, unless input empty).
+        const updateSaveState = () => {
             const text = (input.value || '').trim();
-            if (text) Labels.recordLabel(track, signal, text);
-            this._closeNoteRow(trackDiv);
+            const stored = track._noteText || '';
+            if (text !== '' && text === stored) {
+                save.textContent = 'Saved';
+                save.disabled = true;
+                save.classList.add('is-saved');
+            } else {
+                save.textContent = 'Save';
+                save.disabled = text === '';
+                save.classList.remove('is-saved');
+            }
         };
 
-        save.addEventListener('click', commit);
+        // Commit attaches the typed note to the label. The row stays open
+        // afterward — only the × button (or Esc) closes it. Guards on
+        // text-change so blur-after-Save doesn't fire a duplicate event.
+        const commit = () => {
+            const text = (input.value || '').trim();
+            if (text && text !== (track._noteText || '')) {
+                track._noteText = text;
+                Labels.recordLabel(track, signal, text);
+            }
+            updateSaveState();
+        };
+
+        input.addEventListener('input', updateSaveState);
+        save.addEventListener('click', (e) => {
+            e.stopPropagation();
+            commit();
+        });
         input.addEventListener('keydown', (e) => {
-            if (e.key === 'Enter' || e.key === 'Escape') {
+            if (e.key === 'Enter') {
                 e.preventDefault();
                 commit();
+            } else if (e.key === 'Escape') {
+                e.preventDefault();
+                commit();
+                this._closeNoteRow(trackDiv);
             }
         });
-        // Clicking elsewhere on the page commits + closes.
+        // Blur commits without closing — the user explicitly hits × to hide.
         input.addEventListener('blur', () => {
-            // Defer slightly so a click on Save fires before blur tears down.
             setTimeout(commit, 0);
         });
+        close.addEventListener('click', (e) => {
+            e.stopPropagation();
+            commit();
+            this._closeNoteRow(trackDiv);
+        });
+
+        updateSaveState();
 
         trackDiv.classList.add('has-note');
         trackDiv.appendChild(row);
         // Focus shortly after append so iOS doesn't suppress the keyboard.
-        setTimeout(() => input.focus(), 0);
+        setTimeout(() => {
+            // Bring the note row into view if it landed below the fold.
+            // `block: 'nearest'` is a no-op if already visible, otherwise
+            // scrolls the minimum needed to expose the row.
+            row.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+            input.focus();
+            // Place cursor at end so a returning user can keep typing.
+            const end = input.value.length;
+            input.setSelectionRange(end, end);
+        }, 0);
     },
 
     escapeHtml(text) {

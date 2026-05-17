@@ -2122,8 +2122,40 @@ input:checked+.slider:before {
 .note-save.mid { background: #eab308; border-color: #eab308; color: #14110a; }
 .note-save.no  { background: #ef4444; border-color: #ef4444; color: white; }
 .note-save:hover { filter: brightness(1.1); }
+.note-save.is-saved,
+.note-save:disabled {
+    background: var(--bg-tertiary);
+    border-color: var(--border-color);
+    color: var(--text-secondary);
+    cursor: default;
+    opacity: 0.7;
+    filter: none;
+}
+.note-save.is-saved:hover,
+.note-save:disabled:hover { filter: none; }
 .note-skip { color: var(--text-secondary); background: transparent; }
 .note-skip:hover { color: var(--text-primary); border-color: rgba(255, 255, 255, 0.14); }
+
+.note-close {
+    width: 32px;
+    height: 32px;
+    padding: 0;
+    border-radius: 7px;
+    background: transparent;
+    border: 1px solid transparent;
+    color: var(--text-secondary);
+    cursor: pointer;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    flex-shrink: 0;
+    transition: all 0.18s ease;
+}
+.note-close:hover {
+    color: var(--text-primary);
+    background: rgba(255, 255, 255, 0.04);
+    border-color: var(--border-color);
+}
 
 /* ─── Mobile adjustments for the new action row ─── */
 @media (max-width: 900px) {
@@ -2164,6 +2196,12 @@ input:checked+.slider:before {
         flex: 1 1 auto;
         order: 3;
         height: 38px;
+    }
+    .note-row .note-close {
+        order: 3;
+        width: 44px;
+        height: 38px;
+        flex: 0 0 auto;
     }
 }
 
