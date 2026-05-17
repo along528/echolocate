@@ -37,8 +37,18 @@ pub struct LabelEvent {
 
 const MAX_RESULTS: usize = 500;
 const MAX_NOTE_LEN: usize = 500;
+const MAX_ID_LEN: usize = 128;
 const ALLOWED_SIGNALS: &[&str] = &["relevant", "borderline", "wrong", "cleared"];
 const ALLOWED_KINDS: &[&str] = &["text", "seed", "pair", "random"];
+
+/// Allowed only: ASCII alphanumerics, dash, underscore. Caps length.
+/// Anything used as a GCS object-key segment must pass this.
+fn is_safe_id(s: &str) -> bool {
+    !s.is_empty()
+        && s.len() <= MAX_ID_LEN
+        && s.bytes()
+            .all(|b| b.is_ascii_alphanumeric() || b == b'-' || b == b'_')
+}
 
 pub async fn log_search(
     State(state): State<Arc<AppState>>,
@@ -47,8 +57,8 @@ pub async fn log_search(
     if !ALLOWED_KINDS.contains(&event.query_kind.as_str()) {
         return Err((StatusCode::BAD_REQUEST, "invalid query_kind".into()));
     }
-    if event.session_id.is_empty() || event.search_id.is_empty() {
-        return Err((StatusCode::BAD_REQUEST, "missing id".into()));
+    if !is_safe_id(&event.search_id) || !is_safe_id(&event.session_id) {
+        return Err((StatusCode::BAD_REQUEST, "invalid id".into()));
     }
     if event.results.len() > MAX_RESULTS {
         return Err((StatusCode::BAD_REQUEST, "too many results".into()));
@@ -84,8 +94,14 @@ pub async fn log_label(
     if !ALLOWED_SIGNALS.contains(&event.signal.as_str()) {
         return Err((StatusCode::BAD_REQUEST, "invalid signal".into()));
     }
-    if event.session_id.is_empty() || event.label_id.is_empty() || event.search_id.is_empty() {
-        return Err((StatusCode::BAD_REQUEST, "missing id".into()));
+    if !is_safe_id(&event.label_id)
+        || !is_safe_id(&event.search_id)
+        || !is_safe_id(&event.session_id)
+    {
+        return Err((StatusCode::BAD_REQUEST, "invalid id".into()));
+    }
+    if event.track_id.is_empty() || event.track_id.len() > MAX_ID_LEN {
+        return Err((StatusCode::BAD_REQUEST, "invalid track_id".into()));
     }
     let note = event.note.as_deref().map(|s| {
         if s.len() > MAX_NOTE_LEN {

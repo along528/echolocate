@@ -8,6 +8,7 @@ mod handlers;
 mod interpolation;
 mod models;
 
+use axum::extract::DefaultBodyLimit;
 use axum::routing::{get, post};
 use axum::Router;
 use std::sync::atomic::{AtomicBool, Ordering};
@@ -204,8 +205,14 @@ async fn main() {
         .route("/interpolate/playlist", post(handlers::playlist::interpolate_playlist))
         .route("/stream/{track_id}", get(handlers::stream::stream_audio))
         .route("/version", get(handlers::version::get_version))
-        .route("/labels/search", post(handlers::labels::log_search))
-        .route("/labels/result", post(handlers::labels::log_label))
+        .route(
+            "/labels/search",
+            post(handlers::labels::log_search).layer(DefaultBodyLimit::max(64 * 1024)),
+        )
+        .route(
+            "/labels/result",
+            post(handlers::labels::log_label).layer(DefaultBodyLimit::max(16 * 1024)),
+        )
         .layer(cors)
         .layer(
             TraceLayer::new_for_http()
