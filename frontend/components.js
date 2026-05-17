@@ -2,6 +2,18 @@
  * UI Components for rendering tracks
  */
 
+// Lucide-style icons used in the track action row. 16x16, currentColor,
+// drop-in <svg> markup so we can embed them directly in template strings.
+const TRACK_ICONS = {
+    listPlus:   '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M11 12H3"/><path d="M16 6H3"/><path d="M16 18H3"/><path d="M18 9v6"/><path d="M21 12h-6"/></svg>',
+    similar:    '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M2 12h2"/><path d="M6 8v8"/><path d="M10 5v14"/><path d="M14 8v8"/><path d="M18 11v2"/><path d="M22 12h-2"/></svg>',
+    dissimilar: '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 12h2"/><path d="M7 9v6"/><path d="M11 6v12"/><path d="M15 9v6"/><path d="M19 11v2"/><path d="M4 20 20 4"/></svg>',
+    check:      '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="20 6 9 17 4 12"/></svg>',
+    tilde:      '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 13c1-2 2.5-3 4-3s2.5 1.5 4.5 3 3 3 4.5 3 3-1 5-3"/></svg>',
+    x:          '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M18 6 6 18"/><path d="m6 6 12 12"/></svg>',
+    close:      '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.25" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M18 6 6 18"/><path d="m6 6 12 12"/></svg>',
+};
+
 const Components = {
 
     renderTrack(track, options = {}) {
@@ -59,21 +71,24 @@ const Components = {
             ${showActions ? `
             <div class="track-actions">
                 ${!inPlaylist && !minimal ? `
-                    <button class="action-btn add-action" title="Add to builder">+</button>
-                    ${!options.hideSimilar ? `
-                        <button class="action-btn similar-action" title="Find similar">≈</button>
-                        <button class="action-btn dissimilar-action" title="Find dissimilar">≠</button>
-                    ` : ''}
+                    <div class="actions-cluster" role="group" aria-label="Queue actions">
+                        <button class="action-btn cluster-btn primary add-action" title="Add to playlist">${TRACK_ICONS.listPlus}</button>
+                        ${!options.hideSimilar ? `
+                            <button class="action-btn cluster-btn similar-action" title="Find similar">${TRACK_ICONS.similar}</button>
+                            <button class="action-btn cluster-btn dissimilar-action" title="Find dissimilar">${TRACK_ICONS.dissimilar}</button>
+                        ` : ''}
+                    </div>
                 ` : ''}
                 ${labelable ? `
-                    <span class="label-group" title="How relevant is this result?">
-                        <button class="action-btn label-action label-relevant" data-signal="relevant" title="Relevant">✓</button>
-                        <button class="action-btn label-action label-borderline" data-signal="borderline" title="Borderline (note optional)">~</button>
-                        <button class="action-btn label-action label-wrong" data-signal="wrong" title="Wrong (note optional)">✗</button>
-                    </span>
+                    <div class="match-pill label-group" role="group" aria-label="Rate match">
+                        <span class="mp-label">Match</span>
+                        <button class="action-btn mp-btn mp-yes label-action label-relevant"   data-signal="relevant"   title="Relevant">${TRACK_ICONS.check}</button>
+                        <button class="action-btn mp-btn mp-mid label-action label-borderline" data-signal="borderline" title="Borderline (add a note)">${TRACK_ICONS.tilde}</button>
+                        <button class="action-btn mp-btn mp-no  label-action label-wrong"      data-signal="wrong"      title="Wrong (add a note)">${TRACK_ICONS.x}</button>
+                    </div>
                 ` : ''}
                 ${inPlaylist && !minimal ? `
-                    <button class="action-btn remove-action" title="Remove">×</button>
+                    <button class="action-btn remove-action" title="Remove">${TRACK_ICONS.close}</button>
                 ` : ''}
             </div>
             ` : ''}
@@ -153,7 +168,11 @@ const Components = {
             }
         });
 
-        // 3-way label buttons (only present when track has _searchId)
+        // 3-way label buttons (only present when track has _searchId).
+        // Borderline / Wrong open an inline note row beneath the actions
+        // (no browser modal). The label is recorded immediately on click so
+        // navigating away still captures the rating; the note is appended
+        // when the user presses Save or Enter.
         div.querySelectorAll('.label-action').forEach(btn => {
             btn.addEventListener('click', (e) => {
                 e.stopPropagation();
@@ -162,18 +181,22 @@ const Components = {
                 const wasSelected = btn.classList.contains('selected');
                 group.querySelectorAll('.label-action').forEach(b => b.classList.remove('selected'));
 
+                // Always remove any open note row before re-evaluating
+                this._closeNoteRow(div);
+
                 if (wasSelected) {
                     Labels.recordLabel(track, 'cleared', null);
                     return;
                 }
                 btn.classList.add('selected');
 
-                let note = null;
+                // Record immediately with no note. If the user types one in the
+                // inline row and saves, we'll call recordLabel again to attach it.
+                Labels.recordLabel(track, signal, null);
+
                 if (signal === 'borderline' || signal === 'wrong') {
-                    const entered = window.prompt('Optional note (e.g. "too rock", "right vibe wrong era"):', '');
-                    if (entered && entered.trim()) note = entered.trim();
+                    this._openNoteRow(div, track, signal);
                 }
-                Labels.recordLabel(track, signal, note);
             });
         });
 
@@ -192,6 +215,68 @@ const Components = {
             // Pass the current list as context to renderTrack
             container.appendChild(this.renderTrack(track, { ...options, context: tracks }));
         });
+    },
+
+    // ─── Inline note row (replaces window.prompt for Borderline / Wrong) ───
+    _closeNoteRow(trackDiv) {
+        const existing = trackDiv.querySelector('.note-row');
+        if (existing) existing.remove();
+        trackDiv.classList.remove('has-note');
+    },
+
+    _openNoteRow(trackDiv, track, signal) {
+        // signal is 'borderline' or 'wrong' — map to the same color classes
+        // the match-pill uses ('mid' / 'no') so the styling stays consistent.
+        const tone = signal === 'borderline' ? 'mid' : 'no';
+        const prompt = signal === 'borderline' ? 'Why borderline?' : "What's off?";
+        const placeholder = signal === 'borderline'
+            ? 'e.g. "right vibe, wrong era"'
+            : 'e.g. "too rock"';
+
+        const row = document.createElement('div');
+        row.className = `note-row ${tone}`;
+        row.innerHTML = `
+            <span class="note-prompt">${prompt}<span class="note-optional"> · optional</span></span>
+            <input type="text" class="note-input ${tone}" placeholder="${placeholder}" />
+            <button type="button" class="note-save ${tone}">Save</button>
+        `;
+
+        // Stop clicks inside the note row from bubbling up and triggering
+        // Player.play() (the row click handler on .track-item).
+        row.addEventListener('click', (e) => e.stopPropagation());
+
+        const input = row.querySelector('.note-input');
+        const save  = row.querySelector('.note-save');
+
+        // Always commit whatever's in the input (empty = no note). The label
+        // itself was already recorded on the rate-button click; this only
+        // attaches the optional note.
+        let committed = false;
+        const commit = () => {
+            if (committed) return;
+            committed = true;
+            const text = (input.value || '').trim();
+            if (text) Labels.recordLabel(track, signal, text);
+            this._closeNoteRow(trackDiv);
+        };
+
+        save.addEventListener('click', commit);
+        input.addEventListener('keydown', (e) => {
+            if (e.key === 'Enter' || e.key === 'Escape') {
+                e.preventDefault();
+                commit();
+            }
+        });
+        // Clicking elsewhere on the page commits + closes.
+        input.addEventListener('blur', () => {
+            // Defer slightly so a click on Save fires before blur tears down.
+            setTimeout(commit, 0);
+        });
+
+        trackDiv.classList.add('has-note');
+        trackDiv.appendChild(row);
+        // Focus shortly after append so iOS doesn't suppress the keyboard.
+        setTimeout(() => input.focus(), 0);
     },
 
     escapeHtml(text) {
