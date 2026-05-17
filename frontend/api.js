@@ -112,16 +112,16 @@ const API = {
     _fireAndForget(path, payload) {
         try {
             const url = `${this.baseUrl}${path}`;
-            const body = JSON.stringify(payload);
-            // sendBeacon survives page unloads; falls back to fetch when unavailable.
-            if (navigator.sendBeacon && navigator.sendBeacon(url, new Blob([body], { type: 'application/json' }))) {
-                return;
-            }
+            // Plain fetch with keepalive survives navigation up to ~64KB.
+            // We deliberately avoid sendBeacon: it sends credentials by default,
+            // which forces a CORS preflight requiring Access-Control-Allow-Credentials.
             fetch(url, {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
-                body,
-                keepalive: true
+                body: JSON.stringify(payload),
+                keepalive: true,
+                credentials: 'omit',
+                mode: 'cors'
             }).catch(err => console.debug('[labels] post failed:', err));
         } catch (e) {
             console.debug('[labels] dispatch failed:', e);
