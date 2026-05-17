@@ -93,5 +93,38 @@ const API = {
     // Get stream URL for a track
     getStreamUrl(trackId) {
         return `${this.baseUrl}/stream/${trackId}`;
+    },
+
+    // Versions (index, model, git_sha) for labelling lineage
+    async getVersion() {
+        return this.request('GET', '/version');
+    },
+
+    // Fire-and-forget label event logging. Never throws; never blocks UX.
+    logSearchEvent(payload) {
+        this._fireAndForget('/labels/search', payload);
+    },
+
+    logLabelEvent(payload) {
+        this._fireAndForget('/labels/result', payload);
+    },
+
+    _fireAndForget(path, payload) {
+        try {
+            const url = `${this.baseUrl}${path}`;
+            const body = JSON.stringify(payload);
+            // sendBeacon survives page unloads; falls back to fetch when unavailable.
+            if (navigator.sendBeacon && navigator.sendBeacon(url, new Blob([body], { type: 'application/json' }))) {
+                return;
+            }
+            fetch(url, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body,
+                keepalive: true
+            }).catch(err => console.debug('[labels] post failed:', err));
+        } catch (e) {
+            console.debug('[labels] dispatch failed:', e);
+        }
     }
 };

@@ -442,6 +442,34 @@ input:checked+.slider:before {
     border-color: transparent;
 }
 
+/* 3-way label buttons (eval/training feedback) */
+.label-group {
+    display: inline-flex;
+    gap: 2px;
+    margin-left: 0.25rem;
+    padding-left: 0.5rem;
+    border-left: 1px solid var(--border-color);
+}
+.label-action {
+    width: 26px;
+    height: 26px;
+    font-size: 0.85rem;
+    border-radius: 6px;
+    opacity: 0.55;
+}
+.label-action:hover { opacity: 1; }
+.label-action.selected {
+    opacity: 1;
+    color: white;
+    border-color: transparent;
+}
+.label-action.label-relevant.selected   { background: #2e8b57; }
+.label-action.label-borderline.selected { background: #c79a2c; }
+.label-action.label-wrong.selected      { background: #b04545; }
+.label-action.label-relevant:hover   { background: #2e8b57; color: white; border-color: transparent; }
+.label-action.label-borderline:hover { background: #c79a2c; color: white; border-color: transparent; }
+.label-action.label-wrong:hover      { background: #b04545; color: white; border-color: transparent; }
+
 /* Player Bar */
 .player-bar {
     position: fixed;

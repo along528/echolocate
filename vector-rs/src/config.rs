@@ -11,6 +11,10 @@ pub struct Config {
     pub cors_allow_origins: Option<String>,
     pub gcs_bucket_name: String,
     pub gcs_audio_prefix: String,
+    pub labels_bucket: String,
+    pub index_version: String,
+    pub model_version: String,
+    pub git_sha: String,
 }
 
 impl Config {
@@ -33,6 +37,12 @@ impl Config {
                 .unwrap_or_else(|_| "cloud-crate-vector-db".into()),
             gcs_audio_prefix: env::var("GCS_AUDIO_PREFIX")
                 .unwrap_or_else(|_| "fma/fma_full/fma_full".into()),
+            labels_bucket: env::var("LABELS_BUCKET")
+                .unwrap_or_else(|_| "cloud-crate-vector-db".into()),
+            index_version: env::var("INDEX_VERSION").unwrap_or_else(|_| "unknown".into()),
+            model_version: env::var("MODEL_VERSION")
+                .unwrap_or_else(|_| "mert-v1-95m+clap-htsat".into()),
+            git_sha: env::var("GIT_SHA").unwrap_or_else(|_| "unknown".into()),
         }
     }
 }

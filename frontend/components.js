@@ -47,6 +47,7 @@ const Components = {
             if (track.isEnd) div.classList.add('track-card', 'is-end');
         }
 
+        const labelable = !!track._searchId && showActions && !minimal;
         div.innerHTML = `
             <div class="track-info">
                 <div class="track-title">${this.escapeHtml(track.title)}</div>
@@ -64,6 +65,13 @@ const Components = {
                         <button class="action-btn similar-action" title="Find similar">≈</button>
                         <button class="action-btn dissimilar-action" title="Find dissimilar">≠</button>
                     ` : ''}
+                ` : ''}
+                ${labelable ? `
+                    <span class="label-group" title="How relevant is this result?">
+                        <button class="action-btn label-action label-relevant" data-signal="relevant" title="Relevant">✓</button>
+                        <button class="action-btn label-action label-borderline" data-signal="borderline" title="Borderline (note optional)">~</button>
+                        <button class="action-btn label-action label-wrong" data-signal="wrong" title="Wrong (note optional)">✗</button>
+                    </span>
                 ` : ''}
                 ${inPlaylist && !minimal ? `
                     <button class="action-btn remove-action" title="Remove">×</button>
@@ -114,6 +122,30 @@ const Components = {
                 Player.playlist.splice(index, 1);
                 App.renderPlaylist();
             }
+        });
+
+        // 3-way label buttons (only present when track has _searchId)
+        div.querySelectorAll('.label-action').forEach(btn => {
+            btn.addEventListener('click', (e) => {
+                e.stopPropagation();
+                const signal = btn.dataset.signal;
+                const group = btn.parentElement;
+                const wasSelected = btn.classList.contains('selected');
+                group.querySelectorAll('.label-action').forEach(b => b.classList.remove('selected'));
+
+                if (wasSelected) {
+                    Labels.recordLabel(track, 'cleared', null);
+                    return;
+                }
+                btn.classList.add('selected');
+
+                let note = null;
+                if (signal === 'borderline' || signal === 'wrong') {
+                    const entered = window.prompt('Optional note (e.g. "too rock", "right vibe wrong era"):', '');
+                    if (entered && entered.trim()) note = entered.trim();
+                }
+                Labels.recordLabel(track, signal, note);
+            });
         });
 
         // Click row to play

@@ -203,6 +203,9 @@ async fn main() {
         .route("/interpolate", post(handlers::interpolate::interpolate_tracks))
         .route("/interpolate/playlist", post(handlers::playlist::interpolate_playlist))
         .route("/stream/{track_id}", get(handlers::stream::stream_audio))
+        .route("/version", get(handlers::version::get_version))
+        .route("/labels/search", post(handlers::labels::log_search))
+        .route("/labels/result", post(handlers::labels::log_label))
         .layer(cors)
         .layer(
             TraceLayer::new_for_http()
