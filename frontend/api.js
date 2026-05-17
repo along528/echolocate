@@ -93,5 +93,38 @@ const API = {
     // Get stream URL for a track
     getStreamUrl(trackId) {
         return `${this.baseUrl}/stream/${trackId}`;
+    },
+
+    // Versions (index, model, git_sha) for labelling lineage
+    async getVersion() {
+        return this.request('GET', '/version');
+    },
+
+    // Fire-and-forget label event logging. Never throws; never blocks UX.
+    logSearchEvent(payload) {
+        this._fireAndForget('/labels/search', payload);
+    },
+
+    logLabelEvent(payload) {
+        this._fireAndForget('/labels/result', payload);
+    },
+
+    _fireAndForget(path, payload) {
+        try {
+            const url = `${this.baseUrl}${path}`;
+            // Plain fetch with keepalive survives navigation up to ~64KB.
+            // We deliberately avoid sendBeacon: it sends credentials by default,
+            // which forces a CORS preflight requiring Access-Control-Allow-Credentials.
+            fetch(url, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(payload),
+                keepalive: true,
+                credentials: 'omit',
+                mode: 'cors'
+            }).catch(err => console.debug('[labels] post failed:', err));
+        } catch (e) {
+            console.debug('[labels] dispatch failed:', e);
+        }
     }
 };

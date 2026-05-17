@@ -1,7 +1,9 @@
 pub mod health;
 pub mod interpolate;
+pub mod labels;
 pub mod playlist;
 pub mod search;
 pub mod semantic;
 pub mod stream;
 pub mod tracks;
+pub mod version;

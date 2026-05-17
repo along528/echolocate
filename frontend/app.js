@@ -2,6 +2,82 @@
  * Main Application Logic
  */
 
+const Labels = {
+    sessionId: null,
+    versions: null,
+    disabled: false,
+
+    init() {
+        this.disabled = localStorage.getItem('echolocate-labels-disabled') === '1';
+        let sid = localStorage.getItem('echolocate-session-id');
+        if (!sid) {
+            sid = this._uuid();
+            localStorage.setItem('echolocate-session-id', sid);
+        }
+        this.sessionId = sid;
+        // Fire-and-forget version fetch; tag future events once it lands.
+        API.getVersion().then(v => { this.versions = v; }).catch(() => {});
+    },
+
+    _uuid() {
+        if (typeof crypto !== 'undefined' && crypto.randomUUID) return crypto.randomUUID();
+        return 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, c => {
+            const r = Math.random() * 16 | 0;
+            const v = c === 'x' ? r : (r & 0x3 | 0x8);
+            return v.toString(16);
+        });
+    },
+
+    _newId() {
+        return `${Date.now()}-${this._uuid()}`;
+    },
+
+    /**
+     * Record a search event; stamp tracks with _searchId + _rank.
+     * queryFields shape: { text?, enhanced_text?, seed_track_id?, pair_track_ids? }
+     * Returns the new search_id (or null if disabled).
+     */
+    recordSearch(endpoint, queryKind, queryFields, params, tracks) {
+        if (this.disabled) return null;
+        if (!Array.isArray(tracks)) return null;
+        const searchId = this._newId();
+        tracks.forEach((t, i) => {
+            if (t && typeof t === 'object') {
+                t._searchId = searchId;
+                t._rank = i;
+            }
+        });
+        const results = tracks
+            .filter(t => t && t.id)
+            .map((t, i) => ({ id: t.id, rank: i }));
+        API.logSearchEvent({
+            search_id: searchId,
+            session_id: this.sessionId,
+            endpoint,
+            query_kind: queryKind,
+            query: queryFields || {},
+            params: params || {},
+            results,
+            client_versions: this.versions || null
+        });
+        return searchId;
+    },
+
+    recordLabel(track, signal, note) {
+        if (this.disabled) return;
+        if (!track || !track._searchId || !track.id) return;
+        API.logLabelEvent({
+            label_id: this._newId(),
+            search_id: track._searchId,
+            session_id: this.sessionId,
+            track_id: track.id,
+            rank: typeof track._rank === 'number' ? track._rank : -1,
+            signal,
+            note: note || null
+        });
+    }
+};
+
 const App = {
     searchMode: 'semantic',
     enhanceQuery: true,
@@ -20,6 +96,7 @@ const App = {
     init() {
         SearchCache.init();
         Player.init();
+        Labels.init();
 
         // Load seed queries from shared JSON (async, non-blocking)
         fetch('seed_queries.json')
@@ -515,9 +592,11 @@ const App = {
 
             const response = await API.semanticSearch(query, source, 50, this.enhanceQuery);
             let tracks;
+            let enhancedText = null;
             if (response.results) {
                 tracks = response.results;
                 if (response.enhanced_query && this.enhanceQuery) {
+                    enhancedText = response.enhanced_query;
                     enhancedDisplay.textContent = '';
                     const strong = document.createElement('strong');
                     strong.textContent = 'Enhanced:';
@@ -529,6 +608,14 @@ const App = {
             } else {
                 tracks = response;
             }
+
+            Labels.recordSearch(
+                '/semantic-search',
+                'text',
+                { text: query, enhanced_text: enhancedText },
+                { source, limit: 50, enhance: this.enhanceQuery, origin: 'random_seed' },
+                tracks
+            );
 
             this.results = tracks;
             this.pinnedTrack = null;
@@ -557,6 +644,7 @@ const App = {
 
         try {
             let tracks;
+            let enhancedText = null;
             if (this.searchMode === 'semantic') {
                 const response = await API.semanticSearch(query, source, 50, this.enhanceQuery);
 
@@ -564,6 +652,7 @@ const App = {
                     tracks = response.results;
 
                     if (response.enhanced_query && this.enhanceQuery) {
+                        enhancedText = response.enhanced_query;
                         enhancedDisplay.innerHTML = `<strong>Enhanced:</strong> "${response.enhanced_query}"`;
                         enhancedDisplay.style.visibility = 'visible';
                         enhancedDisplay.style.opacity = '1';
@@ -574,8 +663,22 @@ const App = {
                 } else {
                     tracks = response;
                 }
+                Labels.recordSearch(
+                    '/semantic-search',
+                    'text',
+                    { text: query, enhanced_text: enhancedText },
+                    { source, limit: 50, enhance: this.enhanceQuery },
+                    tracks
+                );
             } else {
                 tracks = await API.textSearch(query, source);
+                Labels.recordSearch(
+                    '/search',
+                    'text',
+                    { text: query },
+                    { source, limit: 50, mode: 'text' },
+                    tracks
+                );
             }
 
             this.results = tracks;
@@ -590,6 +693,13 @@ const App = {
         const selectedSource = this.getSelectedSource();
         try {
             const tracks = await API.findSimilar(track.id, selectedSource);
+            Labels.recordSearch(
+                `/tracks/${track.id}/similar`,
+                'seed',
+                { seed_track_id: track.id },
+                { source: selectedSource, limit: 10, polarity: 'similar' },
+                tracks
+            );
             this.results = tracks;
             this.pinnedTrack = track;
             this.renderResults();
@@ -603,6 +713,13 @@ const App = {
         const selectedSource = this.getSelectedSource();
         try {
             const tracks = await API.findDissimilar(track.id, selectedSource);
+            Labels.recordSearch(
+                `/tracks/${track.id}/dissimilar`,
+                'seed',
+                { seed_track_id: track.id },
+                { source: selectedSource, limit: 10, polarity: 'dissimilar' },
+                tracks
+            );
             this.results = tracks;
             this.pinnedTrack = track;
             this.renderResults();
@@ -664,13 +781,22 @@ const App = {
             const response = await API.semanticSearch(query, source, 10, true);
 
             let tracks = [];
+            let enhancedText = null;
             if (response.results) {
                 tracks = response.results;
                 slot.enhancedQuery = response.enhanced_query;
+                enhancedText = response.enhanced_query || null;
             } else {
                 tracks = response;
                 slot.enhancedQuery = null;
             }
+            Labels.recordSearch(
+                '/semantic-search',
+                'text',
+                { text: query, enhanced_text: enhancedText },
+                { source, limit: 10, enhance: true, origin: 'slot', slot: slotName },
+                tracks
+            );
 
             if (tracks.length > 0) {
                 slot.results = tracks;
@@ -895,6 +1021,14 @@ const App = {
 
             // Strip first and last (they match the adjacent tracks)
             const middleTracks = tracks.slice(1, -1);
+
+            Labels.recordSearch(
+                '/interpolate/playlist',
+                'pair',
+                { pair_track_ids: [above.id, below.id] },
+                { source, limit: 5, method: 'greedy_walk' },
+                middleTracks
+            );
 
             // Insert as interpolated steer slots in order
             for (let i = 0; i < middleTracks.length; i++) {
