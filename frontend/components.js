@@ -48,17 +48,16 @@ const Components = {
         }
 
         const labelable = !!track._searchId && showActions && !minimal;
+        const titleHtml = track.track_url
+            ? `<a href="${this.escapeHtml(track.track_url)}" target="_blank" rel="noopener noreferrer" class="track-title-link" title="Open source (long-press on mobile)">${this.escapeHtml(track.title)}<span class="track-title-link-icon" aria-hidden="true">↗</span></a>`
+            : this.escapeHtml(track.title);
         div.innerHTML = `
             <div class="track-info">
-                <div class="track-title">${this.escapeHtml(track.title)}</div>
+                <div class="track-title">${titleHtml}</div>
                 <div class="track-artist">${this.escapeHtml(track.artist)} — ${this.escapeHtml(track.album)}</div>
             </div>
             ${showActions ? `
             <div class="track-actions">
-                <button class="action-btn play-action" title="Play">▶</button>
-                ${track.track_url ? `
-                    <a href="${track.track_url}" target="_blank" class="action-btn link-action" title="View Source">↗</a>
-                ` : ''}
                 ${!inPlaylist && !minimal ? `
                     <button class="action-btn add-action" title="Add to builder">+</button>
                     ${!options.hideSimilar ? `
@@ -80,16 +79,46 @@ const Components = {
             ` : ''}
         `;
 
-        // Play on click
-        div.querySelector('.play-action')?.addEventListener('click', (e) => {
-            e.stopPropagation();
-            Player.play(track, options.context);
-        });
-
-        // External link click prevention (let the link work but stop row click)
-        div.querySelector('.link-action')?.addEventListener('click', (e) => {
-            e.stopPropagation();
-        });
+        // Title link: opens external URL.
+        // - Mouse/pen: a normal click navigates.
+        // - Touch: requires a long-press (~350ms). A short tap on the title
+        //   falls through to the row click handler (i.e. plays the track),
+        //   protecting against accidental fat-finger navigations on mobile.
+        const titleLink = div.querySelector('.track-title-link');
+        if (titleLink) {
+            let pointerType = 'mouse';
+            let longPressed = false;
+            let pressTimer = null;
+            const LONG_PRESS_MS = 350;
+            const cancel = () => {
+                if (pressTimer) { clearTimeout(pressTimer); pressTimer = null; }
+            };
+            titleLink.addEventListener('pointerdown', (e) => {
+                pointerType = e.pointerType;
+                longPressed = false;
+                if (e.pointerType === 'touch') {
+                    cancel();
+                    pressTimer = setTimeout(() => {
+                        longPressed = true;
+                        window.open(titleLink.href, '_blank', 'noopener,noreferrer');
+                    }, LONG_PRESS_MS);
+                }
+            });
+            ['pointerup', 'pointercancel', 'pointerleave', 'pointermove'].forEach(ev => {
+                titleLink.addEventListener(ev, cancel);
+            });
+            titleLink.addEventListener('click', (e) => {
+                if (pointerType === 'touch') {
+                    e.preventDefault();
+                    if (longPressed) {
+                        e.stopPropagation();
+                        longPressed = false;
+                    }
+                } else {
+                    e.stopPropagation();
+                }
+            });
+        }
 
         // Add to builder (Smart Add)
         div.querySelector('.add-action')?.addEventListener('click', (e) => {
