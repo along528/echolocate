@@ -42,6 +42,6 @@ gcloud run deploy $SERVICE_NAME \
     --cpu-boost \
     --no-cpu-throttling \
     --min-instances=0 \
-    --set-env-vars INDEX_DB_PATH=/app/index.duckdb,DB_POOL_SIZE=4,GCP_PROJECT_ID=${PROJECT_ID},CORS_ALLOW_ORIGINS=https://echolocate.app,INDEX_VERSION=${INDEX_VERSION},MODEL_VERSION=${MODEL_VERSION},GIT_SHA=${GIT_SHA},LABELS_BUCKET=cloud-crate-vector-db
+    --set-env-vars "^@^INDEX_DB_PATH=/app/index.duckdb@DB_POOL_SIZE=4@GCP_PROJECT_ID=${PROJECT_ID}@CORS_ALLOW_ORIGINS=https://echolocate.app,https://echoes.echolocate.app@INDEX_VERSION=${INDEX_VERSION}@MODEL_VERSION=${MODEL_VERSION}@GIT_SHA=${GIT_SHA}@LABELS_BUCKET=cloud-crate-vector-db"
 
 echo "✅ Deployment complete."

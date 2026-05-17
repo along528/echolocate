@@ -1,0 +1,31 @@
+@import "./tokens.css";
+
+html, body, #root {
+  margin: 0;
+  padding: 0;
+  height: 100%;
+  background: var(--el-bg-primary);
+}
+* { box-sizing: border-box; }
+body {
+  font-family: var(--el-font-sans);
+  color: var(--el-fg-primary);
+  font-feature-settings: "ss01", "cv11";
+}
+
+select, button, input {
+  font-family: inherit;
+}
+select {
+  appearance: none;
+  -webkit-appearance: none;
+  padding-right: 22px;
+  background-image: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='10' height='6' viewBox='0 0 10 6'><path d='M1 1l4 4 4-4' stroke='%23a0a0b0' fill='none' stroke-width='1.4' stroke-linecap='round'/></svg>");
+  background-repeat: no-repeat;
+  background-position: right 7px center;
+}
+
+::-webkit-scrollbar { width: 8px; height: 8px; }
+::-webkit-scrollbar-thumb { background: rgba(255,255,255,0.08); border-radius: 4px; }
+::-webkit-scrollbar-track { background: transparent; }
+* { scrollbar-width: thin; scrollbar-color: rgba(255,255,255,0.10) transparent; }

@@ -33,3 +33,7 @@ setup_iap_log_2.txt
 
 # Rust
 vector-rs/target/
+
+# Echoes
+echoes/dist/
+echoes/node_modules/
