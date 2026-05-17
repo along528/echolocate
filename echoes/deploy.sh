@@ -14,7 +14,7 @@ echo "Building and deploying Echoes Inspector..."
 # Build + push (echoes/ is the build context; echoes/.dockerignore skips node_modules + dist)
 gcloud builds submit --tag "${IMAGE}" --project="${PROJECT_ID}"
 
-# Deploy to Cloud Run. Public+CORS, IAP-protected at the domain layer (see setup_iap.sh).
+# Deploy to Cloud Run.
 gcloud beta run deploy ${SERVICE_NAME} \
     --image "${IMAGE}" \
     --platform managed \
@@ -26,9 +26,10 @@ gcloud beta run deploy ${SERVICE_NAME} \
     --project="${PROJECT_ID}"
 
 # Cloud Run domain mapping. Idempotent — only creates if not already mapped.
+NEW_MAPPING=false
 if gcloud beta run domain-mappings describe \
         --domain="${DOMAIN}" --region=${REGION} --project="${PROJECT_ID}" &>/dev/null; then
-    echo "Domain mapping already exists for ${DOMAIN}"
+    echo "Domain mapping already exists for ${DOMAIN}."
 else
     echo "Creating domain mapping ${DOMAIN} -> ${SERVICE_NAME}..."
     gcloud beta run domain-mappings create \
@@ -36,15 +37,44 @@ else
         --domain="${DOMAIN}" \
         --region=${REGION} \
         --project="${PROJECT_ID}"
-    echo "Run \`gcloud beta run domain-mappings describe --domain=${DOMAIN} --region=${REGION}\` for DNS records."
+    NEW_MAPPING=true
 fi
 
-echo "Echoes deployed!"
-echo "URL: https://${DOMAIN}/   (also reachable at the raw Cloud Run URL)"
+# Surface the required DNS records every time, so the user can verify their
+# registrar config matches what GCP expects.
 echo ""
-echo "Next steps if this is a first-time deploy:"
-echo "  1. Add the DNS record shown by domain-mappings describe."
-echo "  2. Add IAP on ${SERVICE_NAME} (mirror setup_iap.sh steps for cloud-crate-frontend)."
-echo "  3. Add https://${DOMAIN} to vector-rs CORS_ALLOW_ORIGINS:"
-echo "     gcloud run services update cloud-crate-vector-rs --region=${REGION} \\"
-echo "         --update-env-vars CORS_ALLOW_ORIGINS=https://echolocate.app,https://${DOMAIN}"
+echo "=========================================================="
+echo "DNS records required at your registrar for ${DOMAIN}:"
+echo "=========================================================="
+gcloud beta run domain-mappings describe \
+    --domain="${DOMAIN}" --region=${REGION} --project="${PROJECT_ID}" \
+    --format='table[no-heading,box](status.resourceRecords[].type,status.resourceRecords[].name,status.resourceRecords[].rrdata)' \
+    || true
+echo ""
+
+# Light propagation check — non-blocking, just informational.
+LOOKUP="$(dig +short "${DOMAIN}" CNAME 2>/dev/null | head -1)"
+if [ -z "$LOOKUP" ]; then
+    LOOKUP="$(dig +short "${DOMAIN}" A 2>/dev/null | head -1)"
+fi
+if [ -n "$LOOKUP" ]; then
+    echo "DNS resolves: ${DOMAIN} -> ${LOOKUP}"
+else
+    echo "DNS not yet propagated for ${DOMAIN}. Add the record above; re-check with:"
+    echo "  dig +short ${DOMAIN} CNAME"
+fi
+
+echo ""
+echo "Echoes deployed: https://${DOMAIN}/"
+echo ""
+
+if [ "$NEW_MAPPING" = true ]; then
+    cat <<MSG
+First-time deploy reminders:
+  1. Add the DNS record above at your registrar. Cert provisioning starts once DNS resolves.
+  2. (Optional) Gate the service with IAP — mirror setup_iap.sh against ${SERVICE_NAME}.
+  3. Re-deploy vector-rs so CORS_ALLOW_ORIGINS includes https://${DOMAIN}:
+       cd ../vector-rs && ./deploy.sh
+     (the CORS list is already updated in vector-rs/deploy.sh — just needs to re-deploy.)
+MSG
+fi
