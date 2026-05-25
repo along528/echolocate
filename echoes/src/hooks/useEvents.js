@@ -123,6 +123,9 @@ export function useEvents(filters) {
     const myEpoch = aliveRef.current;
     const id = setInterval(async () => {
       if (myEpoch !== aliveRef.current) return;
+      // Skip when hidden — otherwise a forgotten tab keeps vector-rs's
+      // Cloud Run instance warm 24/7.
+      if (document.visibilityState !== "visible") return;
       const sinceIso = newestRef.current;
       if (!sinceIso) return;
       try {
