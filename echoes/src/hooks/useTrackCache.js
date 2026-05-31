@@ -20,11 +20,15 @@ export function useTrackCache(needIds) {
     if (!unknown.length) return;
     for (const id of unknown) fetchingRef.current.add(id);
 
-    let cancelled = false;
+    // No cancellation: a returned response is always valid data and we MUST
+    // release these ids from fetchingRef in every path. (A prior version
+    // short-circuited on a `cancelled` flag, which leaked ids into
+    // fetchingRef whenever the effect re-fired before the response landed —
+    // those ids then got filtered out of `unknown` forever and never showed
+    // their titles.)
     (async () => {
       try {
         const rows = await fetchTracks(unknown, "fma");
-        if (cancelled) return;
         const got = new Set();
         for (const r of rows) {
           cacheRef.current[r.id] = r;
@@ -32,16 +36,15 @@ export function useTrackCache(needIds) {
         }
         for (const id of unknown) {
           if (!got.has(id)) cacheRef.current[id] = "missing";
-          fetchingRef.current.delete(id);
         }
         setTick((n) => n + 1);
       } catch {
+        // swallow; ids stay uncached and will be retried on the next
+        // needIds change.
+      } finally {
         for (const id of unknown) fetchingRef.current.delete(id);
       }
     })();
-    return () => {
-      cancelled = true;
-    };
   }, [needIds.join(",")]);
 
   // Hide "missing" sentinel from callers — they just see undefined.
