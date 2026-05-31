@@ -38,6 +38,7 @@ import time
 
 import duckdb
 import numpy as np
+from tqdm import tqdm
 
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 DEFAULT_DB = os.path.join(BASE_DIR, "../data/cloudcrate.duckdb")
@@ -85,15 +86,13 @@ def load_vectors(con, vector_col):
     ids, table_of, vecs = [], [], []
     for table in TABLES:
         ensure_columns(con, table)
-        print(f"Reading {vector_col} from {table}...")
         rows = con.execute(f"SELECT id, {vector_col} FROM {table}").fetchall()
-        for tid, vec in rows:
+        for tid, vec in tqdm(rows, desc=f"Reading {vector_col} from {table}", unit="trk"):
             if vec is None:
                 continue
             ids.append(tid)
             table_of.append(table)
             vecs.append(np.asarray(vec, dtype=np.float32))
-        print(f"  {len(rows)} rows read.")
     if not ids:
         raise SystemExit(f"No tracks with {vector_col} found.")
     return ids, table_of, np.vstack(vecs)
@@ -161,7 +160,7 @@ def project_umap(matrix):
             "Run: pip install umap-learn"
         ) from e
     print("Fitting UMAP (this can take a few minutes)...")
-    reducer = umap.UMAP(n_components=2, metric="cosine", random_state=42)
+    reducer = umap.UMAP(n_components=2, metric="cosine", random_state=42, verbose=True)
     coords = reducer.fit_transform(matrix)
     return coords[:, 0], coords[:, 1]
 
@@ -200,10 +199,10 @@ def ensure_columns(con, table):
 
 def write_coords(con, ids, table_of, x_norm, y_norm):
     con.execute("CREATE TEMP TABLE proj_tmp (id VARCHAR, tbl VARCHAR, x DOUBLE, y DOUBLE);")
-    con.executemany(
-        "INSERT INTO proj_tmp VALUES (?, ?, ?, ?)",
-        list(zip(ids, table_of, x_norm.tolist(), y_norm.tolist())),
-    )
+    rows = list(zip(ids, table_of, x_norm.tolist(), y_norm.tolist()))
+    chunk = 5000
+    for i in tqdm(range(0, len(rows), chunk), desc="Loading coordinates", unit="chunk"):
+        con.executemany("INSERT INTO proj_tmp VALUES (?, ?, ?, ?)", rows[i:i + chunk])
     for table in TABLES:
         con.execute(
             f"UPDATE {table} SET x = p.x, y = p.y FROM proj_tmp p "

@@ -7,3 +7,7 @@ torch==2.2.2
 torchaudio==2.2.2
 transformers==4.46.0
 numpy<2.0.0
+duckdb>=1.0.0
+tqdm>=4.65.0
+# Optional: only needed for `generate_projection.py --method umap`
+# umap-learn==0.5.6
