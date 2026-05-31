@@ -44,15 +44,18 @@ export default function App() {
 
   // Client-side filters layered on top of server-side endpoint/version filters.
   // Endpoint and query are joined back via searchById since labels carry no endpoint/query themselves.
+  // We also hard-filter to FMA-source searches: this inspector is FMA-only, and the
+  // label payload itself has no source field — the parent search's params.source is
+  // the source of truth.
   const filteredLabels = useMemo(() => {
     const q = filters.query.trim().toLowerCase();
     const ep = filters.endpoint;
     const allSignals = filters.signals.length === SIGNAL_ORDER.length;
     return labels.filter((l) => {
       if (!allSignals && !filters.signals.includes(l.signal)) return false;
-      if (!ep && !q) return true;
       const s = searchById[l.search_id];
       if (!s) return false;
+      if (s.params?.source !== "fma") return false;
       if (ep && s.endpoint !== ep) return false;
       if (q) {
         const text = s.query?.text;

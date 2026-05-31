@@ -23,7 +23,18 @@ RUN printf 'server {\n\
     add_header X-XSS-Protection "1; mode=block" always;\n\
     add_header Referrer-Policy "strict-origin-when-cross-origin" always;\n\
     add_header Strict-Transport-Security "max-age=31536000; includeSubDomains" always;\n\
+    # Hashed Vite assets (/assets/index-XXX.js etc.) — safe to cache forever.\n\
+    location /assets/ {\n\
+        add_header Cache-Control "public, max-age=31536000, immutable" always;\n\
+        try_files $uri =404;\n\
+    }\n\
+    # index.html must always revalidate so new deploys point at fresh asset hashes.\n\
+    location = /index.html {\n\
+        add_header Cache-Control "no-cache" always;\n\
+        try_files $uri =404;\n\
+    }\n\
     location / {\n\
+        add_header Cache-Control "no-cache" always;\n\
         try_files $uri $uri/ /index.html;\n\
     }\n\
 }\n' > /etc/nginx/conf.d/default.conf

@@ -3,7 +3,7 @@ import { fetchTracks } from "../lib/api.js";
 
 /**
  * useTrackCache(needIds)
- * Batch-fetches /tracks/by-ids (source="all") for any id in `needIds` not
+ * Batch-fetches /tracks/by-ids (source="fma") for any id in `needIds` not
  * already cached. Returns { trackById, fetching }. trackById is a stable
  * Object map.
  */
@@ -23,7 +23,7 @@ export function useTrackCache(needIds) {
     let cancelled = false;
     (async () => {
       try {
-        const rows = await fetchTracks(unknown, "all");
+        const rows = await fetchTracks(unknown, "fma");
         if (cancelled) return;
         const got = new Set();
         for (const r of rows) {
