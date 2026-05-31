@@ -112,7 +112,7 @@ async fn find_by_similarity(
                     let dist = dist_expr("v_mid", &vec_literal, use_hnsw);
                     let q = format!(
                         "SELECT id, title, artist, album, relative_path, track_url, album_url, artist_url, \
-                                {dist} as distance \
+                                {dist} as distance, x, y \
                          FROM {table} \
                          ORDER BY distance ASC \
                          LIMIT {lim}",
