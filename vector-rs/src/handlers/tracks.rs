@@ -1,5 +1,6 @@
 use axum::extract::{Path, Query, State};
 use axum::Json;
+use serde::Deserialize;
 use std::sync::Arc;
 
 use std::sync::atomic::Ordering;
@@ -235,6 +236,63 @@ async fn find_by_similarity(
         };
 
         tracing::info!("find_by_similarity completed in {:.2?} (hnsw={})", query_start.elapsed(), use_hnsw);
+        pool.put(conn);
+        Ok(Json(results))
+    })
+    .await
+    .map_err(|e| AppError::Internal(e.to_string()))?
+}
+
+#[derive(Debug, Deserialize)]
+pub struct TracksByIdsRequest {
+    pub ids: Vec<String>,
+    pub source: Option<String>,
+}
+
+const MAX_IDS_PER_CALL: usize = 500;
+
+pub async fn tracks_by_ids(
+    State(state): State<Arc<AppState>>,
+    Json(body): Json<TracksByIdsRequest>,
+) -> Result<Json<Vec<TrackResponse>>, AppError> {
+    if body.ids.is_empty() {
+        return Ok(Json(Vec::new()));
+    }
+    if body.ids.len() > MAX_IDS_PER_CALL {
+        return Err(AppError::BadRequest(format!(
+            "too many ids; max {MAX_IDS_PER_CALL}"
+        )));
+    }
+    let pool = state.db_pool.clone();
+    let ids = body.ids;
+    let source = body.source;
+
+    tokio::task::spawn_blocking(move || {
+        let conn = pool.get()?;
+        let placeholders = std::iter::repeat("?")
+            .take(ids.len())
+            .collect::<Vec<_>>()
+            .join(",");
+        let query = match &source {
+            Some(s) if s != "all" => format!(
+                "SELECT id, source, title, artist, album, relative_path, track_url, album_url, artist_url \
+                 FROM tracks WHERE source = ? AND id IN ({placeholders})"
+            ),
+            _ => format!(
+                "SELECT id, source, title, artist, album, relative_path, track_url, album_url, artist_url \
+                 FROM tracks WHERE id IN ({placeholders})"
+            ),
+        };
+        let mut params: Vec<&dyn duckdb::ToSql> = Vec::with_capacity(ids.len() + 1);
+        if let Some(s) = &source {
+            if s != "all" {
+                params.push(s as &dyn duckdb::ToSql);
+            }
+        }
+        for id in &ids {
+            params.push(id as &dyn duckdb::ToSql);
+        }
+        let results = query_track_rows(&conn, &query, &params)?;
         pool.put(conn);
         Ok(Json(results))
     })

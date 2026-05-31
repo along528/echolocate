@@ -196,6 +196,7 @@ async fn main() {
     let app = Router::new()
         .route("/", get(handlers::health::health_check))
         .route("/tracks", get(handlers::tracks::list_tracks))
+        .route("/tracks/by-ids", post(handlers::tracks::tracks_by_ids).layer(DefaultBodyLimit::max(32 * 1024)))
         .route("/tracks/{track_id}/similar", get(handlers::tracks::find_similar))
         .route("/tracks/{track_id}/dissimilar", get(handlers::tracks::find_dissimilar))
         .route("/search", get(handlers::search::search_tracks_text))
@@ -213,6 +214,7 @@ async fn main() {
             "/labels/result",
             post(handlers::labels::log_label).layer(DefaultBodyLimit::max(16 * 1024)),
         )
+        .route("/labels/events", get(handlers::labels_read::list_events))
         .layer(cors)
         .layer(
             TraceLayer::new_for_http()

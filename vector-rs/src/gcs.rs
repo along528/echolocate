@@ -1,10 +1,18 @@
 use google_cloud_storage::client::{Client, ClientConfig};
 use google_cloud_storage::http::objects::download::Range;
 use google_cloud_storage::http::objects::get::GetObjectRequest;
+use google_cloud_storage::http::objects::list::ListObjectsRequest;
 use google_cloud_storage::http::objects::upload::{Media, UploadObjectRequest, UploadType};
 
+#[derive(Clone)]
 pub struct GcsClient {
     client: Client,
+}
+
+#[derive(Debug, Clone)]
+pub struct GcsObjectMeta {
+    pub name: String,
+    pub time_created: Option<chrono::DateTime<chrono::Utc>>,
 }
 
 impl GcsClient {
@@ -31,6 +39,84 @@ impl GcsClient {
             )
             .await?;
         Ok(data)
+    }
+
+    /// List every object under `prefix` (paginated internally; caller gets one Vec).
+    /// Suitable for bounded prefixes (e.g. a single `YYYY-MM-DD/` day). For unbounded
+    /// prefixes, prefer a streaming variant — not yet implemented.
+    pub async fn list_objects(
+        &self,
+        bucket: &str,
+        prefix: &str,
+    ) -> Result<Vec<GcsObjectMeta>, Box<dyn std::error::Error + Send + Sync>> {
+        let mut out = Vec::new();
+        let mut page_token: Option<String> = None;
+        loop {
+            let req = ListObjectsRequest {
+                bucket: bucket.to_string(),
+                prefix: Some(prefix.to_string()),
+                max_results: Some(1000),
+                page_token: page_token.clone(),
+                ..Default::default()
+            };
+            let resp = self.client.list_objects(&req).await?;
+            if let Some(items) = resp.items {
+                for o in items {
+                    let tc = o.time_created.and_then(|t| {
+                        chrono::DateTime::<chrono::Utc>::from_timestamp(
+                            t.unix_timestamp(),
+                            t.nanosecond(),
+                        )
+                    });
+                    out.push(GcsObjectMeta { name: o.name, time_created: tc });
+                }
+            }
+            match resp.next_page_token {
+                Some(tok) if !tok.is_empty() => page_token = Some(tok),
+                _ => break,
+            }
+        }
+        Ok(out)
+    }
+
+    /// List the immediate child "directories" under `prefix` (one GCS list call with
+    /// `delimiter="/"`, paginated internally). Returns the leaf component of each
+    /// common prefix — e.g. for `prefix="labels/search_events/"` returns entries
+    /// like `"2026-05-31"`. Used to discover which day-partitions actually exist
+    /// without enumerating their contents.
+    pub async fn list_day_prefixes(
+        &self,
+        bucket: &str,
+        prefix: &str,
+    ) -> Result<Vec<String>, Box<dyn std::error::Error + Send + Sync>> {
+        let mut out = Vec::new();
+        let mut page_token: Option<String> = None;
+        loop {
+            let req = ListObjectsRequest {
+                bucket: bucket.to_string(),
+                prefix: Some(prefix.to_string()),
+                delimiter: Some("/".to_string()),
+                max_results: Some(1000),
+                page_token: page_token.clone(),
+                ..Default::default()
+            };
+            let resp = self.client.list_objects(&req).await?;
+            if let Some(prefixes) = resp.prefixes {
+                for p in prefixes {
+                    if let Some(stripped) = p.strip_prefix(prefix) {
+                        let leaf = stripped.trim_end_matches('/');
+                        if !leaf.is_empty() {
+                            out.push(leaf.to_string());
+                        }
+                    }
+                }
+            }
+            match resp.next_page_token {
+                Some(tok) if !tok.is_empty() => page_token = Some(tok),
+                _ => break,
+            }
+        }
+        Ok(out)
     }
 
     pub async fn upload_object(
