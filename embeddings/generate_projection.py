@@ -224,6 +224,9 @@ def generate_projection(db_path, method, vector, normalize, anchors_out):
 
     start = time.time()
     con = duckdb.connect(db_path)
+    # The tables carry persistent HNSW indexes; VSS must be loaded before they
+    # can be altered/updated.
+    con.execute("INSTALL vss; LOAD vss; SET hnsw_enable_experimental_persistence = true;")
 
     ids, table_of, matrix = load_vectors(con, VECTOR_COLUMN[vector])
     print(f"Loaded {matrix.shape[0]} vectors of dim {matrix.shape[1]}. Method: {method}")
