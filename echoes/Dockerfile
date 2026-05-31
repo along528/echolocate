@@ -4,6 +4,10 @@ WORKDIR /app
 COPY package.json package-lock.json ./
 RUN npm ci
 COPY . .
+# Vector-rs base URL is baked at build time. Pass via:
+#   docker build --build-arg VITE_VECTOR_API_URL=https://... .
+ARG VITE_VECTOR_API_URL
+ENV VITE_VECTOR_API_URL=$VITE_VECTOR_API_URL
 RUN npm run build
 
 # Stage 2: nginx static serve

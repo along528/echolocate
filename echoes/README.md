@@ -33,7 +33,7 @@ development, or point `VITE_VECTOR_API_URL` at the deployed vector-rs Cloud Run 
 ```
 
 The script:
-1. Submits the image to Cloud Build (`gcr.io/cloud-crate-485418/cloud-crate-echoes`).
+1. Submits the image to Cloud Build (`gcr.io/<project-id>/cloud-crate-echoes`).
 2. Deploys the new revision to Cloud Run (`cloud-crate-echoes`, region `us-central1`).
 3. Creates the Cloud Run **domain mapping** for `echoes.echolocate.app` (idempotent — skips if already mapped).
 4. Prints the **DNS records** GCP expects at your registrar and checks whether DNS currently resolves.
@@ -69,7 +69,7 @@ service isn't, by default. To gate it the same way, run the equivalent block fro
 `setup_iap.sh` against `cloud-crate-echoes`:
 
 ```bash
-PROJECT_ID="cloud-crate-485418"
+PROJECT_ID="<your-gcp-project-id>"
 REGION="us-central1"
 SERVICE="cloud-crate-echoes"
 USER_EMAIL="your-email@example.com"
@@ -93,7 +93,7 @@ gcloud beta iap settings set /dev/stdin \
     --region=${REGION} <<EOF
 accessSettings:
   oauthSettings:
-    clientId: "403961692263-2h1g7th7pebu6kc60htn1oopggcsh4tp.apps.googleusercontent.com"
+    clientId: "<oauth-client-id>"
     clientSecret: "${IAP_CLIENT_SECRET}"
 EOF
 
@@ -126,8 +126,7 @@ cd ../vector-rs && ./deploy.sh
 curl -sI https://echoes.echolocate.app/ | head -1
 
 # Read API directly (CORS won't apply to curl)
-curl -s "https://cloud-crate-vector-rs-403961692263.us-central1.run.app/labels/events?limit=3" \
-  | python3 -m json.tool | head
+curl -s "${VECTOR_API_URL}/labels/events?limit=3" | python3 -m json.tool | head
 
 # In the browser: open the URL, click a feed row, confirm the detail panel
 # populates and the ranked-results list scrolls the focused row into view.

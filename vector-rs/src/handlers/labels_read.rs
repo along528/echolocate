@@ -74,6 +74,7 @@ pub async fn list_events(
     };
     let bucket = state.config.labels_bucket.clone();
 
+    // Clamp to [1, MAX_LIMIT].
     let limit = q
         .limit
         .unwrap_or(DEFAULT_LIMIT)
@@ -125,25 +126,30 @@ pub async fn list_events(
     }
 
     // -------- Pagination path --------
-    let start_day = cursor_parts
+    let range_start = from_dt.date_naive();
+    let range_end = to_dt.date_naive();
+    let cursor_day = cursor_parts
         .as_ref()
-        .map(|c| c.day.clone())
-        .unwrap_or_else(|| to_dt.date_naive().to_string());
-    let end_day = from_dt.date_naive().to_string();
-
-    // Walk days newest -> oldest, listing + collecting Listed entries
-    // until we have at least `limit` candidates beyond the cursor.
-    let mut listed: Vec<Listed> = Vec::new();
-    let mut day_cursor = NaiveDate::parse_from_str(&start_day, "%Y-%m-%d")
+        .map(|c| NaiveDate::parse_from_str(&c.day, "%Y-%m-%d"))
+        .transpose()
         .map_err(|e| AppError::BadRequest(format!("bad day in cursor: {e}")))?;
-    let stop_day = NaiveDate::parse_from_str(&end_day, "%Y-%m-%d")
-        .map_err(|_| AppError::BadRequest("bad from date".into()))?;
 
+    // Discover which day-partitions actually have data, then iterate only those.
+    // One GCS list (delimiter='/') per kind regardless of range width.
+    let days = discover_days(gcs, &bucket, range_start, range_end, cursor_day).await?;
+
+    // Walk discovered days newest -> oldest, collecting Listed entries until we have
+    // at least `limit * 3` candidates (enough cushion for filtering and stable cursor).
+    let mut listed: Vec<Listed> = Vec::new();
     let mut next_cursor: Option<(String, DateTime<Utc>, String)> = None;
+    let mut newest_walked_day: Option<String> = None;
     let mut day_walked = false;
 
-    while day_cursor >= stop_day {
-        let day = day_cursor.format("%Y-%m-%d").to_string();
+    for day_date in &days {
+        let day = day_date.format("%Y-%m-%d").to_string();
+        if newest_walked_day.is_none() {
+            newest_walked_day = Some(day.clone());
+        }
         let mut day_items = list_day(gcs, &bucket, &day).await?;
 
         // If we're resuming from a cursor, drop everything at-or-after that point.
@@ -158,15 +164,9 @@ pub async fn list_events(
 
         listed.append(&mut day_items);
 
-        // Stop early if we have enough; we'll trim below.
         if listed.len() >= limit * 3 {
             break;
         }
-
-        day_cursor = match day_cursor.pred_opt() {
-            Some(d) => d,
-            None => break,
-        };
     }
 
     // Sort by created_at desc, falling back to name for stable order.
@@ -178,11 +178,19 @@ pub async fn list_events(
     });
 
     // Pick the page; mark next cursor if more exist.
+    // The cursor's day field is the newest day we actually walked — *not* the boundary
+    // item's day. This ensures the resume scan re-checks days that may contain items
+    // whose `time_created` is older than the boundary even though their path-day is
+    // newer (e.g. clock skew, backfilled writes). The per-day `is_strictly_older`
+    // dedupe handles the boundary correctly.
     let take = listed.len().min(limit);
     if listed.len() > take {
         let last = &listed[take - 1];
         if let Some(tc) = last.meta.time_created {
-            next_cursor = Some((last.day.clone(), tc, last.meta.name.clone()));
+            let cursor_day = newest_walked_day
+                .clone()
+                .unwrap_or_else(|| last.day.clone());
+            next_cursor = Some((cursor_day, tc, last.meta.name.clone()));
         }
     }
     listed.truncate(take);
@@ -258,6 +266,44 @@ fn parse_rfc3339_or(opt: &Option<String>, default: DateTime<Utc>) -> Result<Date
         Some(s) => parse_rfc3339(s),
         None => Ok(default),
     }
+}
+
+/// Discover the days that have data, intersected with the request range.
+///
+/// Two GCS list calls (one per kind) using `delimiter='/'`, which returns the set of
+/// child "directories" without enumerating their contents. Output is sorted desc and
+/// clipped to `[range_start, range_end]`. If `cursor_day` is provided, drop days
+/// strictly newer than it (we'll let `is_strictly_older` re-filter the boundary day).
+async fn discover_days(
+    gcs: &GcsClient,
+    bucket: &str,
+    range_start: NaiveDate,
+    range_end: NaiveDate,
+    cursor_day: Option<NaiveDate>,
+) -> Result<Vec<NaiveDate>, AppError> {
+    let (s_res, l_res) = tokio::join!(
+        gcs.list_day_prefixes(bucket, SEARCH_PREFIX),
+        gcs.list_day_prefixes(bucket, LABEL_PREFIX),
+    );
+    let s_days = s_res.map_err(|e| AppError::Internal(format!("list search days: {e}")))?;
+    let l_days = l_res.map_err(|e| AppError::Internal(format!("list label days: {e}")))?;
+
+    let mut seen = std::collections::BTreeSet::new();
+    for d in s_days.into_iter().chain(l_days.into_iter()) {
+        if let Ok(date) = NaiveDate::parse_from_str(&d, "%Y-%m-%d") {
+            if date >= range_start && date <= range_end {
+                if let Some(c) = cursor_day {
+                    if date > c {
+                        continue;
+                    }
+                }
+                seen.insert(date);
+            }
+        }
+    }
+
+    // BTreeSet is asc; reverse for newest-first.
+    Ok(seen.into_iter().rev().collect())
 }
 
 /// Lists both prefixes for one day, in parallel.

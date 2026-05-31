@@ -1,7 +1,6 @@
 import { useEffect, useRef, useState } from "react";
-import { fetchEvents, fetchSince } from "../lib/api.js";
+import { fetchEvents } from "../lib/api.js";
 
-const POLL_MS = 5000;
 const PAGE_LIMIT = 500;
 const HARD_CEILING = 5000;
 
@@ -15,16 +14,19 @@ function splitEvents(arr) {
   return { searches, labels };
 }
 
-function mergeUnique(prev, next, idField) {
-  const seen = new Set(prev.map((e) => e[idField]));
-  const out = prev.slice();
-  for (const e of next) {
-    if (!seen.has(e[idField])) {
-      seen.add(e[idField]);
-      out.push(e);
-    }
+// Newest label per (search_id, track_id) wins — user's latest action is canonical.
+// A user re-labeling a track (e.g. relevant → negative, or note edited) replaces
+// the prior entry; downstream counts, charts, and the feed should reflect that.
+function collapseLabels(arr) {
+  const byKey = new Map();
+  for (const l of arr) {
+    const k = `${l.search_id}|${l.track_id}`;
+    const prev = byKey.get(k);
+    if (!prev || l.timestamp > prev.timestamp) byKey.set(k, l);
   }
-  return out;
+  return Array.from(byKey.values()).sort((a, b) =>
+    b.timestamp < a.timestamp ? -1 : b.timestamp > a.timestamp ? 1 : 0,
+  );
 }
 
 /**
@@ -34,8 +36,9 @@ function mergeUnique(prev, next, idField) {
  *
  * Returns: { searches, labels, searchById, loading, error }
  *
- * Behavior: initial paginated fetch on filter change; then 5s polling for new
- * events via `since=<newest_ts>`. Polling preserves existing items.
+ * Behavior: paginated fetch on filter change. Labels are collapsed by
+ * (search_id, track_id) with newest-wins so every consumer sees the user's
+ * current intent rather than the raw event log.
  */
 export function useEvents(filters) {
   const [searches, setSearches] = useState([]);
@@ -43,8 +46,6 @@ export function useEvents(filters) {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
 
-  // Newest timestamp we've seen — drives the `since` poll.
-  const newestRef = useRef(null);
   const aliveRef = useRef(0); // bump on filter change to cancel in-flight pagers
 
   // Stable filter key for effect dependency.
@@ -61,7 +62,6 @@ export function useEvents(filters) {
     setError(null);
     setSearches([]);
     setLabels([]);
-    newestRef.current = null;
 
     const now = Date.now();
     const from = new Date(now - filters.days * 86_400_000).toISOString();
@@ -95,15 +95,10 @@ export function useEvents(filters) {
           const { searches: s, labels: l } = splitEvents(events);
           accSearches = accSearches.concat(s);
           accLabels = accLabels.concat(l);
-          if (events.length) {
-            const newest = events[0].timestamp; // server returns desc-sorted
-            if (!newestRef.current || newest > newestRef.current) {
-              newestRef.current = newest;
-            }
-          }
-          // Stream into the UI as pages arrive.
+          // Stream into the UI as pages arrive (labels collapsed on every page so
+          // the visible counts are consistent during the fetch).
           setSearches([...accSearches]);
-          setLabels([...accLabels]);
+          setLabels(collapseLabels(accLabels));
           cursor = next_cursor;
           pagesFetched += 1;
           if (pagesFetched * PAGE_LIMIT >= HARD_CEILING) break;
@@ -117,43 +112,6 @@ export function useEvents(filters) {
       }
     })();
   }, [key, filters.days, filters.endpoint, filters.version]);
-
-  // 5s `since` polling.
-  useEffect(() => {
-    const myEpoch = aliveRef.current;
-    const id = setInterval(async () => {
-      if (myEpoch !== aliveRef.current) return;
-      // Skip when hidden — otherwise a forgotten tab keeps vector-rs's
-      // Cloud Run instance warm 24/7.
-      if (document.visibilityState !== "visible") return;
-      const sinceIso = newestRef.current;
-      if (!sinceIso) return;
-      try {
-        const { events } = await fetchSince(sinceIso, PAGE_LIMIT);
-        if (myEpoch !== aliveRef.current) return;
-        if (!events?.length) return;
-        const { searches: s, labels: l } = splitEvents(events);
-        if (s.length) {
-          setSearches((prev) => {
-            // Newest first; prepend new ones that aren't in prev.
-            const fresh = s.filter((e) => !prev.some((p) => p.search_id === e.search_id));
-            return fresh.concat(prev);
-          });
-        }
-        if (l.length) {
-          setLabels((prev) => {
-            const fresh = l.filter((e) => !prev.some((p) => p.label_id === e.label_id));
-            return fresh.concat(prev);
-          });
-        }
-        const newestTs = events[0].timestamp;
-        if (newestTs > sinceIso) newestRef.current = newestTs;
-      } catch {
-        // poll failures are silent — next tick will retry
-      }
-    }, POLL_MS);
-    return () => clearInterval(id);
-  }, [key]);
 
   // Derive a search-by-id index for the detail panel.
   const searchById = {};
