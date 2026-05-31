@@ -59,10 +59,25 @@ export default function FilterBar({ filters, setFilters, versions = [] }) {
 
       <div style={{ display: "flex", alignItems: "center" }}>
         <span style={LABEL_STYLE}>Query</span>
-        <input type="text" value={filters.query}
-               onChange={(e) => setFilters({ ...filters, query: e.target.value })}
-               placeholder="text search…"
-               style={{ ...CTRL_STYLE, width: 160 }} />
+        <div style={{ position: "relative", display: "inline-flex", alignItems: "center" }}>
+          <input type="text" value={filters.query}
+                 onChange={(e) => setFilters({ ...filters, query: e.target.value })}
+                 placeholder="text search…"
+                 style={{ ...CTRL_STYLE, width: 160, paddingRight: filters.query ? 22 : 8 }} />
+          {filters.query && (
+            <button type="button" title="clear query"
+                    onClick={() => setFilters({ ...filters, query: "" })}
+                    style={{
+                      position: "absolute", right: 4, top: "50%", transform: "translateY(-50%)",
+                      background: "transparent", border: "none", cursor: "pointer",
+                      color: "#7a7a8a", padding: "2px 4px", lineHeight: 1,
+                      fontFamily: "ui-monospace, SF Mono, Menlo, monospace", fontSize: 13,
+                    }}
+                    onMouseEnter={(e) => (e.currentTarget.style.color = "#f0f0f5")}
+                    onMouseLeave={(e) => (e.currentTarget.style.color = "#7a7a8a")}
+            >×</button>
+          )}
+        </div>
       </div>
 
       <div style={{ display: "flex", alignItems: "center" }}>

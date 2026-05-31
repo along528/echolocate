@@ -134,7 +134,7 @@ export default function App() {
           now={now}
           onQueryClick={(text) => setFilters((f) => ({ ...f, query: text }))}
         />
-        <div style={{ display: "flex", flexDirection: "column", minWidth: 0, background: "#0a0a0f" }}>
+        <div style={{ display: "flex", flexDirection: "column", minWidth: 0, minHeight: 0, background: "#0a0a0f" }}>
           {selected ? (
             <DetailPanel
               label={selected}
@@ -142,6 +142,7 @@ export default function App() {
               siblingLabels={siblingLabels}
               trackById={trackById}
               now={now}
+              onQueryClick={(text) => setFilters((f) => ({ ...f, query: text }))}
             />
           ) : (
             <div style={{ padding: 40, color: "#7a7a8a", fontStyle: "italic" }}>

@@ -2,9 +2,9 @@ import FeedRow from "./FeedRow.jsx";
 
 export default function Feed({ items, activeTab, setActiveTab, totals, selectedId, onSelect, trackById, searchById, now, onQueryClick }) {
   return (
-    <div style={{ display: "flex", flexDirection: "column", borderRight: "1px solid rgba(255,255,255,0.08)", minWidth: 0 }}>
+    <div style={{ display: "flex", flexDirection: "column", borderRight: "1px solid rgba(255,255,255,0.08)", minWidth: 0, minHeight: 0 }}>
       <Tabs active={activeTab} onChange={setActiveTab} totals={totals} />
-      <div style={{ overflowY: "auto", flex: 1 }}>
+      <div style={{ overflowY: "auto", flex: 1, minHeight: 0 }}>
         {items.map((l) => (
           <FeedRow key={l.label_id} label={l}
             active={selectedId === l.label_id}

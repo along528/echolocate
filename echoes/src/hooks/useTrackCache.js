@@ -3,10 +3,11 @@ import { fetchTracks } from "../lib/api.js";
 
 /**
  * useTrackCache(needIds)
- * Batch-fetches /tracks/by-ids for any id in `needIds` not already cached.
- * Returns { trackById, fetching }. trackById is a stable Object map.
+ * Batch-fetches /tracks/by-ids (source="all") for any id in `needIds` not
+ * already cached. Returns { trackById, fetching }. trackById is a stable
+ * Object map.
  */
-export function useTrackCache(needIds, source = "fma") {
+export function useTrackCache(needIds) {
   const cacheRef = useRef({});       // id -> track | "missing"
   const [, setTick] = useState(0);
   const fetchingRef = useRef(new Set());
@@ -22,7 +23,7 @@ export function useTrackCache(needIds, source = "fma") {
     let cancelled = false;
     (async () => {
       try {
-        const rows = await fetchTracks(unknown, source);
+        const rows = await fetchTracks(unknown, "all");
         if (cancelled) return;
         const got = new Set();
         for (const r of rows) {
@@ -41,7 +42,7 @@ export function useTrackCache(needIds, source = "fma") {
     return () => {
       cancelled = true;
     };
-  }, [needIds.join(","), source]);
+  }, [needIds.join(",")]);
 
   // Hide "missing" sentinel from callers — they just see undefined.
   const view = {};

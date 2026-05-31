@@ -9,7 +9,8 @@ import RankList from "./RankList.jsx";
 
 const MONO = "ui-monospace, SF Mono, Menlo, monospace";
 
-export default function DetailPanel({ label, search, siblingLabels, trackById, now }) {
+export default function DetailPanel({ label, search, siblingLabels, trackById, now, onQueryClick }) {
+  const isTextQuery = search?.query_kind === "text" && typeof search?.query?.text === "string";
   const tr = trackById[label.track_id];
   const m = SIGNAL_META[label.signal] || SIGNAL_META.cleared;
   const labelsByRank = {};
@@ -67,9 +68,23 @@ export default function DetailPanel({ label, search, siblingLabels, trackById, n
                 <span style={{ fontFamily: MONO, color: "#a0a0b0" }}>{search.endpoint}</span>
               </KV>
               <KV k="query">
-                <span style={{ fontFamily: MONO, color: "#f0f0f5", fontSize: 12 }}>
-                  {queryToString(search, trackById)}
-                </span>
+                {isTextQuery ? (
+                  <span
+                    onClick={() => onQueryClick?.(search.query.text)}
+                    title="filter feed to this query"
+                    style={{
+                      fontFamily: MONO, color: "#f0f0f5", fontSize: 12,
+                      cursor: "pointer",
+                      textDecoration: "underline",
+                      textDecorationColor: "rgba(255,255,255,0.2)",
+                      textUnderlineOffset: 2,
+                    }}
+                  >{queryToString(search, trackById)}</span>
+                ) : (
+                  <span style={{ fontFamily: MONO, color: "#f0f0f5", fontSize: 12 }}>
+                    {queryToString(search, trackById)}
+                  </span>
+                )}
               </KV>
               {search.query?.enhanced_text && (
                 <KV k="enhanced">
