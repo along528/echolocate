@@ -30,7 +30,7 @@ The project consists of these services:
    - No GCS FUSE mount needed — audio streaming uses the GCS client API directly
    - Entry point: `vector-rs/src/main.rs`
 
-4. **`sonar/`** - Sonar-map frontend (React + Vite) — Layout D redesign
+4. **`sonar/`** - Sonar-map frontend (React + Vite) — map/list redesign
    - "Sonar map + list" UI: 2D embedding-space scatter (from track `x,y`) with Map⇄List toggle, vibe tagger, trail/playlist builder, now-playing card
    - Talks to the vector service via `VITE_VECTOR_API_URL`; deployed as its own Cloud Run service (`cloud-crate-sonar`) at `sonar.echolocate.app` (domain mapping, like `echoes/`), separate from `frontend/`
    - Map dot positions come from the `/map/backdrop` sample + per-result `x,y`; see `sonar/TODO.md` for deferred items
@@ -55,7 +55,7 @@ cd mcp && ./deploy.sh              # Deploy EchoLocate MCP server only
 cd vector && ./deploy.sh           # Deploy vector service (Python) only
 cd vector-rs && ./deploy.sh        # Deploy vector service (Rust) only — requires data/index.duckdb
 cd frontend && ./deploy.sh         # Deploy legacy frontend only
-cd sonar && ./deploy.sh            # Deploy sonar frontend (Layout D, React) only — separate Cloud Run service
+cd sonar && ./deploy.sh            # Deploy sonar frontend (React) only — separate Cloud Run service
 ```
 
 ### Embedding Generation
@@ -81,7 +81,7 @@ cd vector-rs && INDEX_DB_PATH=../data/index.duckdb cargo run
 # Vector Service — Python legacy (port 8000)
 cd vector && uvicorn main:app --reload
 
-# Sonar frontend — Layout D, React + Vite (port 5180)
+# Sonar frontend — React + Vite (port 5180)
 cd sonar && VITE_VECTOR_API_URL=<vector-url> npm run dev
 ```
 

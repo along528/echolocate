@@ -1,6 +1,6 @@
-# Sonar — EchoLocate Layout D frontend
+# Sonar — EchoLocate map frontend
 
-Standalone React + Vite implementation of the "sonar map + list" redesign (Layout D),
+Standalone React + Vite implementation of the "sonar map + list" redesign,
 deployed as its own Cloud Run service (`cloud-crate-sonar`) at **sonar.echolocate.app**
 (Cloud Run domain mapping, mirroring the `echoes/` service), separate from the legacy
 `frontend/`.
@@ -29,10 +29,10 @@ On first deploy, re-deploy `vector-rs` so CORS allows `https://sonar.echolocate.
 (already in `vector-rs/deploy.sh`).
 
 ## Layout
-- `src/LayoutD.jsx` — the component (tagger, view toggle, trail rail, map/list, now-playing)
+- `src/Sonar.jsx` — the component (tagger, view toggle, trail rail, map/list, now-playing)
 - `src/svg-bits.jsx` — Wordmark / Waveform / DistanceChip
 - `src/api.js` — vector-service client (+ `mapBackdrop`)
 - `src/labels.js` — search/label logging (training signal)
-- `src/style.css`, `src/styles/*` , `src/design/*` — prototype styles (ported verbatim)
+- `src/style.css`, `src/sonar.css`, `src/design/*` — component styles (ported from the prototype kit)
 
 See `TODO.md` for intentionally deferred features.

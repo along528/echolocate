@@ -3,7 +3,7 @@
   "private": true,
   "version": "0.1.0",
   "type": "module",
-  "description": "EchoLocate sonar-map frontend (Layout D) — standalone React service",
+  "description": "EchoLocate sonar-map frontend — standalone React service",
   "scripts": {
     "dev": "vite",
     "build": "vite build",

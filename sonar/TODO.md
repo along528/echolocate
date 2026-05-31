@@ -1,6 +1,6 @@
 # Sonar — deferred features
 
-Things intentionally left out of the Layout-D v1 (sonar map + list), with notes on
+Things intentionally left out of the sonar map + list v1, with notes on
 how to bring them in later.
 
 ## Per-track vibe chips

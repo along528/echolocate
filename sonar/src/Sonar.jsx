@@ -1,4 +1,4 @@
-// Layout D — "Sonar Map + List", wired to the real EchoLocate vector service.
+// Sonar — "sonar map + list", wired to the real EchoLocate vector service.
 //
 // Differences from the prototype (all tracked in TODO.md):
 //  - results come from the vector API (semantic / similar / dissimilar), not mock data
@@ -76,7 +76,7 @@ function distBetween(a, b) {
 // similarity (1 = identical) -> DistanceChip value (0 = identical)
 const distChipValue = (t) => (typeof t.similarity === 'number' ? 1 - t.similarity : 0);
 
-export default function LayoutD({ initialView = 'map' }) {
+export default function Sonar({ initialView = 'map' }) {
   const [view, setView] = React.useState(initialView);
   const [activeVibes, setActiveVibes] = React.useState(['dreamy lo-fi']);
   const [vibeQuery, setVibeQuery] = React.useState('');

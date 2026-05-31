@@ -19,7 +19,7 @@ if [ -z "${VECTOR_API_URL}" ]; then
     exit 1
 fi
 
-echo "Building and deploying Sonar (Layout D)..."
+echo "Building and deploying Sonar..."
 echo "  Baking VITE_VECTOR_API_URL=${VECTOR_API_URL}"
 
 # Build + push via cloudbuild.yaml so we can pass VITE_VECTOR_API_URL as a build arg.
