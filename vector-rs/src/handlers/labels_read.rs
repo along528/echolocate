@@ -25,7 +25,7 @@ const SEARCH_PREFIX: &str = "labels/search_events/";
 const LABEL_PREFIX: &str = "labels/label_events/";
 const DEFAULT_LIMIT: usize = 500;
 const MAX_LIMIT: usize = 2000;
-const MAX_DAYS: i64 = 60;
+const MAX_DAYS: i64 = 365;
 const DOWNLOAD_CONCURRENCY: usize = 16;
 
 #[derive(Debug, Deserialize)]

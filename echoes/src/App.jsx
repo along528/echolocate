@@ -10,9 +10,10 @@ import { computeStats } from "./lib/aggregate.js";
 import { SIGNAL_ORDER } from "./lib/signals.js";
 
 const INITIAL_FILTERS = {
-  days: 7,
+  days: 365,
   endpoint: "",
   version: "",
+  query: "",
   signals: [...SIGNAL_ORDER],
 };
 
@@ -41,18 +42,32 @@ export default function App() {
     return Array.from(seen).sort();
   }, [searches]);
 
-  // Client-side signal filter on top of server-side filters.
-  const signalFiltered = useMemo(() => {
-    if (filters.signals.length === SIGNAL_ORDER.length) return labels;
-    return labels.filter((l) => filters.signals.includes(l.signal));
-  }, [labels, filters.signals]);
+  // Client-side filters layered on top of server-side endpoint/version filters.
+  // Endpoint and query are joined back via searchById since labels carry no endpoint/query themselves.
+  const filteredLabels = useMemo(() => {
+    const q = filters.query.trim().toLowerCase();
+    const ep = filters.endpoint;
+    const allSignals = filters.signals.length === SIGNAL_ORDER.length;
+    return labels.filter((l) => {
+      if (!allSignals && !filters.signals.includes(l.signal)) return false;
+      if (!ep && !q) return true;
+      const s = searchById[l.search_id];
+      if (!s) return false;
+      if (ep && s.endpoint !== ep) return false;
+      if (q) {
+        const text = s.query?.text;
+        if (typeof text !== "string" || !text.toLowerCase().includes(q)) return false;
+      }
+      return true;
+    });
+  }, [labels, filters.signals, filters.endpoint, filters.query, searchById]);
 
   // Sorted, tab-applied feed view (desc by timestamp).
   const sortedLabels = useMemo(() => {
-    let ls = [...signalFiltered].sort((a, b) => b.timestamp.localeCompare(a.timestamp));
+    let ls = [...filteredLabels].sort((a, b) => b.timestamp.localeCompare(a.timestamp));
     if (feedTab === "notes-only") ls = ls.filter((l) => l.note);
     return ls;
-  }, [signalFiltered, feedTab]);
+  }, [filteredLabels, feedTab]);
 
   // Selection invalidation: snap to first row when current selection drops out.
   useEffect(() => {
@@ -65,7 +80,7 @@ export default function App() {
   }, [sortedLabels, selectedLabelId]);
 
   const selected = sortedLabels.find((l) => l.label_id === selectedLabelId) || null;
-  const stats = useMemo(() => computeStats(signalFiltered, searches), [signalFiltered, searches]);
+  const stats = useMemo(() => computeStats(filteredLabels, searches), [filteredLabels, searches]);
 
   // Track ids needed for current view: feed rows, ranked-list of selected search, and seed/pair refs.
   const neededIds = useMemo(() => {
@@ -84,8 +99,8 @@ export default function App() {
   const { trackById } = useTrackCache(neededIds);
 
   const totals = {
-    feed: signalFiltered.length,
-    "notes-only": signalFiltered.filter((l) => l.note).length,
+    feed: filteredLabels.length,
+    "notes-only": filteredLabels.filter((l) => l.note).length,
   };
 
   const siblingLabels = selected
@@ -101,7 +116,7 @@ export default function App() {
       <Header stats={stats} />
       <FilterBar filters={filters} setFilters={setFilters} versions={versions} />
       <MetricsStrip
-        labels={signalFiltered} searches={searches}
+        labels={filteredLabels} searches={searches}
         open={metricsOpen} onToggle={() => setMetricsOpen((o) => !o)}
       />
       <div style={{
@@ -117,6 +132,7 @@ export default function App() {
           trackById={trackById}
           searchById={searchById}
           now={now}
+          onQueryClick={(text) => setFilters((f) => ({ ...f, query: text }))}
         />
         <div style={{ display: "flex", flexDirection: "column", minWidth: 0, background: "#0a0a0f" }}>
           {selected ? (

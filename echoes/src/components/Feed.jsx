@@ -1,30 +1,23 @@
 import FeedRow from "./FeedRow.jsx";
 
-const MAX_ROWS = 200;
-
-export default function Feed({ items, activeTab, setActiveTab, totals, selectedId, onSelect, trackById, searchById, now }) {
+export default function Feed({ items, activeTab, setActiveTab, totals, selectedId, onSelect, trackById, searchById, now, onQueryClick }) {
   return (
     <div style={{ display: "flex", flexDirection: "column", borderRight: "1px solid rgba(255,255,255,0.08)", minWidth: 0 }}>
       <Tabs active={activeTab} onChange={setActiveTab} totals={totals} />
       <div style={{ overflowY: "auto", flex: 1 }}>
-        {items.slice(0, MAX_ROWS).map((l) => (
+        {items.map((l) => (
           <FeedRow key={l.label_id} label={l}
             active={selectedId === l.label_id}
             onClick={() => onSelect(l.label_id)}
             trackById={trackById}
             searchById={searchById}
             now={now}
+            onQueryClick={onQueryClick}
           />
         ))}
         {items.length === 0 && (
           <div style={{ padding: 32, color: "#7a7a8a", fontStyle: "italic", textAlign: "center" }}>
             No labels match the current filters.
-          </div>
-        )}
-        {items.length > MAX_ROWS && (
-          <div style={{ padding: "12px 14px", color: "#7a7a8a", fontSize: 11, textAlign: "center",
-                        borderTop: "1px solid rgba(255,255,255,0.05)" }}>
-            showing {MAX_ROWS} of {items.length}
           </div>
         )}
       </div>

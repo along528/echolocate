@@ -3,13 +3,15 @@ import { fmtRelative } from "../lib/format.js";
 import { queryToString } from "../lib/query.js";
 import Chip from "./Chip.jsx";
 
-export default function FeedRow({ label, active, onClick, trackById, searchById, now }) {
+export default function FeedRow({ label, active, onClick, trackById, searchById, now, onQueryClick }) {
   const search = searchById[label.search_id];
   const tr = trackById[label.track_id];
   const m = SIGNAL_META[label.signal] || SIGNAL_META.cleared;
   const endpointChip = search?.endpoint
     ? search.endpoint.replace(/\{id\}/, "·")
     : "—";
+  const isTextQuery = search?.query_kind === "text" && typeof search?.query?.text === "string";
+  const queryLabel = queryToString(search, trackById);
 
   return (
     <div onClick={onClick} style={{
@@ -43,7 +45,21 @@ export default function FeedRow({ label, active, onClick, trackById, searchById,
         }}>
           <span style={{ color: "#a0a0b0" }}>{tr ? tr.artist : ""}</span>
           <span> · rank {label.rank === -1 ? "?" : label.rank}</span>
-          <span> · {queryToString(search, trackById)}</span>
+          <span> · </span>
+          {isTextQuery ? (
+            <span
+              onClick={(e) => { e.stopPropagation(); onQueryClick?.(search.query.text); }}
+              title="filter feed to this query"
+              style={{
+                cursor: "pointer",
+                textDecoration: "underline",
+                textDecorationColor: "rgba(255,255,255,0.2)",
+                textUnderlineOffset: 2,
+              }}
+            >{queryLabel}</span>
+          ) : (
+            <span>{queryLabel}</span>
+          )}
         </div>
         {label.note && (
           <div style={{

@@ -31,7 +31,7 @@ export default function FilterBar({ filters, setFilters, versions = [] }) {
         <span style={LABEL_STYLE}>Range</span>
         <div style={{ display: "inline-flex", border: "1px solid rgba(255,255,255,0.08)", borderRadius: 6, overflow: "hidden" }}>
           {[
-            { v: 1, l: "24h" }, { v: 3, l: "3d" }, { v: 7, l: "7d" }, { v: 14, l: "14d" },
+            { v: 1, l: "24h" }, { v: 7, l: "7d" }, { v: 28, l: "28d" }, { v: 365, l: "365d" },
           ].map((opt) => (
             <button key={opt.v} type="button"
               onClick={() => setFilters({ ...filters, days: opt.v })}
@@ -55,6 +55,14 @@ export default function FilterBar({ filters, setFilters, versions = [] }) {
           <option value="">all</option>
           {ENDPOINTS.map((ep) => <option key={ep} value={ep}>{ep}</option>)}
         </select>
+      </div>
+
+      <div style={{ display: "flex", alignItems: "center" }}>
+        <span style={LABEL_STYLE}>Query</span>
+        <input type="text" value={filters.query}
+               onChange={(e) => setFilters({ ...filters, query: e.target.value })}
+               placeholder="text search…"
+               style={{ ...CTRL_STYLE, width: 160 }} />
       </div>
 
       <div style={{ display: "flex", alignItems: "center" }}>
