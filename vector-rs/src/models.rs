@@ -15,6 +15,11 @@ pub struct TrackResponse {
     pub album_url: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub artist_url: Option<String>,
+    /// 2D embedding-space coordinate (semantic-axis projection), normalized to [0,1].
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub x: Option<f64>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub y: Option<f64>,
 }
 
 #[derive(Debug, Serialize, Clone)]
@@ -33,6 +38,11 @@ pub struct SearchResult {
     pub album_url: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub artist_url: Option<String>,
+    /// 2D embedding-space coordinate (semantic-axis projection), normalized to [0,1].
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub x: Option<f64>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub y: Option<f64>,
 }
 
 #[derive(Debug, Deserialize)]
@@ -101,4 +111,19 @@ pub struct TextSearchQuery {
 pub struct SimilarQuery {
     pub limit: Option<i64>,
     pub source: Option<String>,
+}
+
+/// Query parameters for GET /map/backdrop
+#[derive(Debug, Deserialize)]
+pub struct MapBackdropQuery {
+    pub n: Option<i64>,
+    pub source: Option<String>,
+}
+
+/// A minimal map dot: id + 2D coordinate. Used for the dimmed backdrop field.
+#[derive(Debug, Serialize, Clone)]
+pub struct MapPoint {
+    pub id: String,
+    pub x: f64,
+    pub y: f64,
 }

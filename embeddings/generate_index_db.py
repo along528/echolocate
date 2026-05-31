@@ -35,6 +35,10 @@ COLUMNS = [
     "artist_url",
     "v_mid",
     "v_clap",
+    # 2D sonar-map coordinates (see generate_projection.py). Run that against the
+    # full DB before building the index so these columns are populated.
+    "x",
+    "y",
 ]
 
 

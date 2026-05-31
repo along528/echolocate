@@ -1,0 +1,334 @@
+/* Project styles — extends EchoLocate design system tokens.
+   Adds new component classes (chips, distance, waveform-card, map dot)
+   needed by the redesign layouts. Stays inside the existing palette. */
+
+@import url('design/colors_and_type.css');
+
+* { box-sizing: border-box; margin: 0; padding: 0; }
+
+html, body {
+  background: var(--el-bg-primary);
+  color: var(--el-fg-primary);
+  font-family: var(--el-font-sans);
+  -webkit-font-smoothing: antialiased;
+  font-feature-settings: "ss01", "cv11";
+  height: 100%;
+}
+
+button { font-family: inherit; cursor: pointer; }
+input { font-family: inherit; }
+
+/* Canvas page chrome */
+#root { min-height: 100vh; }
+
+/* =========================================================
+   ARTBOARD SHELL — every layout sits inside an .lo-shell
+   ========================================================= */
+.lo-shell {
+  width: 100%;
+  height: 100%;
+  background: var(--el-bg-primary);
+  color: var(--el-fg-primary);
+  display: flex;
+  flex-direction: column;
+  position: relative;
+  overflow: hidden;
+}
+
+/* Density modifier — applied at shell level */
+.lo-shell[data-density="compact"] {
+  --lo-track-py: 8px;
+  --lo-track-px: 12px;
+  --lo-gap: 6px;
+  --lo-section-py: 12px;
+}
+.lo-shell[data-density="cozy"] {
+  --lo-track-py: 14px;
+  --lo-track-px: 16px;
+  --lo-gap: 10px;
+  --lo-section-py: 20px;
+}
+
+/* =========================================================
+   TRACK ROW — used in every layout
+   ========================================================= */
+.lo-track {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  padding: var(--lo-track-py, 12px) var(--lo-track-px, 14px);
+  background: var(--el-glass);
+  border: 1px solid var(--el-border);
+  border-radius: var(--el-radius-lg);
+  transition: background .18s ease, border-color .18s ease;
+  cursor: pointer;
+  position: relative;
+}
+.lo-track:hover { background: var(--el-indigo-tint); border-color: rgba(99,102,241,0.3); }
+.lo-track.is-playing {
+  background: var(--el-indigo-tint-2);
+  border-color: var(--el-indigo-500);
+}
+.lo-track.is-pinned {
+  background: var(--el-bg-tertiary);
+  border-color: var(--el-indigo-500);
+}
+.lo-track.is-interp {
+  border-color: var(--el-amber-400);
+  box-shadow: 0 0 12px rgba(251,191,36,0.10);
+}
+.lo-track-num {
+  width: 22px;
+  text-align: right;
+  font-size: var(--el-fs-xs);
+  color: var(--el-fg-secondary);
+  font-variant-numeric: tabular-nums;
+}
+.lo-track-play {
+  width: 34px; height: 34px;
+  border-radius: 50%;
+  background: var(--el-bg-tertiary);
+  border: 1px solid var(--el-border);
+  color: var(--el-fg-primary);
+  display: inline-flex; align-items: center; justify-content: center;
+  transition: all .18s ease;
+  flex: 0 0 auto;
+}
+.lo-track-play:hover { background: var(--el-gradient); border-color: transparent; color: white; }
+.lo-track.is-playing .lo-track-play { background: var(--el-gradient); border-color: transparent; color: white; }
+.lo-track-info { min-width: 0; flex: 1; }
+.lo-track-title {
+  font-weight: var(--el-fw-medium);
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+  color: var(--el-fg-primary);
+}
+.lo-track.is-playing .lo-track-title { color: white; }
+.lo-track-sub {
+  color: var(--el-fg-secondary);
+  font-size: var(--el-fs-base);
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+}
+.lo-track-meta {
+  display: flex; align-items: center; gap: 10px;
+  flex: 0 0 auto;
+}
+.lo-track-vibes {
+  display: flex; gap: 4px; flex-wrap: wrap;
+  max-width: 220px;
+}
+.lo-track-actions {
+  display: flex; gap: 6px;
+  opacity: 0;
+  transition: opacity .15s ease;
+}
+.lo-track:hover .lo-track-actions,
+.lo-track.is-playing .lo-track-actions { opacity: 1; }
+.lo-act-btn {
+  width: 30px; height: 30px;
+  border-radius: var(--el-radius-md);
+  background: transparent;
+  border: 1px solid var(--el-border);
+  color: var(--el-fg-secondary);
+  font-size: 14px;
+  display: inline-flex; align-items: center; justify-content: center;
+  transition: all .15s ease;
+}
+.lo-act-btn:hover { background: var(--el-indigo-500); color: white; border-color: transparent; }
+.lo-act-btn.is-interp:hover { background: var(--el-yellow-500); color: black; }
+
+/* =========================================================
+   VIBE CHIPS
+   ========================================================= */
+.el-chip {
+  display: inline-flex; align-items: center; gap: 6px;
+  padding: 6px 12px;
+  background: var(--el-bg-tertiary);
+  border: 1px solid var(--el-border);
+  border-radius: var(--el-radius-pill);
+  color: var(--el-fg-secondary);
+  font-size: var(--el-fs-sm);
+  font-weight: var(--el-fw-medium);
+  transition: all .18s ease;
+  white-space: nowrap;
+}
+.el-chip:hover { border-color: var(--el-indigo-500); color: var(--el-fg-primary); }
+.el-chip.is-active {
+  background: var(--el-indigo-tint-2);
+  border-color: var(--el-indigo-500);
+  color: var(--el-fg-primary);
+}
+.el-chip.is-interp.is-active {
+  background: rgba(251,191,36,0.12);
+  border-color: var(--el-amber-400);
+  color: var(--el-amber-400);
+}
+.el-chip.is-sm {
+  padding: 2px 8px;
+  font-size: 0.7rem;
+  font-weight: var(--el-fw-regular);
+}
+.el-chip-remove {
+  background: none; border: none; color: inherit; opacity: 0.5;
+  font-size: 0.85rem; line-height: 1; padding: 0;
+}
+.el-chip-remove:hover { opacity: 1; }
+
+/* =========================================================
+   DISTANCE CHIP — visualizes similarity score
+   ========================================================= */
+.el-dist {
+  display: inline-flex; align-items: center; gap: 8px;
+  font-variant-numeric: tabular-nums;
+}
+.el-dist-track {
+  width: 44px; height: 4px;
+  background: rgba(255,255,255,0.08);
+  border-radius: 2px;
+  overflow: hidden;
+}
+.el-dist-fill { height: 100%; border-radius: 2px; transition: width .2s ease; }
+.el-dist-num {
+  font-size: var(--el-fs-xs);
+  color: var(--el-fg-secondary);
+  font-weight: var(--el-fw-medium);
+}
+
+/* =========================================================
+   NOW PLAYING CARD — waveform-based player
+   ========================================================= */
+.lo-now {
+  background: var(--el-bg-secondary);
+  border: 1px solid var(--el-border);
+  border-radius: var(--el-radius-xl);
+  padding: 18px;
+  display: flex; flex-direction: column; gap: 14px;
+  position: relative;
+  overflow: hidden;
+}
+.lo-now-art {
+  width: 100%;
+  aspect-ratio: 1;
+  border-radius: var(--el-radius-lg);
+  background:
+    radial-gradient(120% 80% at 30% 20%, rgba(139,92,246,0.45), transparent 60%),
+    radial-gradient(120% 80% at 80% 90%, rgba(99,102,241,0.55), transparent 65%),
+    var(--el-bg-tertiary);
+  display: flex; align-items: center; justify-content: center;
+  position: relative;
+  overflow: hidden;
+}
+.lo-now-art-mascot { width: 60%; height: auto; opacity: 0.85; }
+.lo-now-row { display: flex; align-items: baseline; justify-content: space-between; gap: 12px; }
+.lo-now-title {
+  font-size: 1.05rem; font-weight: var(--el-fw-semibold);
+  letter-spacing: var(--el-track-tight);
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+}
+.lo-now-sub {
+  font-size: var(--el-fs-base); color: var(--el-fg-secondary);
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+}
+.lo-now-times {
+  display: flex; justify-content: space-between;
+  font-size: var(--el-fs-xs); color: var(--el-fg-secondary);
+  font-variant-numeric: tabular-nums;
+}
+.lo-now-controls { display: flex; align-items: center; gap: 8px; justify-content: center; }
+.lo-now-btn {
+  width: 38px; height: 38px;
+  border-radius: 50%;
+  background: var(--el-bg-tertiary);
+  border: 1px solid var(--el-border);
+  color: var(--el-fg-primary);
+  display: inline-flex; align-items: center; justify-content: center;
+  transition: all .18s ease;
+}
+.lo-now-btn:hover { background: var(--el-indigo-500); border-color: transparent; }
+.lo-now-btn.is-play {
+  width: 48px; height: 48px;
+  background: var(--el-gradient); border-color: transparent;
+}
+.lo-now-btn.is-play:hover { transform: translateY(-1px); box-shadow: var(--el-shadow-lg); }
+
+/* =========================================================
+   SHARED BUTTONS
+   ========================================================= */
+.lo-btn-primary {
+  padding: 10px 18px;
+  background: var(--el-gradient);
+  border: none;
+  border-radius: var(--el-radius-md);
+  color: white;
+  font-weight: var(--el-fw-semibold);
+  font-size: var(--el-fs-sm);
+  transition: all .18s ease;
+}
+.lo-btn-primary:hover { transform: translateY(-1px); box-shadow: var(--el-shadow-lg); }
+.lo-btn-ghost {
+  padding: 8px 14px;
+  background: transparent;
+  border: 1px solid var(--el-border);
+  border-radius: var(--el-radius-md);
+  color: var(--el-fg-secondary);
+  font-size: var(--el-fs-sm);
+  transition: all .18s ease;
+}
+.lo-btn-ghost:hover { background: var(--el-bg-tertiary); color: var(--el-fg-primary); border-color: var(--el-border-strong); }
+.lo-btn-icon {
+  width: 36px; height: 36px;
+  border-radius: var(--el-radius-md);
+  background: var(--el-bg-tertiary);
+  border: 1px solid var(--el-border);
+  color: var(--el-fg-secondary);
+  display: inline-flex; align-items: center; justify-content: center;
+  transition: all .18s ease;
+}
+.lo-btn-icon:hover { background: var(--el-indigo-500); color: white; border-color: transparent; }
+
+/* =========================================================
+   PANEL / HEADER PRIMITIVES
+   ========================================================= */
+.lo-eyebrow {
+  font-size: var(--el-fs-xs);
+  text-transform: uppercase;
+  letter-spacing: var(--el-track-caps);
+  color: var(--el-fg-secondary);
+  font-weight: var(--el-fw-medium);
+}
+.lo-eyebrow-strong {
+  font-size: var(--el-fs-xs);
+  text-transform: uppercase;
+  letter-spacing: var(--el-track-caps-2);
+  color: var(--el-indigo-500);
+  font-weight: var(--el-fw-medium);
+}
+.lo-eyebrow-amber {
+  font-size: var(--el-fs-xs);
+  text-transform: uppercase;
+  letter-spacing: var(--el-track-caps-2);
+  color: var(--el-yellow-500);
+  font-weight: var(--el-fw-medium);
+}
+.lo-divider {
+  height: 1px;
+  background: var(--el-border);
+  width: 100%;
+}
+
+/* Scrollbars */
+.lo-scroll { overflow-y: auto; }
+.lo-scroll::-webkit-scrollbar { width: 6px; }
+.lo-scroll::-webkit-scrollbar-thumb { background: var(--el-bg-tertiary); border-radius: 3px; }
+.lo-scroll::-webkit-scrollbar-track { background: transparent; }
+
+/* =========================================================
+   ARTBOARD CONTAINER — design-canvas Frame chrome harmonization
+   ========================================================= */
+.lo-artboard-tag {
+  display: inline-flex; align-items: center; gap: 6px;
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: 1px;
+  color: var(--el-fg-secondary);
+  font-weight: var(--el-fw-medium);
+}

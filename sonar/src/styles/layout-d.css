@@ -1,0 +1,179 @@
+/* Layout D — Sonar Map + List (combined) */
+
+.ld-shell {
+  --ld-rail-w: 280px;
+  --ld-now-w: 300px;
+  background: var(--el-bg-primary);
+}
+
+/* ===== TOP BAR ===== */
+.ld-top {
+  display: flex; align-items: center; gap: 16px;
+  padding: 14px 24px;
+  background: var(--el-bg-secondary);
+  border-bottom: 1px solid var(--el-border);
+  position: relative;
+  z-index: 4;
+}
+
+/* Vibe tagger */
+.ld-tagger {
+  flex: 1;
+  display: flex; align-items: center; gap: 6px; flex-wrap: wrap;
+  padding: 6px 8px 6px 14px;
+  background: var(--el-bg-input);
+  border: 1px solid var(--el-border);
+  border-radius: var(--el-radius-lg);
+  min-height: 44px;
+  max-width: 720px;
+  margin: 0 auto;
+  transition: border-color .18s ease;
+}
+.ld-tagger:focus-within { border-color: var(--el-indigo-500); }
+.ld-tag { padding-right: 4px; }
+.ld-tagger-input {
+  flex: 1; min-width: 160px;
+  background: transparent;
+  border: none;
+  color: var(--el-fg-primary);
+  font-size: var(--el-fs-md);
+  height: 30px;
+  padding: 0 4px;
+}
+.ld-tagger-input:focus { outline: none; }
+.ld-tagger-input::placeholder { color: var(--el-fg-secondary); }
+.ld-tagger-dice {
+  background: transparent;
+  border: 1px solid var(--el-border);
+  border-radius: var(--el-radius-md);
+  color: var(--el-fg-secondary);
+  height: 30px; width: 32px;
+  font-size: 1rem;
+  transition: all .18s ease;
+}
+.ld-tagger-dice:hover {
+  background: var(--el-indigo-tint); border-color: var(--el-indigo-500);
+  color: var(--el-fg-primary); transform: rotate(15deg);
+}
+
+/* View toggle (segmented) */
+.ld-view-toggle {
+  display: inline-flex;
+  background: var(--el-bg-tertiary);
+  border: 1px solid var(--el-border);
+  border-radius: var(--el-radius-md);
+  padding: 3px;
+  gap: 2px;
+}
+.ld-view-btn {
+  display: inline-flex; align-items: center; gap: 6px;
+  padding: 6px 12px;
+  background: transparent;
+  border: none;
+  color: var(--el-fg-secondary);
+  font-size: var(--el-fs-sm);
+  font-weight: var(--el-fw-medium);
+  border-radius: 6px;
+  transition: all .18s ease;
+}
+.ld-view-btn:hover { color: var(--el-fg-primary); }
+.ld-view-btn.is-active {
+  background: var(--el-bg-secondary);
+  color: var(--el-fg-primary);
+  box-shadow: 0 1px 0 var(--el-border-strong);
+}
+
+/* Suggestion strip below top bar */
+.ld-suggest-strip {
+  display: flex; align-items: center; gap: 14px;
+  padding: 10px 24px;
+  background: var(--el-bg-secondary);
+  border-bottom: 1px solid var(--el-border);
+  overflow: hidden;
+}
+.ld-suggest-list {
+  flex: 1;
+  display: flex; gap: 6px; flex-wrap: wrap;
+  align-items: center;
+}
+
+/* ===== MAIN ===== */
+.ld-main {
+  flex: 1;
+  display: grid;
+  grid-template-columns: var(--ld-rail-w) 1fr var(--ld-now-w);
+  min-height: 0;
+}
+
+/* Left rail — reuses la- styles but lives here */
+.ld-rail {
+  border-right: 1px solid var(--el-border);
+  padding: 20px 18px;
+  display: flex; flex-direction: column; gap: 12px;
+  background: linear-gradient(180deg, var(--el-bg-secondary), var(--el-bg-primary) 220px);
+  min-height: 0;
+}
+.ld-trail-summary {
+  padding: 10px 12px;
+  background: var(--el-bg-tertiary);
+  border-radius: var(--el-radius-md);
+  border-left: 3px solid var(--el-yellow-500);
+}
+
+/* Center */
+.ld-center {
+  display: flex; flex-direction: column;
+  padding: 18px 24px;
+  min-height: 0;
+  gap: 14px;
+}
+.ld-center-head {
+  display: flex; align-items: flex-end; justify-content: space-between; gap: 12px;
+}
+.ld-center-head h2 em { font-style: normal; color: var(--el-purple-400); }
+
+/* MAP wrap */
+.ld-map-wrap {
+  flex: 1;
+  position: relative;
+  display: flex; align-items: center; justify-content: center;
+  background:
+    radial-gradient(60% 60% at 50% 50%, rgba(99,102,241,0.05), transparent 70%),
+    var(--el-bg-secondary);
+  border: 1px solid var(--el-border);
+  border-radius: var(--el-radius-xl);
+  overflow: hidden;
+  min-height: 0;
+}
+
+/* LIST view */
+.ld-list {
+  flex: 1;
+  display: flex; flex-direction: column;
+  gap: var(--lo-gap, 8px);
+  min-height: 0;
+  padding-right: 4px;
+}
+.ld-track {
+  align-items: center;
+}
+.ld-dot-inline {
+  width: 10px; height: 10px; border-radius: 50%;
+  flex: 0 0 auto;
+}
+.ld-dur {
+  color: var(--el-fg-secondary);
+  font-size: var(--el-fs-xs);
+  font-variant-numeric: tabular-nums;
+  width: 36px;
+  text-align: right;
+}
+
+/* Right rail — re-uses .la- styles */
+.ld-now-rail {
+  border-left: 1px solid var(--el-border);
+  padding: 20px 18px;
+  display: flex; flex-direction: column; gap: 16px;
+  background: linear-gradient(180deg, var(--el-bg-secondary), var(--el-bg-primary) 220px);
+  min-height: 0;
+}

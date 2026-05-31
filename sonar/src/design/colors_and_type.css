@@ -1,0 +1,176 @@
+/* =============================================================
+   EchoLocate — Colors & Type tokens
+   Source of truth distilled from frontend/style.css :root vars +
+   usage observed across the app.
+   ============================================================= */
+
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap');
+
+:root {
+  /* ---------- Surfaces (dark, near-black, slight blue cast) ---- */
+  --el-bg-primary:    #0a0a0f;   /* page background, deepest */
+  --el-bg-secondary:  #12121a;   /* cards, header, player bar  */
+  --el-bg-tertiary:   #1a1a25;   /* inputs, buttons, chips     */
+  --el-bg-input:      #000000;   /* main search input (darker) */
+
+  /* ---------- Foreground ------------------------------------- */
+  --el-fg-primary:    #f0f0f5;   /* body / titles              */
+  --el-fg-secondary:  #a0a0b0;   /* labels, captions, muted    */
+  --el-fg-on-accent:  #ffffff;   /* text on indigo/purple/yellow */
+
+  /* ---------- Brand: Indigo → Purple ------------------------- */
+  --el-indigo-500:    #6366f1;   /* accent-primary             */
+  --el-indigo-600:    #4f46e5;   /* deep indigo, used in logo  */
+  --el-purple-400:    #a78bfa;   /* enhanced query label       */
+  --el-purple-500:    #8b5cf6;   /* accent-secondary           */
+  --el-purple-300:    #b794f4;   /* steering border accent     */
+  --el-gradient:      linear-gradient(135deg, #6366f1, #8b5cf6);
+
+  /* ---------- Echo: Yellow / Gold (interpolation, sonar) ----- */
+  --el-yellow-400:    #facc15;   /* interp hover               */
+  --el-yellow-500:    #eab308;   /* accent-interp, echo waves  */
+  --el-yellow-600:    #ca9a06;   /* deeper headphone tone      */
+  --el-amber-400:     #fbbf24;   /* interp glow                */
+  --el-amber-500:     #f59e0b;   /* interp pressed             */
+
+  /* ---------- Semantic feedback ------------------------------ */
+  --el-success:       #2e8b57;   /* "relevant" label           */
+  --el-warning:       #c79a2c;   /* "borderline" label         */
+  --el-danger:        #b04545;   /* "wrong" label              */
+  --el-destructive:   #ef4444;   /* clear / remove on hover    */
+
+  /* ---------- Lines, glass, shadow --------------------------- */
+  --el-border:        rgba(255, 255, 255, 0.08);
+  --el-border-strong: rgba(255, 255, 255, 0.20);
+  --el-glass:         rgba(255, 255, 255, 0.03);  /* track-item fill */
+  --el-indigo-tint:   rgba(99, 102, 241, 0.10);   /* hover tint      */
+  --el-indigo-tint-2: rgba(99, 102, 241, 0.15);   /* playing tint    */
+  --el-amber-glow:    rgba(251, 191, 36, 0.50);   /* interp glow     */
+  --el-overlay:       rgba(0, 0, 0, 0.70);        /* modal scrim     */
+
+  --el-shadow-sm:     0 4px 12px rgba(0, 0, 0, 0.30);
+  --el-shadow-md:     0 4px 30px rgba(0, 0, 0, 0.30);
+  --el-shadow-lg:     0 8px 25px rgba(99, 102, 241, 0.30); /* primary btn hover */
+
+  /* ---------- Radii ------------------------------------------ */
+  --el-radius-xs:  4px;   /* nav buttons              */
+  --el-radius-sm:  6px;   /* drag ghost, small chips  */
+  --el-radius-md:  8px;   /* secondary buttons, tabs  */
+  --el-radius-lg:  12px;  /* track items, primary btn */
+  --el-radius-xl:  16px;  /* panels, modal            */
+  --el-radius-pill: 999px;
+
+  /* ---------- Spacing scale (½rem base) ---------------------- */
+  --el-space-1: 0.25rem;
+  --el-space-2: 0.5rem;
+  --el-space-3: 0.75rem;
+  --el-space-4: 1rem;
+  --el-space-5: 1.5rem;
+  --el-space-6: 2rem;
+
+  /* ---------- Type ------------------------------------------- */
+  --el-font-sans: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+  --el-font-mono: ui-monospace, 'SF Mono', Menlo, monospace;
+
+  --el-fs-xs:    0.75rem;   /* 12px — labels, footer chips, times */
+  --el-fs-sm:    0.85rem;   /* 13.6px — tab labels, captions      */
+  --el-fs-base:  0.9rem;    /* 14.4px — secondary body            */
+  --el-fs-md:    1rem;      /* 16px — body, search input          */
+  --el-fs-lg:    1.25rem;   /* 20px — section heading             */
+  --el-fs-xl:    1.5rem;    /* 24px — modal title                 */
+  --el-fs-2xl:   2rem;      /* 32px — logo wordmark               */
+
+  --el-fw-light:    300;
+  --el-fw-regular:  400;
+  --el-fw-medium:   500;
+  --el-fw-semibold: 600;
+  --el-fw-bold:     700;
+
+  --el-track-tight:  -0.01em;
+  --el-track-caps:   0.5px;     /* slot labels */
+  --el-track-caps-2: 1px;       /* "PINNED" pill */
+  --el-leading-body: 1.55;
+}
+
+/* =============================================================
+   Semantic helpers — apply directly to elements
+   ============================================================= */
+
+body, .el-body {
+  font-family: var(--el-font-sans);
+  font-size: var(--el-fs-md);
+  color: var(--el-fg-primary);
+  background: var(--el-bg-primary);
+  font-weight: var(--el-fw-regular);
+  line-height: var(--el-leading-body);
+  font-feature-settings: "ss01", "cv11"; /* Inter alts */
+}
+
+.el-h1 {
+  font-size: var(--el-fs-2xl);
+  font-weight: var(--el-fw-bold);
+  letter-spacing: var(--el-track-tight);
+  background: var(--el-gradient);
+  -webkit-background-clip: text;
+  background-clip: text;
+  -webkit-text-fill-color: transparent;
+}
+
+.el-h2 {
+  font-size: var(--el-fs-xl);
+  font-weight: var(--el-fw-bold);
+  color: var(--el-fg-primary);
+  letter-spacing: var(--el-track-tight);
+}
+
+.el-h3 {
+  font-size: var(--el-fs-md);
+  font-weight: var(--el-fw-semibold);
+  color: var(--el-fg-secondary);
+  text-transform: none;
+}
+
+.el-tagline {
+  font-size: var(--el-fs-md);
+  font-weight: var(--el-fw-light);
+  color: var(--el-fg-secondary);
+}
+
+.el-label-caps {
+  font-size: var(--el-fs-xs);
+  text-transform: uppercase;
+  letter-spacing: var(--el-track-caps);
+  color: var(--el-fg-secondary);
+  font-weight: var(--el-fw-medium);
+}
+
+.el-label-caps-strong {
+  font-size: var(--el-fs-xs);
+  text-transform: uppercase;
+  letter-spacing: var(--el-track-caps-2);
+  color: var(--el-indigo-500);
+  font-weight: var(--el-fw-medium);
+}
+
+.el-body-muted {
+  color: var(--el-fg-secondary);
+  font-size: var(--el-fs-base);
+  line-height: 1.6;
+}
+
+.el-caption {
+  font-size: var(--el-fs-sm);
+  color: var(--el-fg-secondary);
+}
+
+.el-mono-tab {
+  font-variant-numeric: tabular-nums;
+  font-family: var(--el-font-mono);
+}
+
+.el-italic-muted {
+  font-style: italic;
+  color: var(--el-fg-secondary);
+  font-size: var(--el-fs-xs);
+  opacity: 0.7;
+}

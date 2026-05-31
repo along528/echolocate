@@ -30,7 +30,12 @@ The project consists of these services:
    - No GCS FUSE mount needed — audio streaming uses the GCS client API directly
    - Entry point: `vector-rs/src/main.rs`
 
-4. **`embeddings/`** - Audio embedding pipeline (local processing)
+4. **`sonar/`** - Sonar-map frontend (React + Vite) — Layout D redesign
+   - "Sonar map + list" UI: 2D embedding-space scatter (from track `x,y`) with Map⇄List toggle, vibe tagger, trail/playlist builder, now-playing card
+   - Talks to the vector service via `VITE_VECTOR_API_URL`; deployed as its own Cloud Run service (`cloud-crate-sonar`) at `sonar.echolocate.app` (domain mapping, like `echoes/`), separate from `frontend/`
+   - Map dot positions come from the `/map/backdrop` sample + per-result `x,y`; see `sonar/TODO.md` for deferred items
+
+5. **`embeddings/`** - Audio embedding pipeline (local processing)
    - MERT model (`m-a-p/MERT-v1-95M`) for 768-dim audio embeddings
    - CLAP model for 512-dim text-matchable embeddings
    - Segments audio into intro/mid/outro (5s each)
@@ -49,7 +54,8 @@ source .venv/bin/activate
 cd mcp && ./deploy.sh              # Deploy EchoLocate MCP server only
 cd vector && ./deploy.sh           # Deploy vector service (Python) only
 cd vector-rs && ./deploy.sh        # Deploy vector service (Rust) only — requires data/index.duckdb
-cd frontend && ./deploy.sh         # Deploy frontend only
+cd frontend && ./deploy.sh         # Deploy legacy frontend only
+cd sonar && ./deploy.sh            # Deploy sonar frontend (Layout D, React) only — separate Cloud Run service
 ```
 
 ### Embedding Generation
@@ -58,6 +64,9 @@ cd embeddings
 python generate_embeddings.py <directory_or_filelist> [limit]
 python generate_clap.py        # Generate CLAP embeddings
 python generate_db.py          # Build full DuckDB from JSONL files
+python generate_projection.py  # Compute 2D sonar-map x,y columns; run before generate_index_db.py
+                               #   --method clap-axes (default, interpretable) | pca | umap
+                               #   --vector clap|mid  --normalize rank|minmax
 python generate_index_db.py    # Build stripped index DB from full DB (for baked-index deployment)
 ```
 
@@ -71,6 +80,9 @@ cd vector-rs && INDEX_DB_PATH=../data/index.duckdb cargo run
 
 # Vector Service — Python legacy (port 8000)
 cd vector && uvicorn main:app --reload
+
+# Sonar frontend — Layout D, React + Vite (port 5180)
+cd sonar && VITE_VECTOR_API_URL=<vector-url> npm run dev
 ```
 
 ### Verification
@@ -86,6 +98,7 @@ The `tracks` table has columns:
 - `id`: MD5 hash of artist|album|title
 - `v_intro`, `v_mid`, `v_outro`: FLOAT[768] (MERT embeddings)
 - `v_clap`: FLOAT[512] (CLAP embeddings for semantic search)
+- `x`, `y`: DOUBLE (2D sonar-map coordinates from `generate_projection.py`, normalized [0,1]; NULL until that step runs)
 - HNSW indexes on `v_mid` (cosine) and `v_clap` (cosine) per source table
 
 ### Interpolation Methods

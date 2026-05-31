@@ -2,6 +2,7 @@ pub mod health;
 pub mod interpolate;
 pub mod labels;
 pub mod labels_read;
+pub mod map;
 pub mod playlist;
 pub mod search;
 pub mod semantic;
