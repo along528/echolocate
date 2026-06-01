@@ -65,8 +65,10 @@ python generate_embeddings.py <directory_or_filelist> [limit]
 python generate_clap.py        # Generate CLAP embeddings
 python generate_db.py          # Build full DuckDB from JSONL files
 python generate_projection.py  # Compute 2D sonar-map x,y columns; run before generate_index_db.py
-                               #   --method clap-axes (default, interpretable) | pca | umap
+                               #   --method clap-axes (interpretable) | pca | umap
                                #   --vector clap|mid  --normalize rank|minmax
+                               #   sonar ships: --method pca --vector mid (projects the MERT v_mid
+                               #   embedding used for interpolation; axes are not interpretable)
 python generate_index_db.py    # Build stripped index DB from full DB (for baked-index deployment)
 ```
 

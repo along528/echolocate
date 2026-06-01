@@ -49,6 +49,12 @@ export const API = {
     return request('POST', '/interpolate/playlist', body);
   },
 
+  // Candidate tracks "between" two tracks (midpoint k-NN). Returns SearchResult[]
+  // with x,y backfilled. Used to fill the line between two trail tracks.
+  interpolate(trackId1, trackId2, method = 'slerp', limit = 8) {
+    return request('POST', '/interpolate', { track_id_1: trackId1, track_id_2: trackId2, method, limit });
+  },
+
   // Sampled backdrop of {id, x, y} for the dimmed sonar field.
   mapBackdrop(source = 'fma', n = 400) {
     return request('GET', '/map/backdrop', null, { source, n });
