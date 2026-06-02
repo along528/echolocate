@@ -40,6 +40,17 @@ The handoff suggests consolidating the A/C class families into the component's o
 - Sort control in the center header (mockup shows "distance ↓") is not yet wired.
 - Mobile/responsive layout not yet adapted.
 
+## Click-to-probe: nearest across the whole corpus
+Today the ✕ probe (click empty map space) selects the nearest track **already
+loaded in the UI** — visible search-layer results, interpolation candidates, and
+playlist tracks (`nearestTrack` in `Sonar.jsx`). It does not discover new tracks
+at the clicked location.
+- **Future:** support finding the true nearest track at any x,y. Either
+  (a) client-side via a large `/map/backdrop` sample + `/tracks/by-ids` lookup
+  (approximate; nearest within the sampled field, and would add a dimmed backdrop
+  layer), or (b) a new `/map/nearest?x=&y=` endpoint in vector-rs for the exact
+  globally-nearest track (Rust change + redeploy).
+
 ## Done (sonar feedback pass)
 The following review suggestions are now implemented:
 - Suggestions strip is always visible; layers have solo / hide (eye) / show-all /
