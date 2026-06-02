@@ -38,6 +38,8 @@ impl TrackRow {
             track_url: self.track_url.clone(),
             album_url: self.album_url.clone(),
             artist_url: self.artist_url.clone(),
+            x: None,
+            y: None,
         }
     }
 }
@@ -155,6 +157,10 @@ pub async fn interpolate_playlist(
         let mut full_playlist = vec![start_obj];
         full_playlist.extend(path);
         full_playlist.push(end_obj);
+
+        // Backfill 2D map coordinates for every track in the playlist (the trail
+        // polyline plots each node), in a single lookup.
+        crate::handlers::map::backfill_coords(&conn, &mut full_playlist)?;
 
         tracing::info!("interpolate_playlist completed in {:.2?} (hnsw={})", query_start.elapsed(), use_hnsw);
         pool.put(conn);

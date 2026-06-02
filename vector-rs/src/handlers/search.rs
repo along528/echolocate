@@ -57,7 +57,7 @@ pub async fn search_tracks_text(
         let where_clause = conditions.join(" AND ");
 
         let sql_with_limit = format!(
-            "SELECT id, source, title, artist, album, relative_path, track_url, album_url, artist_url \
+            "SELECT id, source, title, artist, album, relative_path, track_url, album_url, artist_url, x, y \
              FROM tracks WHERE {} LIMIT {}",
             where_clause, limit
         );
@@ -79,6 +79,8 @@ pub async fn search_tracks_text(
                 track_url: row.get(6)?,
                 album_url: row.get(7)?,
                 artist_url: row.get(8)?,
+                x: row.get(9)?,
+                y: row.get(10)?,
             });
         }
 
@@ -120,7 +122,7 @@ pub async fn vector_search(
                 let dist = dist_expr("v_mid", &vec_literal, use_hnsw);
                 let q = format!(
                     "SELECT id, title, artist, album, relative_path, track_url, album_url, artist_url, \
-                            {dist} as distance \
+                            {dist} as distance, x, y \
                      FROM {table} \
                      ORDER BY distance ASC \
                      LIMIT {limit}",
@@ -141,6 +143,8 @@ pub async fn vector_search(
                         album_url: row.get(6)?,
                         artist_url: row.get(7)?,
                         similarity: 1.0 - dist,
+                        x: row.get(9)?,
+                        y: row.get(10)?,
                     });
                 }
             }
@@ -153,7 +157,7 @@ pub async fn vector_search(
             let dist = dist_expr("v_mid", &vec_literal, use_hnsw);
             let q = format!(
                 "SELECT id, title, artist, album, relative_path, track_url, album_url, artist_url, \
-                        {dist} as distance \
+                        {dist} as distance, x, y \
                  FROM {table} \
                  ORDER BY distance ASC \
                  LIMIT {limit}",
@@ -175,6 +179,8 @@ pub async fn vector_search(
                     album_url: row.get(6)?,
                     artist_url: row.get(7)?,
                     similarity: 1.0 - dist,
+                    x: row.get(9)?,
+                    y: row.get(10)?,
                 });
             }
             res

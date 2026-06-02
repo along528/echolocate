@@ -56,6 +56,8 @@ pub fn recursive_interpolation(
                 album_url: row.get(8)?,
                 artist_url: row.get(9)?,
                 similarity: 1.0 - dist,
+                x: None,
+                y: None,
             };
 
             exclude_ids.insert(id);

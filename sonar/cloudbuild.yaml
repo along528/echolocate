@@ -1,0 +1,16 @@
+steps:
+  - name: gcr.io/cloud-builders/docker
+    args:
+      - build
+      - --build-arg
+      - VITE_VECTOR_API_URL=${_VITE_VECTOR_API_URL}
+      - -t
+      - ${_IMAGE}
+      - .
+  - name: gcr.io/cloud-builders/docker
+    args: ["push", "${_IMAGE}"]
+substitutions:
+  _IMAGE: ""
+  _VITE_VECTOR_API_URL: ""
+images:
+  - ${_IMAGE}

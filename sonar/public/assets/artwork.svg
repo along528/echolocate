@@ -1,0 +1,56 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" fill="none">
+  <defs>
+    <linearGradient id="batGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#6366f1"></stop>
+      <stop offset="100%" stop-color="#8b5cf6"></stop>
+    </linearGradient>
+  </defs>
+
+  
+  <rect width="512" height="512" fill="#0a0a0f" rx="32"></rect>
+
+  
+  <g transform="translate(256, 210) scale(5.5)">
+    
+    <ellipse cx="0" cy="0" rx="20" ry="18" fill="url(#batGrad)"></ellipse>
+
+    
+    <path d="M -21 -4 C -22 -14 -16 -22 0 -22 C 16 -22 22 -14 21 -4" stroke="#eab308" stroke-width="4.5" stroke-linecap="round" fill="none"></path>
+    <ellipse cx="-22" cy="-1" rx="6" ry="7" fill="#eab308"></ellipse>
+    <ellipse cx="-22" cy="-1" rx="4.5" ry="5.5" fill="#ca9a06"></ellipse>
+    <ellipse cx="-22" cy="-1" rx="3" ry="3.5" fill="#0a0a0f" opacity="0.3"></ellipse>
+    <ellipse cx="22" cy="-1" rx="6" ry="7" fill="#eab308"></ellipse>
+    <ellipse cx="22" cy="-1" rx="4.5" ry="5.5" fill="#ca9a06"></ellipse>
+    <ellipse cx="22" cy="-1" rx="3" ry="3.5" fill="#0a0a0f" opacity="0.3"></ellipse>
+
+    
+    <path d="M -12 -12 L -18 -30 L -6 -16 Z" fill="url(#batGrad)"></path>
+    <path d="M 12 -12 L 18 -30 L 6 -16 Z" fill="url(#batGrad)"></path>
+    <path d="M -11 -14 L -15 -26 L -7 -16 Z" fill="#4f46e5" opacity="0.4"></path>
+    <path d="M 11 -14 L 15 -26 L 7 -16 Z" fill="#4f46e5" opacity="0.4"></path>
+
+    
+    <circle cx="-2" cy="6" r="1.2" fill="#0a0a0f"></circle>
+    <circle cx="2" cy="6" r="1.2" fill="#0a0a0f"></circle>
+
+    
+    <ellipse cx="-8" cy="-2" rx="4" ry="4.5" fill="#0a0a0f"></ellipse>
+    <ellipse cx="8" cy="-2" rx="4" ry="4.5" fill="#0a0a0f"></ellipse>
+    <circle cx="-7" cy="-1" r="2" fill="#6366f1" opacity="0.6"></circle>
+    <circle cx="9" cy="-1" r="2" fill="#6366f1" opacity="0.6"></circle>
+    <circle cx="-6" cy="-3" r="1" fill="rgba(255,255,255,0.5)"></circle>
+    <circle cx="10" cy="-3" r="1" fill="rgba(255,255,255,0.5)"></circle>
+
+    
+    <path d="M -5 10 Q 0 14 5 10" stroke="#0a0a0f" stroke-width="1.2" fill="none"></path>
+
+    
+    <path d="M -4 10 L -3.5 16 L -2.5 10.5" fill="#f0f0f5" opacity="0.9"></path>
+    <path d="M 4 10 L 3.5 16 L 2.5 10.5" fill="#f0f0f5" opacity="0.9"></path>
+  </g>
+
+  
+  <path d="M 170 370 A 120 55 0 0 0 342 370" stroke="#eab308" stroke-width="8" stroke-linecap="round" fill="none" opacity="0.6"></path>
+  <path d="M 130 410 A 170 70 0 0 0 382 410" stroke="#eab308" stroke-width="8" stroke-linecap="round" fill="none" opacity="0.4"></path>
+  <path d="M 90 450 A 220 85 0 0 0 422 450" stroke="#eab308" stroke-width="6" stroke-linecap="round" fill="none" opacity="0.22"></path>
+</svg>

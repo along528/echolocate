@@ -52,7 +52,11 @@ def initialize_db():
             v_intro FLOAT[768],
             v_mid FLOAT[768],
             v_outro FLOAT[768],
-            v_clap FLOAT[512]
+            v_clap FLOAT[512],
+            -- 2D sonar-map coordinates, populated by generate_projection.py
+            -- (NULL until that step runs).
+            x DOUBLE,
+            y DOUBLE
         );
     """
 

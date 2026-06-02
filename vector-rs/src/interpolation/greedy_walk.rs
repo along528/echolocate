@@ -93,6 +93,8 @@ pub fn greedy_walk_interpolation(
                 album_url: row.get(7)?,
                 artist_url: row.get(8)?,
                 similarity: sim_to_target,
+                x: None,
+                y: None,
             };
 
             best_next = Some((result, v_mid, sim_to_target));

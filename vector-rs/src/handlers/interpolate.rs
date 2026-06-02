@@ -78,11 +78,16 @@ pub async fn interpolate_tracks(
                 album_url: row.get(7)?,
                 artist_url: row.get(8)?,
                 similarity: 1.0 - dist,
+                x: None,
+                y: None,
             });
         }
 
         drop(rows);
         drop(stmt);
+
+        crate::handlers::map::backfill_coords(&conn, &mut results)?;
+
         pool.put(conn);
         Ok(Json(results))
     })
