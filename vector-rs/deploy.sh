@@ -13,11 +13,55 @@ echo "Deploying $SERVICE_NAME..."
 
 # Capture version metadata before changing directories
 GIT_SHA=$(git rev-parse --short HEAD 2>/dev/null || echo "unknown")
-if [ -f data/index.duckdb ]; then
-    INDEX_VERSION=$(stat -f %Sm -t %Y%m%d data/index.duckdb 2>/dev/null || stat -c %Y data/index.duckdb 2>/dev/null || echo "unknown")
-else
-    INDEX_VERSION="unknown"
+
+# --- Prerequisite: the baked index MUST exist and carry the x,y map columns ---
+# vector-rs now selects x,y on EVERY track query (not just /map/backdrop), so an
+# index baked without those columns makes ALL queries error at runtime. Fail loudly
+# here rather than shipping a broken image. Regenerate the index with:
+#   cd embeddings && python generate_projection.py && python generate_index_db.py
+INDEX_DB="data/index.duckdb"
+if [ ! -f "$INDEX_DB" ]; then
+    echo "❌ $INDEX_DB not found — it gets baked into the image (INDEX_DB_PATH=/app/index.duckdb)." >&2
+    echo "   Build it: cd embeddings && python generate_projection.py && python generate_index_db.py" >&2
+    exit 1
 fi
+
+PYTHON=$(command -v python3 || command -v python || true)
+if [ -n "$PYTHON" ]; then
+    echo "Verifying $INDEX_DB has x,y map columns..."
+    "$PYTHON" - "$INDEX_DB" <<'PYEOF'
+import sys
+try:
+    import duckdb
+except ImportError:
+    print("⚠️  duckdb not importable; skipping x,y column verification. "
+          "Activate .venv to enable this check.", file=sys.stderr)
+    sys.exit(0)
+
+db_path = sys.argv[1]
+con = duckdb.connect(db_path, read_only=True)
+tables = [r[0] for r in con.execute(
+    "SELECT table_name FROM information_schema.tables WHERE table_name LIKE 'tracks%'"
+).fetchall()]
+if not tables:
+    sys.exit(f"❌ {db_path} has no tracks tables.")
+missing = []
+for t in tables:
+    cols = {r[0] for r in con.execute(f"PRAGMA table_info('{t}')").fetchall()}
+    missing += [f"{t}.{c}" for c in ("x", "y") if c not in cols]
+if missing:
+    sys.exit(
+        f"❌ {db_path} is missing map columns: {', '.join(missing)}.\n"
+        "   The projection + index rebuild MUST run before deploy:\n"
+        "   cd embeddings && python generate_projection.py && python generate_index_db.py"
+    )
+print(f"✓ x,y present on: {', '.join(tables)}")
+PYEOF
+else
+    echo "⚠️  No python interpreter found; skipping x,y column verification." >&2
+fi
+
+INDEX_VERSION=$(stat -f %Sm -t %Y%m%d "$INDEX_DB" 2>/dev/null || stat -c %Y "$INDEX_DB" 2>/dev/null || echo "unknown")
 MODEL_VERSION="mert-v1-95m+clap-htsat"
 
 # Build from repo root so Docker context includes both vector/ and vector-rs/

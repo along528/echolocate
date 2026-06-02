@@ -3,17 +3,19 @@ Compute 2D "sonar map" coordinates for every track and write them as x,y columns
 
 Three projection methods are available (``--method``):
 
-  clap-axes  (default)  Semantic, interpretable axes. Each axis is a CLAP
+  pca        (default)  First 2 principal components of the chosen embedding. Axes
+                        are the directions of maximum variance (not interpretable),
+                        but capture the dominant structure. Min-max normalized.
+                        This is what we ship: PCA on the MERT `v_mid` vector.
+
+  clap-axes             Semantic, interpretable axes. Each axis is a CLAP
                         text-anchored direction (the normalized difference between
                         mean "positive-pole" and "negative-pole" prompt embeddings);
                         each track's v_clap is projected onto the two axes. The axes
                         mean exactly what the frontend labels say
                         (X: acoustic->synthetic, Y: dark->bright), and coordinates
                         are query-stable. Percentile-rank normalized for even spread.
-
-  pca                   First 2 principal components of the chosen embedding. Axes
-                        are the directions of maximum variance (not interpretable),
-                        but capture the dominant structure. Min-max normalized.
+                        Requires --vector clap.
 
   umap                  UMAP 2D embedding (requires `umap-learn`). Preserves local
                         neighborhoods -> visually tighter clusters, arbitrary axes.
@@ -23,9 +25,12 @@ All three write the SAME x,y columns and the same downstream contract, so the
 method is a drop-in choice with no frontend/API changes.
 
 Usage:
-    python generate_projection.py [--method clap-axes|pca|umap]
-                                  [--vector clap|mid] [--normalize rank|minmax]
+    python generate_projection.py [--method pca|clap-axes|umap]
+                                  [--vector mid|clap] [--normalize rank|minmax]
                                   [--db PATH] [--anchors-out PATH]
+
+    # Shipping config (defaults): PCA on the MERT v_mid vector
+    python generate_projection.py
 
 Run against the full DB (../data/cloudcrate.duckdb) BEFORE generate_index_db.py
 so the stripped index inherits the x,y columns.
@@ -249,9 +254,9 @@ def generate_projection(db_path, method, vector, normalize, anchors_out):
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Compute 2D sonar-map coordinates")
-    parser.add_argument("--method", choices=["clap-axes", "pca", "umap"], default="clap-axes")
-    parser.add_argument("--vector", choices=["clap", "mid"], default="clap",
-                        help="Which embedding to project (clap=512 semantic, mid=768 MERT sonic)")
+    parser.add_argument("--method", choices=["clap-axes", "pca", "umap"], default="pca")
+    parser.add_argument("--vector", choices=["clap", "mid"], default="mid",
+                        help="Which embedding to project (mid=768 MERT sonic, clap=512 semantic)")
     parser.add_argument("--normalize", choices=["rank", "minmax"], default=None,
                         help="Defaults: rank for clap-axes, minmax for pca/umap")
     parser.add_argument("--db", default=DEFAULT_DB)

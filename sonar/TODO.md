@@ -24,10 +24,13 @@ real `<audio>` element instead.
 - **Future:** precompute peaks (or analyze in-browser) and feed real amplitude data.
 
 ## Projection method
-Coordinates currently come from the **CLAP semantic-axis** projection
-(`embeddings/generate_projection.py`). Axes are interpretable and query-stable.
-- **Future / alternative:** evaluate a UMAP/PCA layout. It writes the same `x,y` columns
-  and the same API contract, so it's a pipeline-only swap — no frontend/API changes.
+Coordinates currently come from a **PCA layout on the MERT `v_mid` vector**
+(`embeddings/generate_projection.py` defaults: `--method pca --vector mid`). Axes are
+the directions of maximum variance (not interpretable, but capture the dominant
+sonic structure).
+- **Future / alternative:** evaluate the `clap-axes` (interpretable semantic axes) or
+  `umap` layouts. They write the same `x,y` columns and the same API contract, so it's a
+  pipeline-only swap — no frontend/API changes.
 
 ## CSS consolidation
 The prototype CSS is carried verbatim (`style.css` + `styles/layout-{a,c,d}.css`).
