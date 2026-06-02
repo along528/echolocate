@@ -11,6 +11,9 @@
  */
 import { initializeApp, getApps } from 'firebase/app';
 import { getFirestore, doc, getDoc } from 'firebase/firestore';
+// Single source of truth for the chip vocabulary, shared with
+// sonar/populate_cache.py so the warmed cache keys line up.
+import SUGGESTED_CHIPS from './suggested_chips.json';
 
 const FIREBASE_CONFIG = { projectId: 'cloud-crate-485418' };
 const SEARCH_COLLECTION = 'semantic_search_cache';
@@ -18,13 +21,7 @@ const CONFIG_COLLECTION = 'sonar_config';
 const SUGGESTIONS_DOC = 'suggestions';
 
 // Baked-in fallback vibe vocabulary (used when Firestore is unavailable).
-export const FALLBACK_SUGGESTIONS = [
-  'dreamy lo-fi', 'smooth jazz', 'late night sax', 'glitchy IDM', 'ambient drone',
-  'funky bass', 'ethereal vocals', 'raw punk', 'melancholic piano', 'cosmic synth',
-  'minimal techno', 'orchestral swells', 'boom bap', 'shoegaze wall', 'krautrock motorik',
-  'bossa nova', 'afrobeat horns', 'breakbeats', 'dub reggae', 'surf rock reverb',
-  'cinematic cello', 'acid house', 'whispery folk', 'chiptune',
-];
+export const FALLBACK_SUGGESTIONS = SUGGESTED_CHIPS;
 
 let _db = null;
 
