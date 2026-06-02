@@ -46,8 +46,8 @@ The following review suggestions are now implemented:
   clear-all controls and an expanded color palette. Searching no longer
   auto-selects a track or a suggested chip.
 - Track detail popup moved to a bar **above** the map (no longer overlaps dots);
-  its actions are always visible. Clicking empty space deselects (when a track is
-  pinned) or drops an ✕ probe and selects the nearest x,y point.
+  its actions are always visible. Clicking empty space drops an ✕ probe and
+  selects the nearest x,y point.
 - Map: zoom in/out/reset + ctrl-wheel, larger plot area (smaller margins),
   clickable-line affordance (midpoint ＋), "2D PCA of MERT v_mid" caption.
 - Feedback buttons reuse the legacy "Match" pill styling; similar / dissimilar /

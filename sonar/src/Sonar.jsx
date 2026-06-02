@@ -480,7 +480,8 @@ export default function Sonar({ initialView = 'map' }) {
     return best;
   };
   const onMapBackgroundClick = (e) => {
-    // Ignore clicks that originated on a dot/line (they stopPropagation).
+    // Clicks on a dot/line stopPropagation, so reaching here means empty space.
+    // Drop an ✕ probe at the click and select the nearest track to it.
     const svg = e.currentTarget;
     const rect = svg.getBoundingClientRect();
     const sx = ((e.clientX - rect.left) / rect.width) * VW;
@@ -488,13 +489,6 @@ export default function Sonar({ initialView = 'map' }) {
     // invert zoom transform: screen = k*plot + offset
     const px = (sx - zoom.x) / zoom.k;
     const py = (sy - zoom.y) / zoom.k;
-    if (detailPinned) {
-      // Click away from a song → deselect + clear probe.
-      setSelectedId(null);
-      setProbe(null);
-      return;
-    }
-    // Otherwise drop a probe and select the nearest track.
     const t = nearestTrack(px, py);
     setProbe({ x: px, y: py });
     if (t) setSelectedId(t.id);
