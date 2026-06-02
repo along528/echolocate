@@ -2,39 +2,38 @@
 //
 // Search model: each vibe / similar / dissimilar query is its own *layer* with
 // its own color. Layers coexist on the map and in the list; every dot is colored
-// by the search it came from. Each layer can be hidden (eye toggle) without being
-// removed. The 2D positions come from each track's x,y (a PCA projection of the
-// MERT v_mid embedding — the same embedding used for interpolation).
+// by the search it came from. Each layer can be hidden, soloed, or removed.
+// The 2D positions come from each track's x,y (a PCA projection of the MERT
+// v_mid embedding — the same embedding used for interpolation).
 import React from 'react';
 import { API } from './api.js';
 import { Labels } from './labels.js';
+import { Cache, FALLBACK_SUGGESTIONS } from './cache.js';
 import { Wordmark, Waveform, DistanceChip } from './svg-bits.jsx';
-
-// Curated vibe vocabulary for the tagger suggestions + dice. These are just
-// query terms; any freeform text works too.
-const SUGGESTED_VIBES = [
-  'dreamy lo-fi', 'smooth jazz', 'late night sax', 'glitchy IDM', 'ambient drone',
-  'funky bass', 'ethereal vocals', 'raw punk', 'melancholic piano', 'cosmic synth',
-  'minimal techno', 'orchestral swells', 'boom bap', 'shoegaze wall', 'krautrock motorik',
-  'bossa nova', 'afrobeat horns', 'breakbeats', 'dub reggae', 'surf rock reverb',
-  'cinematic cello', 'acid house', 'whispery folk', 'chiptune',
-];
+import {
+  IconListPlus, IconSimilar, IconDissimilar, IconCheck, IconTilde, IconX, IconClose,
+  IconExternal, IconEye, IconEyeOff, IconSolo, IconUp, IconDown, IconPlus,
+  IconZoomIn, IconZoomOut, IconRecenter,
+} from './icons.jsx';
 
 // Per-search layer colors. A search's color is its identity everywhere (pill,
-// dots, list rows). White is reserved for interpolation candidates, so it's
-// excluded here.
+// dots, list rows). White is reserved for interpolation candidates.
 const LAYER_COLORS = [
   '#22d3ee', '#f472b6', '#fbbf24', '#a78bfa', '#34d399',
   '#60a5fa', '#fb7185', '#c084fc', '#facc15', '#4ade80',
+  '#2dd4bf', '#f59e0b', '#e879f9', '#38bdf8', '#a3e635',
+  '#fca5a5', '#fdba74', '#5eead4', '#93c5fd', '#d8b4fe',
 ];
 const CANDIDATE_COLOR = '#ffffff';
 const FALLBACK_COLOR = '#94a3b8';
 
 const VW = 760;
 const VH = 540;
+// Inner plot margin (was 60 — shrunk so the graph fills more of the canvas).
+const PAD = 26;
 
-// Prefix for public/ assets, respecting the build base (e.g. "/sonar/").
 const ASSET = import.meta.env.BASE_URL;
+const STORE_KEY = 'sonar-state-v1';
 
 function fmtTime(s) {
   if (s == null || isNaN(s)) return '0:00';
@@ -64,7 +63,7 @@ function coordsOf(t) {
 // SVG position. x: left -> right. y: high values at top.
 function dotPos(t) {
   const [cx, cy] = coordsOf(t);
-  return { x: 60 + cx * (VW - 120), y: 60 + (1 - cy) * (VH - 120) };
+  return { x: PAD + cx * (VW - 2 * PAD), y: PAD + (1 - cy) * (VH - 2 * PAD) };
 }
 
 function distBetween(a, b) {
@@ -74,25 +73,25 @@ function distBetween(a, b) {
   return Math.min(1, Math.sqrt((ax - bx) ** 2 + (ay - by) ** 2));
 }
 
-// similarity (1 = identical) -> DistanceChip value (0 = identical)
 const distChipValue = (t) => (typeof t.similarity === 'number' ? 1 - t.similarity : 0);
-
 const layerTag = (l) => (l.kind === 'similar' ? '≈ ' : l.kind === 'dissimilar' ? '≠ ' : '') + l.label;
+const layerKindWord = (l) => (l.kind === 'similar' ? 'Similar to' : l.kind === 'dissimilar' ? 'Dissimilar to' : 'Vibe');
 
-// 3-way training-signal feedback (relevant / borderline / wrong), restored from
-// the legacy frontend. Fires Labels.recordLabel and reflects the local choice.
+// 3-way training-signal feedback (relevant / borderline / wrong). Styled to
+// match the legacy frontend's "Match" pill exactly. Fires Labels.recordLabel.
 function FeedbackPills({ track, value, onLabel }) {
   const opts = [
-    ['relevant', '✓', 'Relevant'],
-    ['borderline', '≈', 'Borderline'],
-    ['wrong', '✕', 'Wrong'],
+    ['relevant', <IconCheck size={15} />, 'mp-yes', 'Relevant'],
+    ['borderline', <IconTilde size={15} />, 'mp-mid', 'Borderline'],
+    ['wrong', <IconX size={15} />, 'mp-no', 'Wrong'],
   ];
   return (
-    <div className="ld-fb" onClick={(e) => e.stopPropagation()}>
-      {opts.map(([sig, glyph, title]) => (
+    <div className="match-pill label-group" role="group" aria-label="Rate match" onClick={(e) => e.stopPropagation()}>
+      <span className="mp-label">Match</span>
+      {opts.map(([sig, glyph, tone, title]) => (
         <button
           key={sig}
-          className={'ld-fb-btn ld-fb-' + sig + (value === sig ? ' is-selected' : '')}
+          className={'action-btn mp-btn ' + tone + (value === sig ? ' selected' : '')}
           title={title}
           onClick={(e) => { e.stopPropagation(); onLabel(track, sig); }}
         >{glyph}</button>
@@ -101,26 +100,40 @@ function FeedbackPills({ track, value, onLabel }) {
   );
 }
 
-function FmaLink({ track }) {
+// External source link — icon only, sits next to the track title. No "FMA" text.
+function SourceLink({ track, className = '' }) {
   if (!track || !track.track_url) return null;
   return (
-    <a className="ld-fma" href={track.track_url} target="_blank" rel="noopener noreferrer"
-      onClick={(e) => e.stopPropagation()} title="Open on Free Music Archive">↗ FMA</a>
+    <a className={'ld-srclink ' + className} href={track.track_url} target="_blank" rel="noopener noreferrer"
+      onClick={(e) => e.stopPropagation()} title="Open source (Free Music Archive)">
+      <IconExternal size={13} />
+    </a>
   );
 }
 
 export default function Sonar({ initialView = 'map' }) {
-  const [view, setView] = React.useState(initialView);
+  // ---- persisted bootstrap ----
+  const boot = React.useMemo(() => {
+    try {
+      const raw = localStorage.getItem(STORE_KEY);
+      return raw ? JSON.parse(raw) : null;
+    } catch { return null; }
+  }, []);
+
+  const [view, setView] = React.useState(boot?.view || initialView);
   const [vibeQuery, setVibeQuery] = React.useState('');
+  const [suggestions, setSuggestions] = React.useState(FALLBACK_SUGGESTIONS);
+  const [aboutOpen, setAboutOpen] = React.useState(false);
 
   // ---- search layers ----
-  const colorIdxRef = React.useRef(0);
+  const colorIdxRef = React.useRef(boot?.colorIdx || 0);
   const makeLayer = React.useCallback((kind, extra) => ({
     id: `L_${Date.now()}_${Math.random().toString(36).slice(2, 7)}`,
     kind,
     label: '',
     query: '',
     seedTrackId: null,
+    seedTrack: null,
     color: LAYER_COLORS[colorIdxRef.current++ % LAYER_COLORS.length],
     visible: true,
     loading: false,
@@ -131,11 +144,11 @@ export default function Sonar({ initialView = 'map' }) {
     ...extra,
   }), []);
 
-  const [layers, setLayers] = React.useState(() => [
-    { id: `L_${Date.now()}_seed`, kind: 'vibe', label: 'dreamy lo-fi', query: 'dreamy lo-fi',
-      seedTrackId: null, color: LAYER_COLORS[colorIdxRef.current++ % LAYER_COLORS.length],
-      visible: true, loading: false, fetched: false, results: [], enhancedQuery: null, searchId: null },
-  ]);
+  // Restored layers come back fetched (results inline) so a refresh doesn't
+  // re-hit the API; brand-new sessions start empty (suggestions are shown but
+  // nothing is auto-selected).
+  const [layers, setLayers] = React.useState(() =>
+    (boot?.layers || []).map((l) => ({ ...l, loading: false, fetched: true })));
 
   const [playingId, setPlayingId] = React.useState(null);
   const [hoverId, setHoverId] = React.useState(null);
@@ -144,12 +157,25 @@ export default function Sonar({ initialView = 'map' }) {
   const [progress, setProgress] = React.useState(0);
   const [duration, setDuration] = React.useState(0);
 
-  const [trail, setTrail] = React.useState([]);
+  const [playlist, setPlaylist] = React.useState(boot?.playlist || []);
   const [candidates, setCandidates] = React.useState(null); // { aId, bId, tracks }
   const [labelsByTrackId, setLabelsByTrackId] = React.useState({});
+  const [probe, setProbe] = React.useState(null); // { x, y } in plot coords
+  const [zoom, setZoom] = React.useState({ k: 1, x: 0, y: 0 });
   const audioRef = React.useRef(null);
 
   React.useEffect(() => { Labels.init(); }, []);
+  React.useEffect(() => { Cache.getSuggestions().then(setSuggestions).catch(() => {}); }, []);
+
+  // ---- persistence: save the durable slice of state on change ----
+  React.useEffect(() => {
+    try {
+      const slim = layers.map(({ loading, ...l }) => ({ ...l, fetched: true }));
+      localStorage.setItem(STORE_KEY, JSON.stringify({
+        view, layers: slim, playlist, colorIdx: colorIdxRef.current,
+      }));
+    } catch { /* quota / serialization — ignore */ }
+  }, [view, layers, playlist]);
 
   // Run the actual API call for one layer.
   const runLayerSearch = React.useCallback(async (layer) => {
@@ -173,7 +199,8 @@ export default function Sonar({ initialView = 'map' }) {
     return { results, enhancedQuery: null, searchId };
   }, []);
 
-  // Fetch any layer that hasn't been fetched yet.
+  // Fetch any layer that hasn't been fetched yet. (We intentionally DO NOT
+  // auto-select a result — searching never picks a song for you.)
   React.useEffect(() => {
     const pending = layers.filter((l) => !l.fetched && !l.loading);
     if (!pending.length) return;
@@ -183,7 +210,6 @@ export default function Sonar({ initialView = 'map' }) {
         .then(({ results, enhancedQuery, searchId }) => {
           setLayers((ls) => ls.map((x) => (x.id === l.id
             ? { ...x, loading: false, fetched: true, results, enhancedQuery, searchId } : x)));
-          setSelectedId((prev) => prev ?? results[0]?.id ?? null);
         })
         .catch((e) => {
           console.error('layer search failed', e);
@@ -203,15 +229,36 @@ export default function Sonar({ initialView = 'map' }) {
   const addSeedLayer = (kind, track) => {
     if (!track) return;
     setLayers((ls) => (ls.some((l) => l.kind === kind && l.seedTrackId === track.id)
-      ? ls : [...ls, makeLayer(kind, { label: track.title, seedTrackId: track.id })]));
+      ? ls : [...ls, makeLayer(kind, { label: track.title, seedTrackId: track.id, seedTrack: track })]));
+  };
+  // Re-add a layer that produced a (still-present) playlist track. No-ops if a
+  // matching layer is already shown.
+  const restoreLayer = (origin) => {
+    if (!origin) return;
+    setLayers((ls) => {
+      const dup = ls.some((l) => l.kind === origin.kind
+        && (origin.kind === 'vibe'
+          ? l.query.toLowerCase() === (origin.query || '').toLowerCase()
+          : l.seedTrackId === origin.seedTrackId));
+      if (dup) return ls;
+      return [...ls, makeLayer(origin.kind, {
+        label: origin.label, query: origin.query || '',
+        seedTrackId: origin.seedTrackId || null, seedTrack: origin.seedTrack || null,
+      })];
+    });
   };
   const removeLayer = (id) => setLayers((ls) => ls.filter((l) => l.id !== id));
+  const clearLayers = () => { setLayers([]); setCandidates(null); setSelectedId(null); };
   const toggleLayerVisible = (id) =>
     setLayers((ls) => ls.map((l) => (l.id === id ? { ...l, visible: !l.visible } : l)));
+  const soloLayer = (id) =>
+    setLayers((ls) => ls.map((l) => ({ ...l, visible: l.id === id })));
+  const showAllLayers = () => setLayers((ls) => ls.map((l) => ({ ...l, visible: true })));
 
   // ---- derived ----
   const visibleLayers = React.useMemo(() => layers.filter((l) => l.visible), [layers]);
   const anyLoading = layers.some((l) => l.loading);
+  const allVisible = layers.length > 0 && layers.every((l) => l.visible);
 
   // De-duped union of visible layers' results. Overlap takes the first (oldest)
   // visible layer's color; sources lists every visible layer the track is in.
@@ -238,17 +285,20 @@ export default function Sonar({ initialView = 'map' }) {
     return m;
   }, [visibleTracks]);
 
-  const trackColor = (id) => entryByTrackId.get(id)?.color
-    || (candidates?.tracks.some((t) => t.id === id) ? CANDIDATE_COLOR : FALLBACK_COLOR);
+  const playlistById = React.useMemo(() => {
+    const m = new Map();
+    playlist.forEach((s) => { if (s.track) m.set(s.track.id, s); });
+    return m;
+  }, [playlist]);
 
-  // Index of every track we have full metadata for (all layers + candidates + trail).
+  // Index of every track we have full metadata for.
   const tracksById = React.useMemo(() => {
     const m = new Map();
-    layers.forEach((l) => l.results.forEach((t) => m.set(t.id, t)));
+    layers.forEach((l) => { l.results.forEach((t) => m.set(t.id, t)); if (l.seedTrack) m.set(l.seedTrack.id, l.seedTrack); });
     if (candidates) candidates.tracks.forEach((t) => m.set(t.id, t));
-    trail.forEach((s) => { if (s.track) m.set(s.track.id, s.track); });
+    playlist.forEach((s) => { if (s.track) m.set(s.track.id, s.track); });
     return m;
-  }, [layers, candidates, trail]);
+  }, [layers, candidates, playlist]);
 
   const playing = playingId ? tracksById.get(playingId) : null;
   const hover = hoverId ? tracksById.get(hoverId) : null;
@@ -256,62 +306,93 @@ export default function Sonar({ initialView = 'map' }) {
 
   const flatResults = React.useMemo(() => visibleTracks.map((e) => e.track), [visibleTracks]);
 
-  // ---- vibe tagger ----
+  // ---- vibe tagger suggestions ----
   const activeVibeTexts = React.useMemo(
     () => layers.filter((l) => l.kind === 'vibe').map((l) => l.query.toLowerCase()),
     [layers]);
   const vibeSuggestions = React.useMemo(() => {
     const q = vibeQuery.toLowerCase().trim();
-    return SUGGESTED_VIBES
+    return suggestions
       .filter((v) => !activeVibeTexts.includes(v.toLowerCase()))
       .filter((v) => !q || v.toLowerCase().includes(q))
-      .slice(0, q ? 12 : 10);
-  }, [vibeQuery, activeVibeTexts]);
+      .slice(0, 14);
+  }, [vibeQuery, activeVibeTexts, suggestions]);
 
-  // ---- trail ----
+  // ---- playlist ----
   const recomputeDist = (arr) =>
     arr.map((s, i) => ({ ...s, dist: i === 0 ? null : distBetween(arr[i - 1].track, s.track) }));
 
-  const addToTrail = (track) => {
+  // Snapshot of the layer a track came from, so the playlist can restore it.
+  const originFor = (track) => {
+    const src = entryByTrackId.get(track.id)?.sources?.[0];
+    if (!src) return null;
+    return {
+      kind: src.kind, label: src.label, color: src.color,
+      query: src.query || '', seedTrackId: src.seedTrackId || null, seedTrack: src.seedTrack || null,
+    };
+  };
+
+  const addToPlaylist = (track) => {
     if (!track) return;
-    setTrail((t) => {
+    const origin = originFor(track);
+    const color = entryByTrackId.get(track.id)?.color || FALLBACK_COLOR;
+    setPlaylist((t) => {
       if (t.some((s) => s.track?.id === track.id)) return t;
-      const prev = t[t.length - 1]?.track || playing;
-      const slot = {
-        id: `s_${track.id}_${Date.now()}`,
-        kind: t.length === 0 ? 'start' : 'interp',
-        track,
-        dist: t.length === 0 ? null : distBetween(prev, track),
-      };
-      const endIdx = t.findIndex((s) => s.kind === 'end');
-      if (endIdx >= 0) return [...t.slice(0, endIdx), { ...slot, kind: 'interp' }, ...t.slice(endIdx)];
-      return [...t, slot];
+      const slot = { id: `s_${track.id}_${Date.now()}`, track, dist: null, origin, color };
+      return recomputeDist([...t, slot]);
     });
   };
   // Insert a candidate between its edge's two endpoints (does not clear candidates).
   const insertCandidate = (track) => {
-    if (!candidates) { addToTrail(track); return; }
-    setTrail((t) => {
+    if (!candidates) { addToPlaylist(track); return; }
+    const origin = { kind: 'interp', label: 'interpolation', color: CANDIDATE_COLOR };
+    setPlaylist((t) => {
       if (t.some((s) => s.track?.id === track.id)) return t;
       const ai = t.findIndex((s) => s.track?.id === candidates.aId);
       const bi = t.findIndex((s) => s.track?.id === candidates.bId);
-      if (ai < 0 || bi < 0) return [...t, { id: `s_${track.id}_${Date.now()}`, kind: 'interp', track, dist: null }];
-      const at = Math.max(ai, bi); // insert before the later endpoint
-      const slot = { id: `s_${track.id}_${Date.now()}`, kind: 'interp', track, dist: null };
+      const slot = { id: `s_${track.id}_${Date.now()}`, track, dist: null, origin, color: CANDIDATE_COLOR };
+      if (ai < 0 || bi < 0) return recomputeDist([...t, slot]);
+      const at = Math.max(ai, bi);
       return recomputeDist([...t.slice(0, at), slot, ...t.slice(at)]);
     });
   };
-  const removeFromTrail = (id) => setTrail((t) => recomputeDist(t.filter((s) => s.id !== id)));
-  const clearTrail = () => { setTrail([]); setCandidates(null); };
+  const removeFromPlaylist = (id) => setPlaylist((t) => recomputeDist(t.filter((s) => s.id !== id)));
+  const movePlaylist = (id, dir) => setPlaylist((t) => {
+    const i = t.findIndex((s) => s.id === id);
+    const j = i + dir;
+    if (i < 0 || j < 0 || j >= t.length) return t;
+    const arr = [...t];
+    [arr[i], arr[j]] = [arr[j], arr[i]];
+    return recomputeDist(arr);
+  });
+  const clearPlaylist = () => { setPlaylist([]); setCandidates(null); };
 
-  // Generate candidate tracks "between" two trail tracks (the clicked line).
+  // Drag-to-reorder.
+  const dragId = React.useRef(null);
+  const onDragStartSlot = (id) => { dragId.current = id; };
+  const onDropSlot = (targetId) => {
+    const from = dragId.current;
+    dragId.current = null;
+    if (!from || from === targetId) return;
+    setPlaylist((t) => {
+      const fi = t.findIndex((s) => s.id === from);
+      const ti = t.findIndex((s) => s.id === targetId);
+      if (fi < 0 || ti < 0) return t;
+      const arr = [...t];
+      const [moved] = arr.splice(fi, 1);
+      arr.splice(ti, 0, moved);
+      return recomputeDist(arr);
+    });
+  };
+
+  // Generate candidate tracks "between" two playlist tracks (the clicked line).
   const interpolateEdge = async (a, b) => {
     if (!a || !b) return;
     try {
-      const list = await API.interpolate(a.id, b.id, 'slerp', 8);
-      const trailIds = new Set(trail.filter((s) => s.track).map((s) => s.track.id));
+      const list = await API.interpolate(a.id, b.id, 'slerp', 8, 'fma');
+      const ids = new Set(playlist.filter((s) => s.track).map((s) => s.track.id));
       const tracks = (Array.isArray(list) ? list : (list.results || []))
-        .filter((t) => t.id !== a.id && t.id !== b.id && !trailIds.has(t.id));
+        .filter((t) => t.id !== a.id && t.id !== b.id && !ids.has(t.id));
       Labels.recordSearch('/interpolate', 'pair',
         { pair_track_ids: [a.id, b.id] }, { source: 'fma', method: 'slerp' }, tracks);
       setCandidates({ aId: a.id, bId: b.id, tracks });
@@ -319,6 +400,7 @@ export default function Sonar({ initialView = 'map' }) {
       console.error('interpolate failed', e);
     }
   };
+  const clearCandidates = () => setCandidates(null);
 
   // ---- player ----
   const playTrack = (track) => {
@@ -338,10 +420,16 @@ export default function Sonar({ initialView = 'map' }) {
     if (isPlaying) { audio.pause(); setIsPlaying(false); }
     else { audio.play().then(() => setIsPlaying(true)).catch(() => {}); }
   };
-  // Forward/back walks the trail when one exists, otherwise the visible results.
-  const trailTracks = React.useMemo(() => trail.filter((s) => s.track).map((s) => s.track), [trail]);
-  const navList = trailTracks.length ? trailTracks : flatResults;
-  const navSource = trailTracks.length ? 'your trail' : 'search results';
+  const seekTo = (frac) => {
+    const audio = audioRef.current;
+    if (!audio || !audio.duration) return;
+    audio.currentTime = frac * audio.duration;
+    setProgress(frac);
+  };
+  // Forward/back walks the playlist when one exists, otherwise the visible results.
+  const playlistTracks = React.useMemo(() => playlist.filter((s) => s.track).map((s) => s.track), [playlist]);
+  const navList = playlistTracks.length ? playlistTracks : flatResults;
+  const navSource = playlistTracks.length ? 'your playlist' : 'search results';
   const step = (dir) => {
     if (!navList.length) return;
     const idx = navList.findIndex((t) => t.id === playingId);
@@ -356,6 +444,117 @@ export default function Sonar({ initialView = 'map' }) {
 
   const playingTotal = duration || 0;
   const isCandidate = (id) => !!candidates && candidates.tracks.some((t) => t.id === id);
+
+  // The track shown in the detail card above the map: hover wins for preview,
+  // otherwise the pinned selection.
+  const detail = hover || selected;
+  const detailPinned = !hover && !!selected;
+
+  // ---- map zoom / probe ----
+  const zoomBy = (factor) => setZoom((z) => {
+    const k = Math.max(1, Math.min(8, z.k * factor));
+    // keep the plot centered while zooming
+    const cx = VW / 2, cy = VH / 2;
+    return { k, x: cx - (cx - z.x) * (k / z.k), y: cy - (cy - z.y) * (k / z.k) };
+  });
+  const resetZoom = () => setZoom({ k: 1, x: 0, y: 0 });
+  const onWheelMap = (e) => {
+    if (!e.ctrlKey && Math.abs(e.deltaY) < 1) return;
+    e.preventDefault();
+    zoomBy(e.deltaY < 0 ? 1.12 : 1 / 1.12);
+  };
+
+  // Map a click on the SVG background to plot coords (accounting for zoom),
+  // then either deselect (if something is pinned) or drop a probe + select the
+  // nearest track.
+  const nearestTrack = (px, py) => {
+    let best = null, bestD = Infinity;
+    const consider = (t) => {
+      const p = dotPos(t);
+      const d = (p.x - px) ** 2 + (p.y - py) ** 2;
+      if (d < bestD) { bestD = d; best = t; }
+    };
+    visibleTracks.forEach((e) => consider(e.track));
+    if (candidates) candidates.tracks.forEach(consider);
+    playlistTracks.forEach(consider);
+    return best;
+  };
+  const onMapBackgroundClick = (e) => {
+    // Ignore clicks that originated on a dot/line (they stopPropagation).
+    const svg = e.currentTarget;
+    const rect = svg.getBoundingClientRect();
+    const sx = ((e.clientX - rect.left) / rect.width) * VW;
+    const sy = ((e.clientY - rect.top) / rect.height) * VH;
+    // invert zoom transform: screen = k*plot + offset
+    const px = (sx - zoom.x) / zoom.k;
+    const py = (sy - zoom.y) / zoom.k;
+    if (detailPinned) {
+      // Click away from a song → deselect + clear probe.
+      setSelectedId(null);
+      setProbe(null);
+      return;
+    }
+    // Otherwise drop a probe and select the nearest track.
+    const t = nearestTrack(px, py);
+    setProbe({ x: px, y: py });
+    if (t) setSelectedId(t.id);
+  };
+
+  const onLayerKeyDown = (e) => {
+    if (e.key === 'Enter' && vibeQuery.trim()) {
+      // Add the *typed* text — suggestions are never auto-selected.
+      addVibeLayer(vibeQuery.trim());
+      setVibeQuery('');
+    } else if (e.key === 'Backspace' && !vibeQuery && layers.length) {
+      removeLayer(layers[layers.length - 1].id);
+    }
+  };
+
+  // ---- track detail card (shared by the bar above the map) ----
+  function DetailCard({ t, pinned }) {
+    if (!t) return null;
+    const cand = isCandidate(t.id);
+    const sources = entryByTrackId.get(t.id)?.sources || [];
+    const inPlaylistOrigin = playlistById.get(t.id)?.origin;
+    const label = labelsByTrackId[t.id];
+    return (
+      <div className={'ld-detail ' + (pinned ? 'is-pinned' : '')}>
+        <div className="ld-detail-main">
+          <div className="ld-detail-sources">
+            {cand && <span className="lc-source-tag" style={{ borderColor: CANDIDATE_COLOR, color: CANDIDATE_COLOR }}>interpolation</span>}
+            {sources.map((l) => (
+              <span key={l.id} className="lc-source-tag" style={{ borderColor: l.color, color: l.color }}>
+                <span className="ld-layer-swatch" style={{ background: l.color }} />{layerTag(l)}
+              </span>
+            ))}
+            {!sources.length && !cand && inPlaylistOrigin && (
+              <span className="lc-source-tag" style={{ borderColor: inPlaylistOrigin.color, color: inPlaylistOrigin.color }}>
+                {layerKindWord(inPlaylistOrigin)} {inPlaylistOrigin.label}
+              </span>
+            )}
+            {playing && playing.id !== t.id && (
+              <span className="ld-detail-dist">{distBetween(playing, t).toFixed(2)} away</span>
+            )}
+          </div>
+          <div className="ld-detail-title">
+            {t.title}
+            <SourceLink track={t} />
+          </div>
+          <div className="ld-detail-sub">{t.artist} — {t.album}</div>
+        </div>
+        {/* Actions are always visible (no hover gating). */}
+        <div className="ld-detail-actions">
+          <button className="lo-btn-ghost" onClick={() => playTrack(t)}>▶ Play</button>
+          <button className="lo-btn-ghost" onClick={() => (cand ? insertCandidate(t) : addToPlaylist(t))} title="Add to playlist">
+            <IconListPlus size={15} />
+          </button>
+          <button className="lo-btn-ghost" onClick={() => addSeedLayer('similar', t)} title="Find similar"><IconSimilar size={15} /></button>
+          <button className="lo-btn-ghost" onClick={() => addSeedLayer('dissimilar', t)} title="Find dissimilar"><IconDissimilar size={15} /></button>
+          <FeedbackPills track={t} value={label} onLabel={labelTrack} />
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="lo-shell ld-shell" data-density="cozy">
@@ -384,16 +583,23 @@ export default function Sonar({ initialView = 'map' }) {
             >
               <span className="ld-layer-swatch" style={{ background: l.color }} />
               <span className="ld-layer-label">{layerTag(l)}</span>
-              <button
-                className="ld-layer-eye"
-                onClick={() => toggleLayerVisible(l.id)}
-                title={l.visible ? 'Hide this search' : 'Show this search'}
-              >{l.visible ? '◉' : '◌'}</button>
+              <button className="ld-layer-btn" onClick={() => soloLayer(l.id)} title="Show only this search"><IconSolo size={13} /></button>
+              <button className="ld-layer-btn" onClick={() => toggleLayerVisible(l.id)}
+                title={l.visible ? 'Hide this search' : 'Show this search'}>
+                {l.visible ? <IconEye size={14} /> : <IconEyeOff size={14} />}
+              </button>
               <button className="el-chip-remove" onClick={() => removeLayer(l.id)} title="Remove search">×</button>
               <span className="ld-layer-info">
-                <strong>{layerTag(l)}</strong>
+                <strong>{layerKindWord(l)} “{l.label}”</strong>
                 <span className="lo-eyebrow">{l.loading ? 'searching…' : `${l.results.length} tracks`}</span>
                 {l.enhancedQuery && <em>✨ {l.enhancedQuery}</em>}
+                {/* For similar/dissimilar, surface the exact seed song and let
+                    you jump to it. */}
+                {l.seedTrack && (
+                  <button className="ld-layer-seed" onClick={() => { setSelectedId(l.seedTrack.id); }}>
+                    {l.seedTrack.title} — {l.seedTrack.artist}
+                  </button>
+                )}
               </span>
             </span>
           ))}
@@ -402,19 +608,12 @@ export default function Sonar({ initialView = 'map' }) {
             placeholder={layers.length ? '+ another search…' : 'Tag vibes or describe a mood…'}
             value={vibeQuery}
             onChange={(e) => setVibeQuery(e.target.value)}
-            onKeyDown={(e) => {
-              if (e.key === 'Enter' && vibeQuery.trim()) {
-                addVibeLayer(vibeSuggestions[0] || vibeQuery.trim());
-                setVibeQuery('');
-              } else if (e.key === 'Backspace' && !vibeQuery && layers.length) {
-                removeLayer(layers[layers.length - 1].id);
-              }
-            }}
+            onKeyDown={onLayerKeyDown}
           />
           <button
             className="ld-tagger-dice"
             title="Surprise me"
-            onClick={() => addVibeLayer(SUGGESTED_VIBES[Math.floor(Math.random() * SUGGESTED_VIBES.length)])}
+            onClick={() => addVibeLayer(suggestions[Math.floor(Math.random() * suggestions.length)])}
           >🎲</button>
         </div>
 
@@ -433,48 +632,57 @@ export default function Sonar({ initialView = 'map' }) {
           </button>
         </div>
 
-        <button className="lo-btn-icon" title="About">
+        <button className="lo-btn-icon" title="About" onClick={() => setAboutOpen(true)}>
           <svg viewBox="0 0 24 24" fill="currentColor" width="18" height="18"><path d="M3 18h18v-2H3v2zm0-5h18v-2H3v2zm0-7v2h18V6H3z" /></svg>
         </button>
       </header>
 
-      {(vibeQuery || layers.length === 0) && (
-        <div className="ld-suggest-strip">
-          <span className="lo-eyebrow">{vibeQuery ? `Matching “${vibeQuery}”` : 'Try a vibe'}</span>
-          <div className="ld-suggest-list">
-            {vibeSuggestions.map((v) => (
-              <button key={v} className="el-chip" onClick={() => { addVibeLayer(v); setVibeQuery(''); }}>+ {v}</button>
-            ))}
-            {vibeQuery && vibeSuggestions.length === 0 && (
-              <button className="el-chip" onClick={() => { addVibeLayer(vibeQuery.trim()); setVibeQuery(''); }}>
-                + Add “{vibeQuery}” as a search
-              </button>
-            )}
-          </div>
+      {/* Suggestion strip — ALWAYS visible. Adds a layer on click; never
+          auto-selects. */}
+      <div className="ld-suggest-strip">
+        <span className="lo-eyebrow">{vibeQuery ? `Matching “${vibeQuery}”` : 'Try a vibe'}</span>
+        <div className="ld-suggest-list">
+          {vibeSuggestions.map((v) => (
+            <button key={v} className="el-chip" onClick={() => { addVibeLayer(v); setVibeQuery(''); }}>+ {v}</button>
+          ))}
+          {vibeQuery && !vibeSuggestions.some((v) => v.toLowerCase() === vibeQuery.toLowerCase()) && (
+            <button className="el-chip" onClick={() => { addVibeLayer(vibeQuery.trim()); setVibeQuery(''); }}>
+              + Add “{vibeQuery}” as a search
+            </button>
+          )}
         </div>
-      )}
+        {layers.length > 0 && (
+          <div className="ld-layer-toolbar">
+            <button className="lo-btn-ghost ld-mini-btn" onClick={showAllLayers} disabled={allVisible}>Show all</button>
+            <button className="lo-btn-ghost ld-mini-btn" onClick={clearLayers}>Clear all</button>
+          </div>
+        )}
+      </div>
 
       {/* ===== MAIN ===== */}
       <main className="ld-main">
-        {/* LEFT — TRAIL RAIL */}
+        {/* LEFT — PLAYLIST RAIL */}
         <aside className="ld-rail">
           <div className="la-rail-head">
-            <h2 className="lo-eyebrow-strong">Your trail</h2>
-            <button className="lo-btn-ghost" style={{ padding: '4px 10px', fontSize: 11 }} onClick={clearTrail}>Clear</button>
+            <h2 className="lo-eyebrow-strong">Your playlist</h2>
+            <button className="lo-btn-ghost ld-mini-btn" onClick={clearPlaylist}>Clear</button>
           </div>
 
           <div className="ld-trail-hint lo-eyebrow">
-            {trailTracks.length > 1
-              ? 'Click a link between two tracks to find tracks in between.'
+            {playlistTracks.length > 1
+              ? 'Click a link between two tracks to find tracks in between. Drag to reorder.'
               : 'Add tracks, then click between them to interpolate.'}
           </div>
 
           <div className="la-trail-list lo-scroll">
-            {trail.map((slot, i) => {
+            {playlist.map((slot, i) => {
               const t = slot.track;
               if (!t) return null;
-              const kindLabel = slot.kind === 'start' ? 'Start' : slot.kind === 'end' ? 'End' : `Step ${i}`;
-              const prev = trail[i - 1]?.track;
+              const prev = playlist[i - 1]?.track;
+              const layerPresent = slot.origin && layers.some((l) => l.kind === slot.origin.kind
+                && (slot.origin.kind === 'vibe'
+                  ? l.query?.toLowerCase() === (slot.origin.query || '').toLowerCase()
+                  : l.seedTrackId === slot.origin.seedTrackId));
               return (
                 <React.Fragment key={slot.id}>
                   {i > 0 && prev && (
@@ -484,24 +692,44 @@ export default function Sonar({ initialView = 'map' }) {
                           (candidates.aId === t.id && candidates.bId === prev.id)) ? 'is-active' : '')}
                       title="Find tracks between these two"
                       onClick={() => interpolateEdge(prev, t)}
-                    >＋</button>
+                    ><IconPlus size={13} /></button>
                   )}
-                  <div className={'la-trail-card ' + (slot.kind === 'interp' ? 'is-interp ' : '') + (playingId === t.id ? 'is-playing ' : '')}>
-                    <div className="la-trail-marker"><span className={'la-trail-dot ' + slot.kind} /></div>
+                  <div
+                    className={'la-trail-card ' + (playingId === t.id ? 'is-playing ' : '')}
+                    draggable
+                    onDragStart={() => onDragStartSlot(slot.id)}
+                    onDragOver={(e) => e.preventDefault()}
+                    onDrop={() => onDropSlot(slot.id)}
+                  >
+                    <div className="la-trail-marker"><span className="la-trail-dot" style={{ background: slot.color || 'var(--el-indigo-500)' }} /></div>
                     <div className="la-trail-body" onClick={() => playTrack(t)}>
                       <div className="la-trail-eye">
-                        <span className={slot.kind === 'interp' ? 'lo-eyebrow-amber' : 'lo-eyebrow-strong'}>{kindLabel}</span>
-                        {slot.kind === 'interp' && slot.dist != null && <DistanceChip value={slot.dist} kind="amber" />}
+                        <span className="lo-eyebrow-strong">{`Step ${i + 1}`}</span>
+                        {slot.dist != null && <DistanceChip value={slot.dist} kind="amber" />}
                       </div>
-                      <div className="lo-track-title" style={{ fontSize: '0.85rem', marginTop: 2 }}>{t.title}</div>
+                      <div className="lo-track-title" style={{ fontSize: '0.85rem', marginTop: 2 }}>
+                        {t.title}<SourceLink track={t} />
+                      </div>
                       <div className="lo-track-sub" style={{ fontSize: '0.72rem' }}>{t.artist}</div>
                     </div>
-                    <button className="lo-act-btn" title="Remove" onClick={(e) => { e.stopPropagation(); removeFromTrail(slot.id); }}>×</button>
+                    <div className="ld-trail-card-ctl">
+                      <button className="lo-act-btn" title="Move up" disabled={i === 0}
+                        onClick={(e) => { e.stopPropagation(); movePlaylist(slot.id, -1); }}><IconUp size={13} /></button>
+                      <button className="lo-act-btn" title="Move down" disabled={i === playlist.length - 1}
+                        onClick={(e) => { e.stopPropagation(); movePlaylist(slot.id, 1); }}><IconDown size={13} /></button>
+                      {slot.origin && slot.origin.kind !== 'interp' && !layerPresent && (
+                        <button className="lo-act-btn" title="Show this track's search layer again"
+                          onClick={(e) => { e.stopPropagation(); restoreLayer(slot.origin); }}
+                          style={{ color: slot.color }}><IconEye size={13} /></button>
+                      )}
+                      <button className="lo-act-btn" title="Remove from playlist"
+                        onClick={(e) => { e.stopPropagation(); removeFromPlaylist(slot.id); }}><IconClose size={12} /></button>
+                    </div>
                   </div>
                 </React.Fragment>
               );
             })}
-            {trail.length === 0 && <div className="lo-eyebrow" style={{ padding: '12px 4px' }}>Add tracks to build a trail.</div>}
+            {playlist.length === 0 && <div className="lo-eyebrow" style={{ padding: '12px 4px' }}>Add tracks to build a playlist.</div>}
           </div>
         </aside>
 
@@ -509,7 +737,7 @@ export default function Sonar({ initialView = 'map' }) {
         <section className="ld-center">
           <div className="ld-center-head">
             <div>
-              <span className="lo-eyebrow">{view === 'map' ? 'Embedding space' : 'Results'}</span>
+              <span className="lo-eyebrow">{view === 'map' ? 'Embedding space · PCA of MERT v_mid' : 'Results'}</span>
               <h2 className="el-h2" style={{ fontSize: '1.1rem' }}>
                 {anyLoading ? 'Searching…' : (
                   <>{visibleTracks.length} tracks{' '}
@@ -517,136 +745,157 @@ export default function Sonar({ initialView = 'map' }) {
                 )}
               </h2>
             </div>
+            {candidates && (
+              <button className="lo-btn-ghost ld-mini-btn" onClick={clearCandidates}>Clear interpolation</button>
+            )}
           </div>
+
+          {/* Track detail card — lives ABOVE the map so it never obscures dots. */}
+          {view === 'map' && (
+            <div className="ld-detail-bar">
+              {detail
+                ? <DetailCard t={detail} pinned={detailPinned} />
+                : <div className="ld-detail-empty lo-eyebrow">Hover a dot to preview · click to pin · click empty space to probe the nearest track</div>}
+            </div>
+          )}
 
           {view === 'map' ? (
             <div className="ld-map-wrap">
-              <svg className="lc-canvas" viewBox={`0 0 ${VW} ${VH}`} preserveAspectRatio="xMidYMid meet">
-                <g opacity="0.18">
-                  {[0.25, 0.5, 0.75].map((g) => (
-                    <React.Fragment key={g}>
-                      <line x1={60 + g * (VW - 120)} y1={60} x2={60 + g * (VW - 120)} y2={VH - 60} stroke="white" strokeWidth="0.5" />
-                      <line x1={60} y1={60 + g * (VH - 120)} x2={VW - 60} y2={60 + g * (VH - 120)} stroke="white" strokeWidth="0.5" />
-                    </React.Fragment>
-                  ))}
-                  <rect x={60} y={60} width={VW - 120} height={VH - 120} fill="none" stroke="white" strokeWidth="0.6" />
+              <svg
+                className="lc-canvas" viewBox={`0 0 ${VW} ${VH}`} preserveAspectRatio="xMidYMid meet"
+                onClick={onMapBackgroundClick}
+                onWheel={onWheelMap}
+              >
+                {/* background catch-rect so clicks on empty space register */}
+                <rect x={0} y={0} width={VW} height={VH} fill="transparent" />
+                <g transform={`translate(${zoom.x} ${zoom.y}) scale(${zoom.k})`}>
+                  <g opacity="0.18" style={{ pointerEvents: 'none' }}>
+                    {[0.25, 0.5, 0.75].map((g) => (
+                      <React.Fragment key={g}>
+                        <line x1={PAD + g * (VW - 2 * PAD)} y1={PAD} x2={PAD + g * (VW - 2 * PAD)} y2={VH - PAD} stroke="white" strokeWidth="0.5" />
+                        <line x1={PAD} y1={PAD + g * (VH - 2 * PAD)} x2={VW - PAD} y2={PAD + g * (VH - 2 * PAD)} stroke="white" strokeWidth="0.5" />
+                      </React.Fragment>
+                    ))}
+                    <rect x={PAD} y={PAD} width={VW - 2 * PAD} height={VH - 2 * PAD} fill="none" stroke="white" strokeWidth="0.6" />
+                  </g>
+
+                  {/* sonar rings on playing dot */}
+                  {playing && [50, 100, 160, 230].map((r, i) => {
+                    const pos = dotPos(playing);
+                    return <circle key={i} cx={pos.x} cy={pos.y} r={r} fill="none" stroke="var(--el-yellow-500)" strokeOpacity={[0.55, 0.35, 0.22, 0.12][i]} strokeWidth={1} style={{ pointerEvents: 'none' }} />;
+                  })}
+
+                  {/* playlist edges — clickable to interpolate between endpoints */}
+                  {playlistTracks.length > 1 && playlistTracks.slice(1).map((b, i) => {
+                    const a = playlistTracks[i];
+                    const pa = dotPos(a); const pb = dotPos(b);
+                    const active = candidates && ((candidates.aId === a.id && candidates.bId === b.id) ||
+                      (candidates.aId === b.id && candidates.bId === a.id));
+                    const mx = (pa.x + pb.x) / 2, my = (pa.y + pb.y) / 2;
+                    return (
+                      <g key={`seg_${a.id}_${b.id}`} className="ld-edge" style={{ cursor: 'pointer' }}
+                        onClick={(e) => { e.stopPropagation(); interpolateEdge(a, b); }}>
+                        <title>Find tracks between “{a.title}” and “{b.title}”</title>
+                        <line x1={pa.x} y1={pa.y} x2={pb.x} y2={pb.y} stroke="transparent" strokeWidth="16" />
+                        <line x1={pa.x} y1={pa.y} x2={pb.x} y2={pb.y}
+                          stroke="var(--el-indigo-500)" strokeOpacity={active ? 0.95 : 0.5}
+                          strokeWidth={active ? 3 : 2} strokeDasharray="4 4" />
+                        {/* midpoint "+" affordance signalling the line is clickable */}
+                        <circle className="ld-edge-mid" cx={mx} cy={my} r={9} fill="var(--el-bg-secondary)" stroke="var(--el-indigo-500)" strokeWidth="1.5" strokeOpacity={active ? 1 : 0.7} />
+                        <path className="ld-edge-mid" d={`M${mx - 4} ${my} h8 M${mx} ${my - 4} v8`} stroke="var(--el-indigo-500)" strokeWidth="1.5" strokeLinecap="round" />
+                      </g>
+                    );
+                  })}
+                  {playlistTracks.map((t) => {
+                    const p = dotPos(t);
+                    return <circle key={'tr_' + t.id} cx={p.x} cy={p.y} r={11} fill="none" stroke="var(--el-indigo-500)" strokeWidth="2" strokeOpacity="0.6" style={{ pointerEvents: 'none' }} />;
+                  })}
+
+                  {/* result dots, colored by their search layer */}
+                  {visibleTracks.map(({ track: t, color }) => {
+                    const p = dotPos(t);
+                    const isPlay = t.id === playingId;
+                    const isSel = t.id === selectedId;
+                    const isHov = t.id === hoverId;
+                    const inPlaylist = playlistById.has(t.id);
+                    const r = isPlay ? 9 : isSel ? 7 : 5;
+                    return (
+                      <g key={t.id}
+                        onMouseEnter={() => setHoverId(t.id)}
+                        onMouseLeave={() => setHoverId((prev) => (prev === t.id ? null : prev))}
+                        onClick={(e) => { e.stopPropagation(); setSelectedId(t.id); setProbe(null); }}
+                        onDoubleClick={(e) => { e.stopPropagation(); playTrack(t); }}
+                        style={{ cursor: 'pointer' }}>
+                        {(isHov || isSel) && (
+                          <circle cx={p.x} cy={p.y} r={r + 6} fill="none" stroke={isSel ? color : 'rgba(255,255,255,0.3)'} strokeWidth="1.5" />
+                        )}
+                        <circle cx={p.x} cy={p.y} r={r} fill={color} opacity={inPlaylist ? 1 : 0.85}
+                          style={{ filter: isPlay ? `drop-shadow(0 0 8px ${color})` : 'none' }} />
+                        {inPlaylist && <circle cx={p.x} cy={p.y} r={r + 3} fill="none" stroke="white" strokeWidth="1" />}
+                      </g>
+                    );
+                  })}
+
+                  {/* playlist tracks whose source layer is no longer visible still
+                      get a dot (colored by their saved origin). */}
+                  {playlistTracks.map((t) => {
+                    if (entryByTrackId.has(t.id)) return null;
+                    const p = dotPos(t);
+                    const isSel = t.id === selectedId;
+                    const isPlay = t.id === playingId;
+                    const slot = playlistById.get(t.id);
+                    const color = slot?.color || FALLBACK_COLOR;
+                    return (
+                      <g key={'pl_' + t.id}
+                        onMouseEnter={() => setHoverId(t.id)}
+                        onMouseLeave={() => setHoverId((prev) => (prev === t.id ? null : prev))}
+                        onClick={(e) => { e.stopPropagation(); setSelectedId(t.id); setProbe(null); }}
+                        onDoubleClick={(e) => { e.stopPropagation(); playTrack(t); }}
+                        style={{ cursor: 'pointer' }}>
+                        {isSel && <circle cx={p.x} cy={p.y} r={12} fill="none" stroke={color} strokeWidth="1.5" />}
+                        <circle cx={p.x} cy={p.y} r={isPlay ? 9 : 6} fill={color} opacity={0.9} />
+                        <circle cx={p.x} cy={p.y} r={9} fill="none" stroke="white" strokeWidth="1" strokeOpacity="0.7" />
+                      </g>
+                    );
+                  })}
+
+                  {/* interpolation candidates — distinct white, dashed-ring style */}
+                  {candidates && candidates.tracks.map((t) => {
+                    if (entryByTrackId.has(t.id)) return null;
+                    const p = dotPos(t);
+                    const isSel = t.id === selectedId;
+                    return (
+                      <g key={'cand_' + t.id}
+                        onMouseEnter={() => setHoverId(t.id)}
+                        onMouseLeave={() => setHoverId((prev) => (prev === t.id ? null : prev))}
+                        onClick={(e) => { e.stopPropagation(); setSelectedId(t.id); setProbe(null); }}
+                        onDoubleClick={(e) => { e.stopPropagation(); playTrack(t); }}
+                        style={{ cursor: 'pointer' }}>
+                        <circle cx={p.x} cy={p.y} r={9} fill="none" stroke={CANDIDATE_COLOR} strokeWidth="1.2" strokeOpacity="0.7" strokeDasharray="3 2" />
+                        <circle cx={p.x} cy={p.y} r={4.5} fill={CANDIDATE_COLOR} opacity={isSel ? 1 : 0.85} />
+                      </g>
+                    );
+                  })}
+
+                  {/* probe marker (clicked empty point) */}
+                  {probe && (
+                    <g style={{ pointerEvents: 'none' }}>
+                      <path d={`M${probe.x - 6} ${probe.y - 6} l12 12 M${probe.x + 6} ${probe.y - 6} l-12 12`}
+                        stroke="var(--el-yellow-400)" strokeWidth="2" strokeLinecap="round" />
+                    </g>
+                  )}
                 </g>
-
-                {/* sonar rings on playing dot */}
-                {playing && [50, 100, 160, 230].map((r, i) => {
-                  const pos = dotPos(playing);
-                  return <circle key={i} cx={pos.x} cy={pos.y} r={r} fill="none" stroke="var(--el-yellow-500)" strokeOpacity={[0.55, 0.35, 0.22, 0.12][i]} strokeWidth={1} />;
-                })}
-
-                {/* trail: each segment is clickable to interpolate between its endpoints */}
-                {trailTracks.length > 1 && trailTracks.slice(1).map((b, i) => {
-                  const a = trailTracks[i];
-                  const pa = dotPos(a); const pb = dotPos(b);
-                  const active = candidates && ((candidates.aId === a.id && candidates.bId === b.id) ||
-                    (candidates.aId === b.id && candidates.bId === a.id));
-                  return (
-                    <g key={`seg_${a.id}_${b.id}`} style={{ cursor: 'pointer' }} onClick={() => interpolateEdge(a, b)}>
-                      <line x1={pa.x} y1={pa.y} x2={pb.x} y2={pb.y} stroke="transparent" strokeWidth="16" />
-                      <line x1={pa.x} y1={pa.y} x2={pb.x} y2={pb.y}
-                        stroke="var(--el-indigo-500)" strokeOpacity={active ? 0.95 : 0.45}
-                        strokeWidth={active ? 2.5 : 2} strokeDasharray="4 4" />
-                    </g>
-                  );
-                })}
-                {trailTracks.map((t) => {
-                  const p = dotPos(t);
-                  return <circle key={'tr_' + t.id} cx={p.x} cy={p.y} r={11} fill="none" stroke="var(--el-indigo-500)" strokeWidth="2" strokeOpacity="0.6" />;
-                })}
-
-                {/* result dots (bright, interactive), colored by their search layer */}
-                {visibleTracks.map(({ track: t, color }) => {
-                  const p = dotPos(t);
-                  const isPlay = t.id === playingId;
-                  const isSel = t.id === selectedId;
-                  const isHov = t.id === hoverId;
-                  const inTrail = trailTracks.some((x) => x.id === t.id);
-                  const r = isPlay ? 9 : isSel ? 7 : 5;
-                  return (
-                    <g key={t.id}
-                      onMouseEnter={() => setHoverId(t.id)}
-                      onMouseLeave={() => setHoverId((prev) => (prev === t.id ? null : prev))}
-                      onClick={() => setSelectedId(t.id)}
-                      onDoubleClick={() => playTrack(t)}
-                      style={{ cursor: 'pointer' }}>
-                      {(isHov || isSel) && (
-                        <circle cx={p.x} cy={p.y} r={r + 6} fill="none" stroke={isSel ? color : 'rgba(255,255,255,0.3)'} strokeWidth="1.5" />
-                      )}
-                      <circle cx={p.x} cy={p.y} r={r} fill={color} opacity={inTrail ? 1 : 0.85}
-                        style={{ filter: isPlay ? `drop-shadow(0 0 8px ${color})` : 'none' }} />
-                      {inTrail && <circle cx={p.x} cy={p.y} r={r + 3} fill="none" stroke="white" strokeWidth="1" />}
-                    </g>
-                  );
-                })}
-
-                {/* interpolation candidates — distinct white, dashed-ring style */}
-                {candidates && candidates.tracks.map((t) => {
-                  if (entryByTrackId.has(t.id)) return null; // already shown as a result dot
-                  const p = dotPos(t);
-                  const isSel = t.id === selectedId;
-                  return (
-                    <g key={'cand_' + t.id}
-                      onMouseEnter={() => setHoverId(t.id)}
-                      onMouseLeave={() => setHoverId((prev) => (prev === t.id ? null : prev))}
-                      onClick={() => setSelectedId(t.id)}
-                      onDoubleClick={() => playTrack(t)}
-                      style={{ cursor: 'pointer' }}>
-                      <circle cx={p.x} cy={p.y} r={9} fill="none" stroke={CANDIDATE_COLOR} strokeWidth="1.2" strokeOpacity="0.7" strokeDasharray="3 2" />
-                      <circle cx={p.x} cy={p.y} r={4.5} fill={CANDIDATE_COLOR} opacity={isSel ? 1 : 0.85} />
-                    </g>
-                  );
-                })}
-
-                {/* hover / selected card — a foreignObject so it shares the dot transform */}
-                {(hover || selected) && (() => {
-                  const t = hover || selected;
-                  const pinned = !hover && !!selected;
-                  const p = dotPos(t);
-                  const cardW = 260; const cardH = 210;
-                  let fx = Math.max(6, Math.min(VW - cardW - 6, p.x - cardW / 2));
-                  const above = p.y - cardH - 14 > 4;
-                  const fy = above ? p.y - cardH - 14 : p.y + 14;
-                  const cand = isCandidate(t.id);
-                  const sources = entryByTrackId.get(t.id)?.sources || [];
-                  const label = labelsByTrackId[t.id];
-                  return (
-                    <foreignObject x={fx} y={fy} width={cardW} height={cardH} style={{ pointerEvents: 'none', overflow: 'visible' }}>
-                      <div className="lc-dot-card-wrap" style={{ height: cardH, alignItems: above ? 'flex-end' : 'flex-start' }}>
-                        <div className="lc-dot-card" style={{ pointerEvents: pinned ? 'auto' : 'none' }}>
-                          <div className="lc-dot-sources">
-                            {cand && <span className="lc-source-tag" style={{ borderColor: CANDIDATE_COLOR, color: CANDIDATE_COLOR }}>interpolation</span>}
-                            {sources.map((l) => (
-                              <span key={l.id} className="lc-source-tag" style={{ borderColor: l.color, color: l.color }}>
-                                <span className="ld-layer-swatch" style={{ background: l.color }} />{layerTag(l)}
-                              </span>
-                            ))}
-                            {playing && <span style={{ marginLeft: 'auto', color: 'var(--el-yellow-500)', fontSize: 11 }}>{distBetween(playing, t).toFixed(2)} away</span>}
-                          </div>
-                          <div className="lc-dot-title">{t.title}</div>
-                          <div className="lc-dot-sub">{t.artist} — {t.album}</div>
-                          {pinned && (
-                            <>
-                              <div className="lc-dot-actions">
-                                <button className="lo-btn-ghost" onClick={() => playTrack(t)}>▶ Play</button>
-                                <button className="lo-btn-ghost" onClick={() => (cand ? insertCandidate(t) : addToTrail(t))}>+ Trail</button>
-                                <button className="lo-btn-ghost" onClick={() => addSeedLayer('similar', t)}>≈ Similar</button>
-                              </div>
-                              <div className="lc-dot-foot">
-                                <FeedbackPills track={t} value={label} onLabel={labelTrack} />
-                                <FmaLink track={t} />
-                              </div>
-                            </>
-                          )}
-                        </div>
-                      </div>
-                    </foreignObject>
-                  );
-                })()}
               </svg>
+
+              {/* MERT projection caption */}
+              <div className="ld-map-caption lo-eyebrow">2D PCA of MERT v_mid embeddings</div>
+
+              {/* zoom controls */}
+              <div className="ld-zoom">
+                <button className="lo-btn-icon" title="Zoom in" onClick={() => zoomBy(1.25)}><IconZoomIn size={16} /></button>
+                <button className="lo-btn-icon" title="Zoom out" onClick={() => zoomBy(1 / 1.25)}><IconZoomOut size={16} /></button>
+                <button className="lo-btn-icon" title="Reset view" onClick={resetZoom} disabled={zoom.k === 1 && zoom.x === 0 && zoom.y === 0}><IconRecenter size={16} /></button>
+              </div>
 
               <div className="lc-legend">
                 {visibleLayers.map((l) => (
@@ -659,12 +908,12 @@ export default function Sonar({ initialView = 'map' }) {
                     <span className="lc-legend-dot" style={{ background: CANDIDATE_COLOR }} /> interpolation
                   </div>
                 )}
-                {trailTracks.length > 1 && (
+                {playlistTracks.length > 1 && (
                   <>
                     <div className="lc-legend-divider" />
                     <div className="lc-legend-row">
                       <svg width="22" height="6"><line x1="0" y1="3" x2="22" y2="3" stroke="var(--el-indigo-500)" strokeWidth="2" strokeDasharray="4 3" /></svg>
-                      your trail
+                      playlist (click ＋ to interpolate)
                     </div>
                   </>
                 )}
@@ -673,7 +922,7 @@ export default function Sonar({ initialView = 'map' }) {
           ) : (
             <div className="ld-list lo-scroll">
               {visibleTracks.map(({ track: t, color, sources }, i) => {
-                const inTrail = trailTracks.some((x) => x.id === t.id);
+                const inPlaylist = playlistById.has(t.id);
                 const isPlay = playingId === t.id;
                 return (
                   <div key={t.id}
@@ -683,22 +932,29 @@ export default function Sonar({ initialView = 'map' }) {
                     <span className="ld-dot-inline" style={{ background: color }} title={sources.map(layerTag).join(', ')} />
                     <button className="lo-track-play" title="Play" onClick={(e) => { e.stopPropagation(); playTrack(t); }}>▶</button>
                     <div className="lo-track-info">
-                      <div className="lo-track-title">{t.title}</div>
+                      <div className="lo-track-title">{t.title}<SourceLink track={t} /></div>
                       <div className="lo-track-sub">{t.artist} — {t.album}</div>
+                      {/* search origin shown inline in every row */}
+                      <div className="ld-track-origin">
+                        {sources.map((l) => (
+                          <span key={l.id} className="ld-origin-tag" style={{ color: l.color }}>
+                            <span className="ld-layer-swatch" style={{ background: l.color }} />{layerTag(l)}
+                          </span>
+                        ))}
+                      </div>
                     </div>
-                    <FmaLink track={t} />
                     <FeedbackPills track={t} value={labelsByTrackId[t.id]} onLabel={labelTrack} />
                     <DistanceChip value={distChipValue(t)} />
                     <div className="lo-track-actions">
-                      <button className="lo-act-btn" title="Find similar" onClick={(e) => { e.stopPropagation(); addSeedLayer('similar', t); }}>≈</button>
-                      <button className="lo-act-btn" title="Find dissimilar" onClick={(e) => { e.stopPropagation(); addSeedLayer('dissimilar', t); }}>≠</button>
-                      <button className={'lo-act-btn ' + (inTrail ? 'is-active' : '')} title={inTrail ? 'In your trail' : 'Add to trail'}
-                        onClick={(e) => { e.stopPropagation(); addToTrail(t); }}>{inTrail ? '✓' : '+'}</button>
+                      <button className="lo-act-btn" title="Find similar" onClick={(e) => { e.stopPropagation(); addSeedLayer('similar', t); }}><IconSimilar size={15} /></button>
+                      <button className="lo-act-btn" title="Find dissimilar" onClick={(e) => { e.stopPropagation(); addSeedLayer('dissimilar', t); }}><IconDissimilar size={15} /></button>
+                      <button className={'lo-act-btn ' + (inPlaylist ? 'is-active' : '')} title={inPlaylist ? 'In your playlist' : 'Add to playlist'}
+                        onClick={(e) => { e.stopPropagation(); addToPlaylist(t); }}>{inPlaylist ? <IconCheck size={15} /> : <IconListPlus size={15} />}</button>
                     </div>
                   </div>
                 );
               })}
-              {!anyLoading && visibleTracks.length === 0 && <div className="lo-eyebrow" style={{ padding: 16 }}>No results.</div>}
+              {!anyLoading && visibleTracks.length === 0 && <div className="lo-eyebrow" style={{ padding: 16 }}>No results. Add a vibe above to start.</div>}
             </div>
           )}
         </section>
@@ -709,12 +965,20 @@ export default function Sonar({ initialView = 'map' }) {
             <div className="lo-now-art"><img src={`${ASSET}assets/artwork.svg`} alt="" className="lo-now-art-mascot" /></div>
             <div>
               <div className="lo-eyebrow-strong">Now playing</div>
-              <div className="lo-now-title">{playing ? playing.title : '—'}</div>
+              <div className="lo-now-title">{playing ? <>{playing.title}<SourceLink track={playing} /></> : '—'}</div>
               <div className="lo-now-sub">{playing ? `${playing.artist} — ${playing.album}` : 'Pick a track'}</div>
-              {playing && <div className="lo-eyebrow" style={{ marginTop: 4 }}>Playing from {navSource}</div>}
+              {playing && (() => {
+                const src = entryByTrackId.get(playing.id)?.sources?.[0] || playlistById.get(playing.id)?.origin;
+                return (
+                  <div className="lo-eyebrow" style={{ marginTop: 4 }}>
+                    Playing from {navSource}
+                    {src && <> · <span style={{ color: src.color }}>{layerKindWord(src)} {src.label}</span></>}
+                  </div>
+                );
+              })()}
             </div>
             <div>
-              <Waveform width={244} height={36} progress={progress} bars={48} seed={(playingId || 'x').charCodeAt(0) + 3} />
+              <Waveform width={244} height={36} progress={progress} bars={48} seed={(playingId || 'x').charCodeAt(0) + 3} onSeek={playing ? seekTo : null} />
               <div className="lo-now-times">
                 <span>{fmtTime(playingTotal * progress)}</span>
                 <span>{fmtTime(playingTotal)}</span>
@@ -739,18 +1003,41 @@ export default function Sonar({ initialView = 'map' }) {
             <div className="la-now-actions">
               <div className="lo-now-fb">
                 <FeedbackPills track={playing} value={labelsByTrackId[playing.id]} onLabel={labelTrack} />
-                <FmaLink track={playing} />
               </div>
               <button className="lo-btn-ghost" onClick={() => addSeedLayer('similar', playing)}>
-                <span style={{ marginRight: 6 }}>≈</span> Similar to this
+                <IconSimilar size={15} /> <span style={{ marginLeft: 6 }}>Similar to this</span>
               </button>
-              <button className="lo-btn-ghost" onClick={() => addToTrail(playing)}>
-                <span style={{ marginRight: 6 }}>+</span> Add to trail
+              <button className="lo-btn-ghost" onClick={() => addSeedLayer('dissimilar', playing)}>
+                <IconDissimilar size={15} /> <span style={{ marginLeft: 6 }}>Dissimilar to this</span>
+              </button>
+              <button className="lo-btn-ghost" onClick={() => addToPlaylist(playing)}>
+                <IconListPlus size={15} /> <span style={{ marginLeft: 6 }}>Add to playlist</span>
               </button>
             </div>
           )}
         </aside>
       </main>
+
+      {/* ===== ABOUT MODAL — mirrors the legacy frontend's hamburger/about ===== */}
+      {aboutOpen && (
+        <div className="ld-about-overlay" role="dialog" aria-modal="true" aria-label="About EchoLocate"
+          onClick={(e) => { if (e.target === e.currentTarget) setAboutOpen(false); }}>
+          <div className="ld-about-card">
+            <button className="ld-about-close" aria-label="Close" onClick={() => setAboutOpen(false)}>✕</button>
+            <h2 className="el-h2" style={{ fontSize: '1.4rem', marginBottom: 8 }}>About EchoLocate</h2>
+            <p className="el-body-muted">
+              EchoLocate is an AI-powered music discovery system that uses audio embeddings for
+              sonic similarity search. The sonar map plots tracks by a 2D PCA projection of their
+              MERT <code>v_mid</code> embedding — the same vector used for interpolation. Search
+              layers, build a playlist, and click the lines between tracks to interpolate.
+            </p>
+            <p className="el-body-muted" style={{ marginTop: 10 }}>
+              <a className="ld-about-link" href="https://github.com/along528/echolocate" target="_blank" rel="noopener noreferrer">View on GitHub ↗</a>
+            </p>
+            <p className="el-italic-muted" style={{ marginTop: 12 }}>Built with MERT + CLAP embeddings, DuckDB VSS, and HNSW indexing.</p>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
