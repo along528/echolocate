@@ -476,6 +476,16 @@ export default function Sonar({ initialView = 'map' }) {
     if (isPlaying) { audio.pause(); setIsPlaying(false); }
     else { audio.play().then(() => setIsPlaying(true)).catch(() => {}); }
   };
+  // Cue a track as "now playing" (shows in the player + radial rings on the map)
+  // and select it, but do NOT start audio — pressing Space will begin playback.
+  const cueTrack = (track) => {
+    if (!track) return;
+    setPlayingId(track.id);
+    setSelectedId(track.id);
+    setIsPlaying(false);
+    const audio = audioRef.current;
+    if (audio) audio.src = API.getStreamUrl(track.id);
+  };
   const seekTo = (frac) => {
     const audio = audioRef.current;
     if (!audio || !audio.duration) return;
@@ -521,6 +531,33 @@ export default function Sonar({ initialView = 'map' }) {
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
   }, []);
+
+  // Fresh session (nothing restored): once the two seeded searches finish, pick
+  // the two searched tracks that sit furthest apart on the map, add them to the
+  // playlist, and cue the first (shows in the player with its radial rings —
+  // without auto-playing). Runs at most once.
+  const autoCueRef = React.useRef(false);
+  React.useEffect(() => {
+    if (autoCueRef.current) return;
+    if ((boot?.layers || []).length || (boot?.playlist || []).length) { autoCueRef.current = true; return; }
+    if (playlist.length) { autoCueRef.current = true; return; } // user already acted
+    if (anyLoading) return; // wait for the seeded searches to resolve
+    const tracks = flatResults;
+    if (tracks.length < 2) return;
+    let a = null, b = null, bestD = -1;
+    for (let i = 0; i < tracks.length; i++) {
+      for (let j = i + 1; j < tracks.length; j++) {
+        const d = distBetween(tracks[i], tracks[j]);
+        if (d > bestD) { bestD = d; a = tracks[i]; b = tracks[j]; }
+      }
+    }
+    if (!a || !b) return;
+    autoCueRef.current = true;
+    addToPlaylist(a);
+    addToPlaylist(b);
+    cueTrack(a);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [anyLoading, flatResults, playlist.length]);
 
   const labelTrack = (track, signal) => {
     Labels.recordLabel(track, signal);
