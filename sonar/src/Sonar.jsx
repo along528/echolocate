@@ -388,32 +388,41 @@ export default function Sonar({ initialView = 'map' }) {
 
   // Drag-to-reorder. Native HTML5 DnD; setData is required for the drag to
   // actually start in Firefox (and to keep Chrome from treating it as a click).
+  // We track an insertion *boundary* (0..length) so a track can be dropped in
+  // the gaps between cards, not just onto another card.
   const dragId = React.useRef(null);
-  const [dragOverId, setDragOverId] = React.useState(null);
+  const [dropIdx, setDropIdx] = React.useState(null);
   const onDragStartSlot = (e, id) => {
     dragId.current = id;
     e.dataTransfer.effectAllowed = 'move';
     e.dataTransfer.setData('text/plain', id);
   };
-  const onDragOverSlot = (e, id) => {
+  // Over a card: the boundary is above or below it depending on the cursor half.
+  const onDragOverCard = (e, index) => {
+    if (!dragId.current) return;
     e.preventDefault();
     e.dataTransfer.dropEffect = 'move';
-    if (dragId.current && dragId.current !== id && dragOverId !== id) setDragOverId(id);
+    const rect = e.currentTarget.getBoundingClientRect();
+    const boundary = index + ((e.clientY - rect.top) > rect.height / 2 ? 1 : 0);
+    if (dropIdx !== boundary) setDropIdx(boundary);
   };
-  const onDragEndSlot = () => { dragId.current = null; setDragOverId(null); };
-  const onDropSlot = (e, targetId) => {
+  const onDragEndSlot = () => { dragId.current = null; setDropIdx(null); };
+  const onDropSlot = (e) => {
     e.preventDefault();
     const from = dragId.current;
+    const boundary = dropIdx;
     dragId.current = null;
-    setDragOverId(null);
-    if (!from || from === targetId) return;
-    setPlaylist((t) => {
-      const fi = t.findIndex((s) => s.id === from);
-      const ti = t.findIndex((s) => s.id === targetId);
-      if (fi < 0 || ti < 0) return t;
-      const arr = [...t];
+    setDropIdx(null);
+    if (!from || boundary == null) return;
+    setPlaylist((arr0) => {
+      const fi = arr0.findIndex((s) => s.id === from);
+      if (fi < 0) return arr0;
+      const arr = [...arr0];
       const [moved] = arr.splice(fi, 1);
-      arr.splice(ti, 0, moved);
+      // Removing an element before the boundary shifts later indices left by one.
+      let idx = fi < boundary ? boundary - 1 : boundary;
+      idx = Math.max(0, Math.min(arr.length, idx));
+      arr.splice(idx, 0, moved);
       return recomputeDist(arr);
     });
   };
@@ -730,7 +739,9 @@ export default function Sonar({ initialView = 'map' }) {
               : 'Add tracks, then click between them to interpolate.'}
           </div>
 
-          <div className="la-trail-list lo-scroll">
+          <div className="la-trail-list lo-scroll"
+            onDragOver={(e) => { if (dragId.current) e.preventDefault(); }}
+            onDrop={onDropSlot}>
             {playlist.map((slot, i) => {
               const t = slot.track;
               if (!t) return null;
@@ -741,6 +752,7 @@ export default function Sonar({ initialView = 'map' }) {
                   : l.seedTrackId === slot.origin.seedTrackId));
               return (
                 <React.Fragment key={slot.id}>
+                  {dropIdx === i && <div className="la-trail-drop" aria-hidden="true" />}
                   {i > 0 && prev && (
                     <button
                       className={'la-trail-link ld-trail-link-btn ' +
@@ -751,15 +763,12 @@ export default function Sonar({ initialView = 'map' }) {
                     ><IconPlus size={13} /></button>
                   )}
                   <div
-                    className={'la-trail-card '
-                      + (playingId === t.id ? 'is-playing ' : '')
-                      + (dragOverId === slot.id ? 'is-drag-over ' : '')}
+                    className={'la-trail-card ' + (playingId === t.id ? 'is-playing ' : '')}
                     draggable
                     onDragStart={(e) => onDragStartSlot(e, slot.id)}
-                    onDragOver={(e) => onDragOverSlot(e, slot.id)}
-                    onDragLeave={() => setDragOverId((d) => (d === slot.id ? null : d))}
+                    onDragOver={(e) => onDragOverCard(e, i)}
                     onDragEnd={onDragEndSlot}
-                    onDrop={(e) => onDropSlot(e, slot.id)}
+                    onDrop={onDropSlot}
                   >
                     <div className="la-trail-marker"><span className="la-trail-dot" style={{ background: slot.color || 'var(--el-indigo-500)' }} /></div>
                     <div className="la-trail-body" onClick={() => playTrack(t)}>
@@ -788,6 +797,7 @@ export default function Sonar({ initialView = 'map' }) {
                 </React.Fragment>
               );
             })}
+            {dropIdx === playlist.length && playlist.length > 0 && <div className="la-trail-drop" aria-hidden="true" />}
             {playlist.length === 0 && <div className="lo-eyebrow" style={{ padding: '12px 4px' }}>Add tracks to build a playlist.</div>}
           </div>
         </aside>
@@ -812,8 +822,11 @@ export default function Sonar({ initialView = 'map' }) {
           {/* Track detail card — lives ABOVE the map so it never obscures dots. */}
           {view === 'map' && (
             <div className="ld-detail-bar">
-              {detail
-                ? <DetailCard t={detail} pinned={detailPinned} />
+              {/* Call as a function (not <DetailCard/>) so it doesn't remount on
+                  every re-render — remounting resets button :hover and makes the
+                  action buttons flicker as the mouse moves over the map. */}
+                {detail
+                ? DetailCard({ t: detail, pinned: detailPinned })
                 : <div className="ld-detail-empty" />}
             </div>
           )}
