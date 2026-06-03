@@ -493,6 +493,35 @@ export default function Sonar({ initialView = 'map' }) {
     if (next) playTrack(next);
   };
 
+  // Keyboard transport: Space/K play-pause, ←/→ prev/next track, ↑/↓ seek ±5s.
+  // Latest-ref pattern so the listener mounts once but always calls fresh fns.
+  const transportRef = React.useRef(null);
+  transportRef.current = { togglePlay, step, audio: audioRef };
+  React.useEffect(() => {
+    const onKey = (e) => {
+      const el = e.target;
+      if (el && (el.tagName === 'INPUT' || el.tagName === 'TEXTAREA' || el.isContentEditable)) return;
+      if (e.metaKey || e.ctrlKey || e.altKey) return;
+      const { togglePlay: tp, step: st, audio } = transportRef.current;
+      const seek = (d) => {
+        const a = audio.current;
+        if (!a || !a.duration) return false;
+        a.currentTime = Math.max(0, Math.min(a.duration, a.currentTime + d));
+        return true;
+      };
+      switch (e.key) {
+        case ' ': case 'k': case 'K': e.preventDefault(); tp(); break;
+        case 'ArrowRight': e.preventDefault(); st(1); break;
+        case 'ArrowLeft': e.preventDefault(); st(-1); break;
+        case 'ArrowUp': if (seek(5)) e.preventDefault(); break;
+        case 'ArrowDown': if (seek(-5)) e.preventDefault(); break;
+        default: break;
+      }
+    };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, []);
+
   const labelTrack = (track, signal) => {
     Labels.recordLabel(track, signal);
     setLabelsByTrackId((m) => ({ ...m, [track.id]: signal }));
@@ -1078,15 +1107,15 @@ export default function Sonar({ initialView = 'map' }) {
               </div>
             </div>
             <div className="lo-now-controls">
-              <button className="lo-now-btn" title="Previous" onClick={() => step(-1)}>
+              <button className="lo-now-btn" title="Previous (←)" onClick={() => step(-1)}>
                 <svg viewBox="0 0 24 24" fill="currentColor" width="16" height="16"><path d="M6 6h2v12H6zm3.5 6l8.5 6V6z" /></svg>
               </button>
-              <button className="lo-now-btn is-play" title={isPlaying ? 'Pause' : 'Play'} onClick={togglePlay}>
+              <button className="lo-now-btn is-play" title={isPlaying ? 'Pause (Space)' : 'Play (Space)'} onClick={togglePlay}>
                 {isPlaying
                   ? <svg viewBox="0 0 24 24" fill="white" width="18" height="18"><path d="M6 5h4v14H6zm8 0h4v14h-4z" /></svg>
                   : <svg viewBox="0 0 24 24" fill="white" width="18" height="18"><path d="M8 5v14l11-7z" /></svg>}
               </button>
-              <button className="lo-now-btn" title="Next" onClick={() => step(1)}>
+              <button className="lo-now-btn" title="Next (→)" onClick={() => step(1)}>
                 <svg viewBox="0 0 24 24" fill="currentColor" width="16" height="16"><path d="M6 18l8.5-6L6 6v12zM16 6v12h2V6h-2z" /></svg>
               </button>
             </div>
