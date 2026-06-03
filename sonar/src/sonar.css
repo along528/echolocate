@@ -91,6 +91,12 @@
   background: var(--el-indigo-tint-2);
   border-color: var(--el-indigo-500);
 }
+/* Drop-target highlight while dragging a track to reorder. */
+.la-trail-card.is-drag-over {
+  border-color: var(--el-indigo-500);
+  box-shadow: 0 -2px 0 var(--el-indigo-500);
+}
+.la-trail-card[draggable] { cursor: grab; }
 .la-trail-marker {
   display: flex; align-items: center; justify-content: center;
   width: 14px;
@@ -553,7 +559,15 @@
   gap: 6px;
   padding-left: 8px;
 }
+.ld-layer-pill { cursor: pointer; }
 .ld-layer-pill.is-hidden { opacity: 0.45; }
+/* Soloed pill — the active "filter to just this search" state. */
+.ld-layer-pill.is-solo { box-shadow: 0 0 0 1px currentColor inset; opacity: 1; }
+/* While one pill is soloed, the rest recede (ghosted) so the filter is obvious. */
+.ld-layer-pill.is-ghost { opacity: 0.4; }
+.ld-layer-pill.is-ghost:hover { opacity: 0.7; }
+/* ✨ hint that a pill has an enhanced query to reveal on hover. */
+.ld-layer-spark { font-size: 0.7rem; line-height: 1; opacity: 0.8; }
 .ld-layer-swatch {
   width: 9px; height: 9px; border-radius: 50%;
   flex: 0 0 auto; display: inline-block;
@@ -678,17 +692,33 @@
 /* =========================================================
    TRACK DETAIL CARD — shown ABOVE the map (never obscures dots)
    ========================================================= */
-.ld-detail-bar { flex: 0 0 auto; min-height: 78px; }
+/* Fixed height (not min-height): swapping the empty state for the detail card
+   must NOT change the bar's size, or the flex map below reflows, the SVG
+   rescales, and the dot slides out from under the cursor → hover flicker. */
+.ld-detail-bar { flex: 0 0 auto; height: 104px; }
 .ld-detail {
+  height: 100%;
   display: flex; align-items: center; gap: 14px;
   padding: 10px 14px;
   background: var(--el-bg-secondary);
   border: 1px solid var(--el-border);
   border-radius: var(--el-radius-lg);
+  overflow: hidden;
 }
 .ld-detail.is-pinned { border-color: var(--el-border-strong); }
 .ld-detail-main { min-width: 0; flex: 1; }
-.ld-detail-sources { display: flex; gap: 6px; flex-wrap: wrap; align-items: center; margin-bottom: 4px; }
+/* nowrap so a long source list can't grow the (now fixed-height) bar. */
+.ld-detail-sources { display: flex; gap: 6px; flex-wrap: nowrap; align-items: center; margin-bottom: 4px; overflow: hidden; }
+.ld-detail-sources .lc-source-tag { flex: 0 0 auto; }
+/* Inline source URL under the title in the map detail popup. */
+.ld-detail-url {
+  display: inline-flex; align-items: center; gap: 4px;
+  margin-top: 3px; max-width: 100%;
+  font-size: var(--el-fs-xs);
+  color: var(--el-fg-secondary); text-decoration: none;
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+}
+.ld-detail-url:hover { color: var(--el-indigo-500); }
 .ld-detail-dist { margin-left: auto; color: var(--el-yellow-500); font-size: 11px; }
 .ld-detail-title {
   font-weight: var(--el-fw-semibold);
@@ -702,10 +732,10 @@
   padding: 7px 10px; font-size: var(--el-fs-sm);
 }
 .ld-detail-empty {
-  display: flex; align-items: center; height: 100%;
-  padding: 10px 14px;
+  height: 100%;
   border: 1px dashed var(--el-border);
   border-radius: var(--el-radius-lg);
+  opacity: 0.5;
 }
 
 /* =========================================================
@@ -713,12 +743,30 @@
    ========================================================= */
 .ld-map-caption {
   position: absolute; right: 14px; top: 12px;
+  display: inline-flex; align-items: center; gap: 6px;
   padding: 4px 8px;
   background: rgba(18,18,26,0.7);
   border: 1px solid var(--el-border);
   border-radius: var(--el-radius-sm);
   backdrop-filter: blur(6px);
 }
+/* Small info icon + hover/focus tooltip (explains the projection). */
+.ld-info { position: relative; display: inline-flex; color: var(--el-fg-secondary); cursor: help; }
+.ld-info:hover, .ld-info:focus-visible { color: var(--el-fg-primary); outline: none; }
+.ld-info-pop {
+  position: absolute; top: calc(100% + 8px); right: 0;
+  z-index: 30; display: none;
+  width: 240px; padding: 10px 12px;
+  background: var(--el-bg-secondary);
+  border: 1px solid var(--el-border-strong);
+  border-radius: var(--el-radius-md);
+  box-shadow: var(--el-shadow-md);
+  color: var(--el-fg-secondary);
+  font-size: var(--el-fs-xs); line-height: 1.45;
+  text-transform: none; letter-spacing: normal;
+  white-space: normal;
+}
+.ld-info:hover .ld-info-pop, .ld-info:focus-visible .ld-info-pop { display: block; }
 .ld-zoom {
   position: absolute; right: 14px; bottom: 14px;
   display: flex; flex-direction: column; gap: 6px;

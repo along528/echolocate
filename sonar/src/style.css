@@ -18,8 +18,9 @@ html, body {
 button { font-family: inherit; cursor: pointer; }
 input { font-family: inherit; }
 
-/* Canvas page chrome */
-#root { min-height: 100vh; }
+/* Canvas page chrome — pin to the viewport so the flex shell (and the map
+   inside it) sizes to the window instead of overflowing/scrolling. */
+#root { height: 100vh; height: 100dvh; }
 
 /* =========================================================
    ARTBOARD SHELL — every layout sits inside an .lo-shell

@@ -12,8 +12,8 @@ import { Cache, FALLBACK_SUGGESTIONS } from './cache.js';
 import { Wordmark, Waveform, DistanceChip } from './svg-bits.jsx';
 import {
   IconListPlus, IconSimilar, IconDissimilar, IconCheck, IconTilde, IconX, IconClose,
-  IconExternal, IconEye, IconEyeOff, IconSolo, IconUp, IconDown, IconPlus,
-  IconZoomIn, IconZoomOut, IconRecenter,
+  IconExternal, IconEye, IconEyeOff, IconUp, IconDown, IconPlus,
+  IconZoomIn, IconZoomOut, IconRecenter, IconInfo,
 } from './icons.jsx';
 
 // Per-search layer colors. A search's color is its identity everywhere (pill,
@@ -76,6 +76,14 @@ function distBetween(a, b) {
 const distChipValue = (t) => (typeof t.similarity === 'number' ? 1 - t.similarity : 0);
 const layerTag = (l) => (l.kind === 'similar' ? '≈ ' : l.kind === 'dissimilar' ? '≠ ' : '') + l.label;
 const layerKindWord = (l) => (l.kind === 'similar' ? 'Similar to' : l.kind === 'dissimilar' ? 'Dissimilar to' : 'Vibe');
+// Shorten a URL to "host/…/last-segment" for inline display; falls back to the raw string.
+const prettyUrl = (url) => {
+  try {
+    const u = new URL(url);
+    const seg = u.pathname.split('/').filter(Boolean).pop();
+    return u.hostname.replace(/^www\./, '') + (seg ? `/${seg}` : '');
+  } catch { return url; }
+};
 
 // 3-way training-signal feedback (relevant / borderline / wrong). Styled to
 // match the legacy frontend's "Match" pill exactly. Fires Labels.recordLabel.
@@ -160,8 +168,13 @@ export default function Sonar({ initialView = 'map' }) {
   const [playlist, setPlaylist] = React.useState(boot?.playlist || []);
   const [candidates, setCandidates] = React.useState(null); // { aId, bId, tracks }
   const [labelsByTrackId, setLabelsByTrackId] = React.useState({});
-  const [probe, setProbe] = React.useState(null); // { x, y } in plot coords
+  // When set, only this layer's tracks are shown (click a pill to filter to its
+  // members). null = show every layer that isn't explicitly hidden.
+  const [soloLayerId, setSoloLayerId] = React.useState(null);
   const [zoom, setZoom] = React.useState({ k: 1, x: 0, y: 0 });
+  // Pan drag bookkeeping (click-drag to pan when zoomed in).
+  const panRef = React.useRef(null); // { sx, sy, ox, oy } during a drag
+  const didPanRef = React.useRef(false); // set true once a drag actually moves
   const audioRef = React.useRef(null);
 
   React.useEffect(() => { Labels.init(); }, []);
@@ -247,18 +260,24 @@ export default function Sonar({ initialView = 'map' }) {
       })];
     });
   };
-  const removeLayer = (id) => setLayers((ls) => ls.filter((l) => l.id !== id));
-  const clearLayers = () => { setLayers([]); setCandidates(null); setSelectedId(null); };
+  const removeLayer = (id) => {
+    setLayers((ls) => ls.filter((l) => l.id !== id));
+    setSoloLayerId((s) => (s === id ? null : s));
+  };
+  const clearLayers = () => { setLayers([]); setCandidates(null); setSelectedId(null); setSoloLayerId(null); };
   const toggleLayerVisible = (id) =>
     setLayers((ls) => ls.map((l) => (l.id === id ? { ...l, visible: !l.visible } : l)));
-  const soloLayer = (id) =>
-    setLayers((ls) => ls.map((l) => ({ ...l, visible: l.id === id })));
-  const showAllLayers = () => setLayers((ls) => ls.map((l) => ({ ...l, visible: true })));
+  // Click a pill to filter to just its members; click it again to show all.
+  const toggleSolo = (id) => setSoloLayerId((s) => (s === id ? null : id));
+  const showAllLayers = () => { setSoloLayerId(null); setLayers((ls) => ls.map((l) => ({ ...l, visible: true }))); };
 
   // ---- derived ----
-  const visibleLayers = React.useMemo(() => layers.filter((l) => l.visible), [layers]);
+  // A layer is shown if it's soloed, or (when nothing is soloed) not hidden.
+  const isLayerShown = React.useCallback(
+    (l) => (soloLayerId ? l.id === soloLayerId : l.visible), [soloLayerId]);
+  const visibleLayers = React.useMemo(() => layers.filter(isLayerShown), [layers, isLayerShown]);
   const anyLoading = layers.some((l) => l.loading);
-  const allVisible = layers.length > 0 && layers.every((l) => l.visible);
+  const allVisible = !soloLayerId && layers.length > 0 && layers.every((l) => l.visible);
 
   // De-duped union of visible layers' results. Overlap takes the first (oldest)
   // visible layer's color; sources lists every visible layer the track is in.
@@ -266,7 +285,7 @@ export default function Sonar({ initialView = 'map' }) {
     const seen = new Map();
     const order = [];
     for (const l of layers) {
-      if (!l.visible) continue;
+      if (!isLayerShown(l)) continue;
       for (const t of l.results) {
         if (!t || !t.id) continue;
         const ex = seen.get(t.id);
@@ -277,7 +296,7 @@ export default function Sonar({ initialView = 'map' }) {
       }
     }
     return order;
-  }, [layers]);
+  }, [layers, isLayerShown]);
 
   const entryByTrackId = React.useMemo(() => {
     const m = new Map();
@@ -367,12 +386,26 @@ export default function Sonar({ initialView = 'map' }) {
   });
   const clearPlaylist = () => { setPlaylist([]); setCandidates(null); };
 
-  // Drag-to-reorder.
+  // Drag-to-reorder. Native HTML5 DnD; setData is required for the drag to
+  // actually start in Firefox (and to keep Chrome from treating it as a click).
   const dragId = React.useRef(null);
-  const onDragStartSlot = (id) => { dragId.current = id; };
-  const onDropSlot = (targetId) => {
+  const [dragOverId, setDragOverId] = React.useState(null);
+  const onDragStartSlot = (e, id) => {
+    dragId.current = id;
+    e.dataTransfer.effectAllowed = 'move';
+    e.dataTransfer.setData('text/plain', id);
+  };
+  const onDragOverSlot = (e, id) => {
+    e.preventDefault();
+    e.dataTransfer.dropEffect = 'move';
+    if (dragId.current && dragId.current !== id && dragOverId !== id) setDragOverId(id);
+  };
+  const onDragEndSlot = () => { dragId.current = null; setDragOverId(null); };
+  const onDropSlot = (e, targetId) => {
+    e.preventDefault();
     const from = dragId.current;
     dragId.current = null;
+    setDragOverId(null);
     if (!from || from === targetId) return;
     setPlaylist((t) => {
       const fi = t.findIndex((s) => s.id === from);
@@ -450,7 +483,7 @@ export default function Sonar({ initialView = 'map' }) {
   const detail = hover || selected;
   const detailPinned = !hover && !!selected;
 
-  // ---- map zoom / probe ----
+  // ---- map zoom / pan ----
   const zoomBy = (factor) => setZoom((z) => {
     const k = Math.max(1, Math.min(8, z.k * factor));
     // keep the plot centered while zooming
@@ -465,8 +498,7 @@ export default function Sonar({ initialView = 'map' }) {
   };
 
   // Map a click on the SVG background to plot coords (accounting for zoom),
-  // then either deselect (if something is pinned) or drop a probe + select the
-  // nearest track.
+  // then select the nearest track to it.
   const nearestTrack = (px, py) => {
     let best = null, bestD = Infinity;
     const consider = (t) => {
@@ -480,8 +512,10 @@ export default function Sonar({ initialView = 'map' }) {
     return best;
   };
   const onMapBackgroundClick = (e) => {
-    // Clicks on a dot/line stopPropagation, so reaching here means empty space.
-    // Drop an ✕ probe at the click and select the nearest track to it.
+    // A click that came at the end of a pan-drag shouldn't also select a track.
+    if (didPanRef.current) { didPanRef.current = false; return; }
+    // Clicks on a dot/line stopPropagation, so reaching here means empty space:
+    // select the nearest track to the click.
     const svg = e.currentTarget;
     const rect = svg.getBoundingClientRect();
     const sx = ((e.clientX - rect.left) / rect.width) * VW;
@@ -490,9 +524,26 @@ export default function Sonar({ initialView = 'map' }) {
     const px = (sx - zoom.x) / zoom.k;
     const py = (sy - zoom.y) / zoom.k;
     const t = nearestTrack(px, py);
-    setProbe({ x: px, y: py });
     if (t) setSelectedId(t.id);
   };
+
+  // ---- click-drag to pan (only meaningful when zoomed in) ----
+  const onMapPointerDown = (e) => {
+    if (zoom.k <= 1 || e.button !== 0) return;
+    panRef.current = { sx: e.clientX, sy: e.clientY, ox: zoom.x, oy: zoom.y, rect: e.currentTarget.getBoundingClientRect() };
+    didPanRef.current = false;
+  };
+  const onMapPointerMove = (e) => {
+    const pan = panRef.current;
+    if (!pan) return;
+    const dx = (e.clientX - pan.sx) * (VW / pan.rect.width);
+    const dy = (e.clientY - pan.sy) * (VH / pan.rect.height);
+    if (!didPanRef.current && Math.abs(e.clientX - pan.sx) + Math.abs(e.clientY - pan.sy) > 3) {
+      didPanRef.current = true;
+    }
+    if (didPanRef.current) setZoom((z) => ({ ...z, x: pan.ox + dx, y: pan.oy + dy }));
+  };
+  const onMapPointerUp = () => { panRef.current = null; };
 
   const onLayerKeyDown = (e) => {
     if (e.key === 'Enter' && vibeQuery.trim()) {
@@ -535,6 +586,12 @@ export default function Sonar({ initialView = 'map' }) {
             <SourceLink track={t} />
           </div>
           <div className="ld-detail-sub">{t.artist} — {t.album}</div>
+          {t.track_url && (
+            <a className="ld-detail-url" href={t.track_url} target="_blank" rel="noopener noreferrer"
+              onClick={(e) => e.stopPropagation()} title={t.track_url}>
+              <IconExternal size={12} />{prettyUrl(t.track_url)}
+            </a>
+          )}
         </div>
         {/* Actions are always visible (no hover gating). */}
         <div className="ld-detail-actions">
@@ -572,17 +629,22 @@ export default function Sonar({ initialView = 'map' }) {
           {layers.map((l) => (
             <span
               key={l.id}
-              className={'el-chip is-active ld-layer-pill ' + (l.visible ? '' : 'is-hidden')}
+              className={'el-chip is-active ld-layer-pill '
+                + (l.visible ? '' : 'is-hidden ')
+                + (soloLayerId === l.id ? 'is-solo ' : '')
+                + (soloLayerId && soloLayerId !== l.id ? 'is-ghost' : '')}
               style={{ borderColor: l.color }}
+              onClick={() => toggleSolo(l.id)}
+              title={soloLayerId === l.id ? 'Showing only this search — click to show all' : 'Show only this search'}
             >
               <span className="ld-layer-swatch" style={{ background: l.color }} />
               <span className="ld-layer-label">{layerTag(l)}</span>
-              <button className="ld-layer-btn" onClick={() => soloLayer(l.id)} title="Show only this search"><IconSolo size={13} /></button>
-              <button className="ld-layer-btn" onClick={() => toggleLayerVisible(l.id)}
+              {l.enhancedQuery && <span className="ld-layer-spark" aria-hidden="true">✨</span>}
+              <button className="ld-layer-btn" onClick={(e) => { e.stopPropagation(); toggleLayerVisible(l.id); }}
                 title={l.visible ? 'Hide this search' : 'Show this search'}>
                 {l.visible ? <IconEye size={14} /> : <IconEyeOff size={14} />}
               </button>
-              <button className="el-chip-remove" onClick={() => removeLayer(l.id)} title="Remove search">×</button>
+              <button className="el-chip-remove" onClick={(e) => { e.stopPropagation(); removeLayer(l.id); }} title="Remove search">×</button>
               <span className="ld-layer-info">
                 <strong>{layerKindWord(l)} “{l.label}”</strong>
                 <span className="lo-eyebrow">{l.loading ? 'searching…' : `${l.results.length} tracks`}</span>
@@ -590,7 +652,7 @@ export default function Sonar({ initialView = 'map' }) {
                 {/* For similar/dissimilar, surface the exact seed song and let
                     you jump to it. */}
                 {l.seedTrack && (
-                  <button className="ld-layer-seed" onClick={() => { setSelectedId(l.seedTrack.id); }}>
+                  <button className="ld-layer-seed" onClick={(e) => { e.stopPropagation(); setSelectedId(l.seedTrack.id); }}>
                     {l.seedTrack.title} — {l.seedTrack.artist}
                   </button>
                 )}
@@ -609,6 +671,12 @@ export default function Sonar({ initialView = 'map' }) {
             title="Surprise me"
             onClick={() => addVibeLayer(suggestions[Math.floor(Math.random() * suggestions.length)])}
           >🎲</button>
+          {layers.length > 0 && (
+            <div className="ld-layer-toolbar">
+              <button className="lo-btn-ghost ld-mini-btn" onClick={showAllLayers} disabled={allVisible}>Show all</button>
+              <button className="lo-btn-ghost ld-mini-btn" onClick={clearLayers}>Clear all</button>
+            </div>
+          )}
         </div>
 
         <div className="ld-view-toggle" role="tablist" aria-label="View">
@@ -645,12 +713,6 @@ export default function Sonar({ initialView = 'map' }) {
             </button>
           )}
         </div>
-        {layers.length > 0 && (
-          <div className="ld-layer-toolbar">
-            <button className="lo-btn-ghost ld-mini-btn" onClick={showAllLayers} disabled={allVisible}>Show all</button>
-            <button className="lo-btn-ghost ld-mini-btn" onClick={clearLayers}>Clear all</button>
-          </div>
-        )}
       </div>
 
       {/* ===== MAIN ===== */}
@@ -689,17 +751,20 @@ export default function Sonar({ initialView = 'map' }) {
                     ><IconPlus size={13} /></button>
                   )}
                   <div
-                    className={'la-trail-card ' + (playingId === t.id ? 'is-playing ' : '')}
+                    className={'la-trail-card '
+                      + (playingId === t.id ? 'is-playing ' : '')
+                      + (dragOverId === slot.id ? 'is-drag-over ' : '')}
                     draggable
-                    onDragStart={() => onDragStartSlot(slot.id)}
-                    onDragOver={(e) => e.preventDefault()}
-                    onDrop={() => onDropSlot(slot.id)}
+                    onDragStart={(e) => onDragStartSlot(e, slot.id)}
+                    onDragOver={(e) => onDragOverSlot(e, slot.id)}
+                    onDragLeave={() => setDragOverId((d) => (d === slot.id ? null : d))}
+                    onDragEnd={onDragEndSlot}
+                    onDrop={(e) => onDropSlot(e, slot.id)}
                   >
                     <div className="la-trail-marker"><span className="la-trail-dot" style={{ background: slot.color || 'var(--el-indigo-500)' }} /></div>
                     <div className="la-trail-body" onClick={() => playTrack(t)}>
                       <div className="la-trail-eye">
                         <span className="lo-eyebrow-strong">{`Step ${i + 1}`}</span>
-                        {slot.dist != null && <DistanceChip value={slot.dist} kind="amber" />}
                       </div>
                       <div className="lo-track-title" style={{ fontSize: '0.85rem', marginTop: 2 }}>
                         {t.title}<SourceLink track={t} />
@@ -731,7 +796,7 @@ export default function Sonar({ initialView = 'map' }) {
         <section className="ld-center">
           <div className="ld-center-head">
             <div>
-              <span className="lo-eyebrow">{view === 'map' ? 'Embedding space · PCA of MERT v_mid' : 'Results'}</span>
+              <span className="lo-eyebrow">{view === 'map' ? 'MERT embeddings' : 'Results'}</span>
               <h2 className="el-h2" style={{ fontSize: '1.1rem' }}>
                 {anyLoading ? 'Searching…' : (
                   <>{visibleTracks.length} tracks{' '}
@@ -749,7 +814,7 @@ export default function Sonar({ initialView = 'map' }) {
             <div className="ld-detail-bar">
               {detail
                 ? <DetailCard t={detail} pinned={detailPinned} />
-                : <div className="ld-detail-empty lo-eyebrow">Hover a dot to preview · click to pin · click empty space to probe the nearest track</div>}
+                : <div className="ld-detail-empty" />}
             </div>
           )}
 
@@ -757,8 +822,13 @@ export default function Sonar({ initialView = 'map' }) {
             <div className="ld-map-wrap">
               <svg
                 className="lc-canvas" viewBox={`0 0 ${VW} ${VH}`} preserveAspectRatio="xMidYMid meet"
+                style={{ cursor: zoom.k > 1 ? 'grab' : 'default' }}
                 onClick={onMapBackgroundClick}
                 onWheel={onWheelMap}
+                onMouseDown={onMapPointerDown}
+                onMouseMove={onMapPointerMove}
+                onMouseUp={onMapPointerUp}
+                onMouseLeave={onMapPointerUp}
               >
                 {/* background catch-rect so clicks on empty space register */}
                 <rect x={0} y={0} width={VW} height={VH} fill="transparent" />
@@ -817,7 +887,7 @@ export default function Sonar({ initialView = 'map' }) {
                       <g key={t.id}
                         onMouseEnter={() => setHoverId(t.id)}
                         onMouseLeave={() => setHoverId((prev) => (prev === t.id ? null : prev))}
-                        onClick={(e) => { e.stopPropagation(); setSelectedId(t.id); setProbe(null); }}
+                        onClick={(e) => { e.stopPropagation(); setSelectedId(t.id); }}
                         onDoubleClick={(e) => { e.stopPropagation(); playTrack(t); }}
                         style={{ cursor: 'pointer' }}>
                         {(isHov || isSel) && (
@@ -843,7 +913,7 @@ export default function Sonar({ initialView = 'map' }) {
                       <g key={'pl_' + t.id}
                         onMouseEnter={() => setHoverId(t.id)}
                         onMouseLeave={() => setHoverId((prev) => (prev === t.id ? null : prev))}
-                        onClick={(e) => { e.stopPropagation(); setSelectedId(t.id); setProbe(null); }}
+                        onClick={(e) => { e.stopPropagation(); setSelectedId(t.id); }}
                         onDoubleClick={(e) => { e.stopPropagation(); playTrack(t); }}
                         style={{ cursor: 'pointer' }}>
                         {isSel && <circle cx={p.x} cy={p.y} r={12} fill="none" stroke={color} strokeWidth="1.5" />}
@@ -862,7 +932,7 @@ export default function Sonar({ initialView = 'map' }) {
                       <g key={'cand_' + t.id}
                         onMouseEnter={() => setHoverId(t.id)}
                         onMouseLeave={() => setHoverId((prev) => (prev === t.id ? null : prev))}
-                        onClick={(e) => { e.stopPropagation(); setSelectedId(t.id); setProbe(null); }}
+                        onClick={(e) => { e.stopPropagation(); setSelectedId(t.id); }}
                         onDoubleClick={(e) => { e.stopPropagation(); playTrack(t); }}
                         style={{ cursor: 'pointer' }}>
                         <circle cx={p.x} cy={p.y} r={9} fill="none" stroke={CANDIDATE_COLOR} strokeWidth="1.2" strokeOpacity="0.7" strokeDasharray="3 2" />
@@ -871,18 +941,21 @@ export default function Sonar({ initialView = 'map' }) {
                     );
                   })}
 
-                  {/* probe marker (clicked empty point) */}
-                  {probe && (
-                    <g style={{ pointerEvents: 'none' }}>
-                      <path d={`M${probe.x - 6} ${probe.y - 6} l12 12 M${probe.x + 6} ${probe.y - 6} l-12 12`}
-                        stroke="var(--el-yellow-400)" strokeWidth="2" strokeLinecap="round" />
-                    </g>
-                  )}
                 </g>
               </svg>
 
-              {/* MERT projection caption */}
-              <div className="ld-map-caption lo-eyebrow">2D PCA of MERT v_mid embeddings</div>
+              {/* MERT projection caption + explainer */}
+              <div className="ld-map-caption lo-eyebrow">
+                MERT embeddings
+                <span className="ld-info" tabIndex={0}
+                  aria-label="A 2D map of MERT audio embeddings (PCA projection). Dots close together sound similar; the axes themselves aren't meaningful.">
+                  <IconInfo size={12} />
+                  <span className="ld-info-pop">
+                    A 2D map of the tracks' MERT audio embeddings (PCA projection). Dots that sit close together
+                    sound similar — the axes themselves aren't meaningful.
+                  </span>
+                </span>
+              </div>
 
               {/* zoom controls */}
               <div className="ld-zoom">
