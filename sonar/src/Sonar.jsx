@@ -244,6 +244,20 @@ export default function Sonar({ initialView = 'map' }) {
     setLayers((ls) => (ls.some((l) => l.kind === kind && l.seedTrackId === track.id)
       ? ls : [...ls, makeLayer(kind, { label: track.title, seedTrackId: track.id, seedTrack: track })]));
   };
+
+  // Fresh session (nothing restored from localStorage): seed two random vibe
+  // pills so the map isn't empty on first load.
+  const seededRef = React.useRef(false);
+  React.useEffect(() => {
+    if (seededRef.current) return;
+    seededRef.current = true;
+    if ((boot?.layers || []).length || layers.length) return;
+    const pool = [...(suggestions.length ? suggestions : FALLBACK_SUGGESTIONS)];
+    for (let n = 0; n < 2 && pool.length; n++) {
+      addVibeLayer(pool.splice(Math.floor(Math.random() * pool.length), 1)[0]);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
   // Re-add a layer that produced a (still-present) playlist track. No-ops if a
   // matching layer is already shown.
   const restoreLayer = (origin) => {
