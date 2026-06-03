@@ -606,7 +606,6 @@ export default function Sonar({ initialView = 'map' }) {
           </div>
           <div className="ld-detail-title">
             {t.title}
-            <SourceLink track={t} />
           </div>
           <div className="ld-detail-sub">{t.artist} — {t.album}</div>
           {t.track_url && (
@@ -915,7 +914,7 @@ export default function Sonar({ initialView = 'map' }) {
                         onMouseEnter={() => setHoverId(t.id)}
                         onMouseLeave={() => setHoverId((prev) => (prev === t.id ? null : prev))}
                         onClick={(e) => { e.stopPropagation(); setSelectedId(t.id); }}
-                        onDoubleClick={(e) => { e.stopPropagation(); playTrack(t); }}
+                        onDoubleClick={(e) => { e.stopPropagation(); addToPlaylist(t); }}
                         style={{ cursor: 'pointer' }}>
                         {(isHov || isSel) && (
                           <circle cx={p.x} cy={p.y} r={r + 6} fill="none" stroke={isSel ? color : 'rgba(255,255,255,0.3)'} strokeWidth="1.5" />
@@ -941,7 +940,7 @@ export default function Sonar({ initialView = 'map' }) {
                         onMouseEnter={() => setHoverId(t.id)}
                         onMouseLeave={() => setHoverId((prev) => (prev === t.id ? null : prev))}
                         onClick={(e) => { e.stopPropagation(); setSelectedId(t.id); }}
-                        onDoubleClick={(e) => { e.stopPropagation(); playTrack(t); }}
+                        onDoubleClick={(e) => { e.stopPropagation(); addToPlaylist(t); }}
                         style={{ cursor: 'pointer' }}>
                         {isSel && <circle cx={p.x} cy={p.y} r={12} fill="none" stroke={color} strokeWidth="1.5" />}
                         <circle cx={p.x} cy={p.y} r={isPlay ? 9 : 6} fill={color} opacity={0.9} />
@@ -960,7 +959,7 @@ export default function Sonar({ initialView = 'map' }) {
                         onMouseEnter={() => setHoverId(t.id)}
                         onMouseLeave={() => setHoverId((prev) => (prev === t.id ? null : prev))}
                         onClick={(e) => { e.stopPropagation(); setSelectedId(t.id); }}
-                        onDoubleClick={(e) => { e.stopPropagation(); playTrack(t); }}
+                        onDoubleClick={(e) => { e.stopPropagation(); insertCandidate(t); }}
                         style={{ cursor: 'pointer' }}>
                         <circle cx={p.x} cy={p.y} r={9} fill="none" stroke={CANDIDATE_COLOR} strokeWidth="1.2" strokeOpacity="0.7" strokeDasharray="3 2" />
                         <circle cx={p.x} cy={p.y} r={4.5} fill={CANDIDATE_COLOR} opacity={isSel ? 1 : 0.85} />
