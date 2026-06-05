@@ -466,15 +466,18 @@ export default function Sonar({ initialView = 'map' }) {
     const audio = audioRef.current;
     if (audio) {
       audio.src = API.getStreamUrl(track.id);
-      audio.play().then(() => setIsPlaying(true)).catch(() => setIsPlaying(false));
+      // isPlaying is driven by the element's onPlay/onPause/onEnded handlers
+      // (single source of truth); just swallow the rejection a new src causes.
+      audio.play().catch(() => {});
     }
     Labels.recordLabel(track, 'play');
   };
   const togglePlay = () => {
     const audio = audioRef.current;
     if (!audio || !playing) return;
-    if (isPlaying) { audio.pause(); setIsPlaying(false); }
-    else { audio.play().then(() => setIsPlaying(true)).catch(() => {}); }
+    // isPlaying is driven by the element's onPlay/onPause handlers.
+    if (isPlaying) audio.pause();
+    else audio.play().catch(() => {});
   };
   // Cue a track as "now playing" (shows in the player + radial rings on the map)
   // and select it, but do NOT start audio — pressing Space will begin playback.
@@ -501,6 +504,15 @@ export default function Sonar({ initialView = 'map' }) {
     const idx = navList.findIndex((t) => t.id === playingId);
     const next = navList[(idx + dir + navList.length) % navList.length];
     if (next) playTrack(next);
+  };
+  // Natural end-of-track: advance to the next track but STOP at the end of the
+  // list — no wrap-around, and no re-playing a single-track list forever.
+  // (Manual ←/→ via step() still wraps.)
+  const playNextOnEnd = () => {
+    if (navList.length < 2) return;
+    const idx = navList.findIndex((t) => t.id === playingId);
+    if (idx < 0 || idx >= navList.length - 1) return; // unknown or last track
+    playTrack(navList[idx + 1]);
   };
 
   // Keyboard transport: Space/K play-pause, ←/→ prev/next track, ↑/↓ seek ±5s.
@@ -632,7 +644,15 @@ export default function Sonar({ initialView = 'map' }) {
     }
     if (didPanRef.current) setZoom((z) => ({ ...z, x: pan.ox + dx, y: pan.oy + dy }));
   };
-  const onMapPointerUp = () => { panRef.current = null; };
+  const onMapPointerUp = () => {
+    panRef.current = null;
+    // The click that follows mouseup fires synchronously (before this timeout),
+    // so onMapBackgroundClick still sees didPanRef and swallows it. Clearing it
+    // afterwards prevents a drag that ends without a click (e.g. released over a
+    // child, or while zoomed then zoomed back out) from wedging the flag true
+    // and swallowing the next legitimate background click.
+    if (didPanRef.current) setTimeout(() => { didPanRef.current = false; }, 0);
+  };
 
   const onLayerKeyDown = (e) => {
     if (e.key === 'Enter' && vibeQuery.trim()) {
@@ -704,7 +724,7 @@ export default function Sonar({ initialView = 'map' }) {
           setProgress(a.duration ? a.currentTime / a.duration : 0);
         }}
         onLoadedMetadata={(e) => setDuration(e.currentTarget.duration || 0)}
-        onEnded={() => { setIsPlaying(false); step(1); }}
+        onEnded={() => { setIsPlaying(false); playNextOnEnd(); }}
         onPause={() => setIsPlaying(false)}
         onPlay={() => setIsPlaying(true)}
       />
