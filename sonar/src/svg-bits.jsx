@@ -25,8 +25,10 @@ export function Wordmark({ size = 'lg' }) {
 }
 
 // Waveform — still a deterministic pseudo-envelope (real peaks tracked in TODO.md);
-// `progress` is now driven by the real <audio> element.
-export function Waveform({ width = 320, height = 36, progress = 0.32, accent = 'var(--el-indigo-500)', muted = 'rgba(255,255,255,0.12)', bars = 64, seed = 7 }) {
+// `progress` is driven by the real <audio> element. When `onSeek` is supplied
+// the bar becomes a scrubber: clicking (or dragging) navigates to that fraction
+// of the track.
+export function Waveform({ width = 320, height = 36, progress = 0.32, accent = 'var(--el-indigo-500)', muted = 'rgba(255,255,255,0.12)', bars = 64, seed = 7, onSeek = null }) {
   const heights = React.useMemo(() => {
     const arr = [];
     let s = seed;
@@ -43,17 +45,40 @@ export function Waveform({ width = 320, height = 36, progress = 0.32, accent = '
   const barW = (width - gap * (bars - 1)) / bars;
   const playedIdx = Math.round(progress * bars);
 
+  const seekFromEvent = (e) => {
+    if (!onSeek) return;
+    const rect = e.currentTarget.getBoundingClientRect();
+    const frac = Math.max(0, Math.min(1, (e.clientX - rect.left) / rect.width));
+    onSeek(frac);
+  };
+
   return (
-    <svg width={width} height={height} viewBox={`0 0 ${width} ${height}`}>
+    <svg
+      width={width} height={height} viewBox={`0 0 ${width} ${height}`}
+      className={onSeek ? 'lo-wave-seek' : undefined}
+      role={onSeek ? 'slider' : undefined}
+      aria-label={onSeek ? 'Seek' : undefined}
+      aria-valuenow={onSeek ? Math.round(progress * 100) : undefined}
+      onClick={onSeek ? seekFromEvent : undefined}
+      onPointerDown={onSeek ? (e) => { e.currentTarget.setPointerCapture?.(e.pointerId); seekFromEvent(e); } : undefined}
+      onPointerMove={onSeek ? (e) => { if (e.buttons === 1) seekFromEvent(e); } : undefined}
+    >
+      {/* full-height hit target so thin bars + gaps are all clickable */}
+      {onSeek && <rect x={0} y={0} width={width} height={height} fill="transparent" />}
       {heights.map((h, i) => {
         const bh = h * height;
         const x = i * (barW + gap);
         const y = (height - bh) / 2;
         return (
           <rect key={i} x={x} y={y} width={barW} height={bh} rx={Math.min(barW / 2, 1.5)}
-            fill={i < playedIdx ? accent : muted} />
+            fill={i < playedIdx ? accent : muted} style={{ pointerEvents: 'none' }} />
         );
       })}
+      {/* playhead */}
+      {onSeek && (
+        <rect x={Math.max(0, Math.min(width - 2, progress * width - 1))} y={0} width={2} height={height}
+          rx={1} fill="var(--el-fg-primary)" opacity={0.85} style={{ pointerEvents: 'none' }} />
+      )}
     </svg>
   );
 }

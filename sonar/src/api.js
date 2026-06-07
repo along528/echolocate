@@ -1,8 +1,9 @@
 /**
  * API client for the EchoLocate vector service.
- * Ported from the legacy frontend/api.js. The Firestore search cache is omitted
- * here (live requests only); add it back if cold-search latency becomes an issue.
+ * Ported from the legacy frontend/api.js, including the Firestore search cache
+ * (see cache.js) so pre-warmed semantic results are shared with the legacy UI.
  */
+import { Cache } from './cache.js';
 
 const BASE_URL = import.meta.env.VITE_VECTOR_API_URL || '';
 
@@ -27,8 +28,20 @@ export const API = {
   },
 
   // Semantic (vibe) search. Returns { results, original_query, enhanced_query? }.
-  semanticSearch(query, source = 'fma', limit = 50, enhance = false) {
-    return request('POST', '/semantic-search', { query, source, limit, enhance });
+  // Checks the Firestore cache first (fast path), but always fires the live
+  // request too so vector-rs stays warm — mirrors the legacy frontend.
+  async semanticSearch(query, source = 'fma', limit = 50, enhance = false) {
+    const live = request('POST', '/semantic-search', { query, source, limit, enhance });
+    try {
+      const cached = await Cache.getSearch(query, source, limit, enhance);
+      if (cached) {
+        live.catch(() => {}); // let warm-up finish in the background
+        return cached;
+      }
+    } catch {
+      /* fall through to live */
+    }
+    return live;
   },
 
   getTracks(limit = 50, source = 'fma') {
@@ -50,9 +63,10 @@ export const API = {
   },
 
   // Candidate tracks "between" two tracks (midpoint k-NN). Returns SearchResult[]
-  // with x,y backfilled. Used to fill the line between two trail tracks.
-  interpolate(trackId1, trackId2, method = 'slerp', limit = 8) {
-    return request('POST', '/interpolate', { track_id_1: trackId1, track_id_2: trackId2, method, limit });
+  // with x,y backfilled. Used to fill the line between two playlist tracks.
+  // Constrained to FMA so interpolation only surfaces streamable FMA tracks.
+  interpolate(trackId1, trackId2, method = 'slerp', limit = 8, source = 'fma') {
+    return request('POST', '/interpolate', { track_id_1: trackId1, track_id_2: trackId2, method, limit, source });
   },
 
   // Sampled backdrop of {id, x, y} for the dimmed sonar field.

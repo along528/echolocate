@@ -39,3 +39,36 @@ The handoff suggests consolidating the A/C class families into the component's o
 ## Misc
 - Sort control in the center header (mockup shows "distance ↓") is not yet wired.
 - Mobile/responsive layout not yet adapted.
+
+## Click-to-probe: nearest across the whole corpus
+Today the ✕ probe (click empty map space) selects the nearest track **already
+loaded in the UI** — visible search-layer results, interpolation candidates, and
+playlist tracks (`nearestTrack` in `Sonar.jsx`). It does not discover new tracks
+at the clicked location.
+- **Future:** support finding the true nearest track at any x,y. Either
+  (a) client-side via a large `/map/backdrop` sample + `/tracks/by-ids` lookup
+  (approximate; nearest within the sampled field, and would add a dimmed backdrop
+  layer), or (b) a new `/map/nearest?x=&y=` endpoint in vector-rs for the exact
+  globally-nearest track (Rust change + redeploy).
+
+## Done (sonar feedback pass)
+The following review suggestions are now implemented:
+- Suggestions strip is always visible; layers have solo / hide (eye) / show-all /
+  clear-all controls and an expanded color palette. Searching no longer
+  auto-selects a track or a suggested chip.
+- Track detail popup moved to a bar **above** the map (no longer overlaps dots);
+  its actions are always visible. Clicking empty space drops an ✕ probe and
+  selects the nearest x,y point.
+- Map: zoom in/out/reset + ctrl-wheel, larger plot area (smaller margins),
+  clickable-line affordance (midpoint ＋), "2D PCA of MERT v_mid" caption.
+- Feedback buttons reuse the legacy "Match" pill styling; similar / dissimilar /
+  add-to-playlist use the legacy Lucide icons. Source link is icon-only next to
+  the title. Search origin is shown in list rows and now-playing.
+- "Trail" renamed to "playlist"; reorderable (drag + up/down); no special "start"
+  track. Dissimilar button added to the player. Waveform/progress is seekable.
+- Interpolation candidates are clearable and constrained to FMA. Playlist tracks
+  keep their map dot even when their layer is hidden/removed, and the layer can be
+  restored from the playlist row.
+- State persists across refresh (localStorage), the menu button opens an About
+  modal, and suggested chips + the semantic-search results come from the Firestore
+  cache (with a baked-in fallback list).

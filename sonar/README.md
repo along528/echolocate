@@ -28,11 +28,34 @@ creates/repeats the `sonar.echolocate.app` domain mapping (prints the DNS record
 On first deploy, re-deploy `vector-rs` so CORS allows `https://sonar.echolocate.app`
 (already in `vector-rs/deploy.sh`).
 
+## Firestore cache (optional warm-up)
+Sonar reads two Firestore caches (project `cloud-crate-485418`), like the legacy
+frontend — both are read-only from the browser and degrade gracefully:
+- `semantic_search_cache` — pre-computed `/semantic-search` results (cache miss
+  just falls through to a live request).
+- `sonar_config/suggestions` — the suggested-chip list (falls back to the baked-in
+  `src/suggested_chips.json` when absent).
+
+To warm them, run the populate script (needs app-default credentials):
+```bash
+gcloud auth application-default login
+pip install requests google-cloud-firestore
+python populate_cache.py                     # warm cache for every chip (limit=24, enhance=true)
+python populate_cache.py --write-suggestions # also publish the chip list to Firestore
+python populate_cache.py --dry-run           # preview keys without calling anything
+```
+Cache keys must match the frontend's request params (`source=fma`, `limit=24`,
+`enhance=true`) and the chip labels — the script uses those by default and reads
+the same `src/suggested_chips.json` the app bundles, so keys line up.
+
 ## Layout
-- `src/Sonar.jsx` — the component (tagger, view toggle, trail rail, map/list, now-playing)
-- `src/svg-bits.jsx` — Wordmark / Waveform / DistanceChip
-- `src/api.js` — vector-service client (+ `mapBackdrop`)
+- `src/Sonar.jsx` — the component (tagger, view toggle, playlist rail, map/list, now-playing)
+- `src/svg-bits.jsx` — Wordmark / Waveform (seekable) / DistanceChip
+- `src/icons.jsx` — track-action icons ported from the legacy frontend
+- `src/api.js` — vector-service client (+ `mapBackdrop`, Firestore search cache)
+- `src/cache.js` — Firestore client (search cache + suggested chips)
 - `src/labels.js` — search/label logging (training signal)
+- `src/suggested_chips.json` — chip vocabulary, shared with `populate_cache.py`
 - `src/style.css`, `src/sonar.css`, `src/design/*` — component styles (ported from the prototype kit)
 
 See `TODO.md` for intentionally deferred features.

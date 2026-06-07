@@ -91,6 +91,14 @@
   background: var(--el-indigo-tint-2);
   border-color: var(--el-indigo-500);
 }
+.la-trail-card[draggable] { cursor: grab; }
+/* Insertion line shown between cards while dragging a track to reorder. */
+.la-trail-drop {
+  height: 3px; margin: 1px 4px;
+  background: var(--el-indigo-500);
+  border-radius: 2px;
+  box-shadow: 0 0 8px var(--el-indigo-500);
+}
 .la-trail-marker {
   display: flex; align-items: center; justify-content: center;
   width: 14px;
@@ -553,7 +561,15 @@
   gap: 6px;
   padding-left: 8px;
 }
+.ld-layer-pill { cursor: pointer; }
 .ld-layer-pill.is-hidden { opacity: 0.45; }
+/* Soloed pill — the active "filter to just this search" state. */
+.ld-layer-pill.is-solo { box-shadow: 0 0 0 1px currentColor inset; opacity: 1; }
+/* While one pill is soloed, the rest recede (ghosted) so the filter is obvious. */
+.ld-layer-pill.is-ghost { opacity: 0.4; }
+.ld-layer-pill.is-ghost:hover { opacity: 0.7; }
+/* ✨ hint that a pill has an enhanced query to reveal on hover. */
+.ld-layer-spark { font-size: 0.7rem; line-height: 1; opacity: 0.8; }
 .ld-layer-swatch {
   width: 9px; height: 9px; border-radius: 50%;
   flex: 0 0 auto; display: inline-block;
@@ -648,3 +664,218 @@
 }
 .ld-center, .ld-list { min-width: 0; }
 .ld-track .lo-track-info { min-width: 0; }
+
+/* =========================================================
+   SUGGESTIONS / LAYER TOOLBAR (always-visible strip)
+   ========================================================= */
+.ld-layer-toolbar { display: inline-flex; gap: 6px; margin-left: auto; flex: 0 0 auto; }
+.ld-mini-btn { padding: 5px 10px; font-size: 11px; }
+.ld-mini-btn:disabled { opacity: 0.4; cursor: default; }
+
+/* Layer pill control buttons (solo / hide / restore) */
+.ld-layer-btn {
+  background: none; border: none; color: inherit; opacity: 0.6;
+  display: inline-flex; align-items: center; justify-content: center;
+  padding: 0 1px; line-height: 0;
+}
+.ld-layer-btn:hover { opacity: 1; }
+/* Seed-song button inside the similar/dissimilar pill popover */
+.ld-layer-seed {
+  margin-top: 4px; text-align: left;
+  background: var(--el-bg-tertiary);
+  border: 1px solid var(--el-border);
+  border-radius: var(--el-radius-sm);
+  color: var(--el-fg-primary);
+  padding: 5px 8px; font-size: var(--el-fs-xs);
+  white-space: normal;
+}
+.ld-layer-seed:hover { border-color: var(--el-indigo-500); background: var(--el-indigo-tint); }
+
+/* =========================================================
+   TRACK DETAIL CARD — shown ABOVE the map (never obscures dots)
+   ========================================================= */
+/* Fixed height (not min-height): swapping the empty state for the detail card
+   must NOT change the bar's size, or the flex map below reflows, the SVG
+   rescales, and the dot slides out from under the cursor → hover flicker. */
+.ld-detail-bar { flex: 0 0 auto; height: 112px; }
+.ld-detail {
+  height: 100%;
+  display: flex; align-items: center; gap: 14px;
+  padding: 10px 14px;
+  background: var(--el-bg-secondary);
+  border: 1px solid var(--el-border);
+  border-radius: var(--el-radius-lg);
+  overflow: hidden;
+}
+.ld-detail.is-pinned { border-color: var(--el-border-strong); }
+.ld-detail-main { min-width: 0; flex: 1; }
+/* nowrap so a long source list can't grow the (now fixed-height) bar. */
+.ld-detail-sources { display: flex; gap: 6px; flex-wrap: nowrap; align-items: center; margin-bottom: 4px; overflow: hidden; }
+.ld-detail-sources .lc-source-tag { flex: 0 0 auto; }
+/* Inline source URL under the title in the map detail popup. */
+.ld-detail-url {
+  display: inline-flex; align-items: center; gap: 4px;
+  margin-top: 3px; max-width: 100%;
+  font-size: var(--el-fs-xs);
+  color: var(--el-fg-secondary); text-decoration: none;
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+}
+.ld-detail-url:hover { color: var(--el-indigo-500); }
+.ld-detail-dist { margin-left: auto; color: var(--el-yellow-500); font-size: 11px; }
+.ld-detail-title {
+  font-weight: var(--el-fw-semibold);
+  display: flex; align-items: center; gap: 6px;
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+}
+.ld-detail-sub {
+  color: var(--el-fg-secondary); font-size: var(--el-fs-base); margin-top: 1px;
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+}
+.ld-detail-actions { display: flex; align-items: center; gap: 6px; flex: 0 0 auto; }
+.ld-detail-actions .lo-btn-ghost {
+  display: inline-flex; align-items: center; gap: 4px;
+  padding: 7px 10px; font-size: var(--el-fs-sm);
+}
+.ld-detail-empty {
+  height: 100%;
+  border: 1px dashed var(--el-border);
+  border-radius: var(--el-radius-lg);
+  opacity: 0.5;
+}
+
+/* =========================================================
+   MAP overlays — caption, zoom controls, edge affordances
+   ========================================================= */
+.ld-map-caption {
+  position: absolute; right: 14px; top: 12px;
+  display: inline-flex; align-items: center; gap: 6px;
+  padding: 4px 8px;
+  background: rgba(18,18,26,0.7);
+  border: 1px solid var(--el-border);
+  border-radius: var(--el-radius-sm);
+  backdrop-filter: blur(6px);
+}
+/* Small info icon + hover/focus tooltip (explains the projection). */
+.ld-info { position: relative; display: inline-flex; color: var(--el-fg-secondary); cursor: help; }
+.ld-info:hover, .ld-info:focus-visible { color: var(--el-fg-primary); outline: none; }
+.ld-info-pop {
+  position: absolute; top: calc(100% + 8px); right: 0;
+  z-index: 30; display: none;
+  width: 240px; padding: 10px 12px;
+  background: var(--el-bg-secondary);
+  border: 1px solid var(--el-border-strong);
+  border-radius: var(--el-radius-md);
+  box-shadow: var(--el-shadow-md);
+  color: var(--el-fg-secondary);
+  font-size: var(--el-fs-xs); line-height: 1.45;
+  text-transform: none; letter-spacing: normal;
+  white-space: normal;
+}
+.ld-info:hover .ld-info-pop, .ld-info:focus-visible .ld-info-pop { display: block; }
+.ld-zoom {
+  position: absolute; right: 14px; bottom: 14px;
+  display: flex; flex-direction: column; gap: 6px;
+}
+.ld-zoom .lo-btn-icon:disabled { opacity: 0.4; cursor: default; }
+/* clickable playlist-edge midpoint marker brightens on hover */
+.ld-edge .ld-edge-mid { transition: opacity .15s ease; }
+.ld-edge:hover .ld-edge-mid { opacity: 1; }
+.ld-edge:hover line { stroke-opacity: 0.95; }
+
+/* The map should fill its wrap with a stable size (no resize jitter from the
+   old foreignObject card). */
+.ld-map-wrap .lc-canvas {
+  position: absolute; inset: 0;
+  width: 100%; height: 100%;
+}
+
+/* =========================================================
+   LIST — per-row search origin
+   ========================================================= */
+.ld-track-origin { display: flex; gap: 8px; flex-wrap: wrap; margin-top: 3px; }
+.ld-origin-tag {
+  display: inline-flex; align-items: center; gap: 4px;
+  font-size: 11px; font-weight: var(--el-fw-medium);
+}
+
+/* Icon-only external source link next to titles */
+.ld-srclink {
+  display: inline-flex; align-items: center;
+  color: var(--el-fg-secondary);
+  margin-left: 6px;
+  opacity: 0.7; transition: opacity .15s ease, color .15s ease;
+}
+.ld-srclink:hover { opacity: 1; color: var(--el-indigo-500); }
+
+/* Seekable waveform cursor */
+.lo-wave-seek { cursor: pointer; }
+
+/* Playlist card controls (reorder / restore / remove) */
+.ld-trail-card-ctl { display: flex; flex-direction: column; gap: 3px; align-self: center; }
+.ld-trail-card-ctl .lo-act-btn { width: 24px; height: 22px; font-size: 12px; }
+.ld-trail-card-ctl .lo-act-btn:disabled { opacity: 0.3; cursor: default; }
+.la-trail-card .ld-trail-card-ctl .lo-act-btn { opacity: 0.75; }
+.la-trail-card:hover .ld-trail-card-ctl .lo-act-btn { opacity: 1; }
+.la-trail-dot { box-shadow: 0 0 0 3px var(--el-bg-secondary); }
+
+/* =========================================================
+   FEEDBACK "Match" pill — ported verbatim from legacy style.css so the
+   rating buttons look identical to the old frontend.
+   ========================================================= */
+.match-pill {
+  display: inline-flex; align-items: center;
+  border: 1px solid var(--el-border);
+  border-radius: 999px;
+  padding: 2px;
+  background: rgba(0, 0, 0, 0.25);
+  height: 34px;
+  margin-left: 0.5rem;
+  flex: 0 0 auto;
+}
+.match-pill .mp-label {
+  font-size: 0.62rem; font-weight: 700;
+  letter-spacing: 0.1em; text-transform: uppercase;
+  color: var(--el-fg-secondary); opacity: 0.7;
+  padding: 0 8px 0 10px; user-select: none;
+}
+.match-pill .mp-btn {
+  width: 30px; height: 26px; padding: 0;
+  border: none; background: transparent;
+  color: var(--el-fg-secondary);
+  border-radius: 999px;
+  display: inline-flex; align-items: center; justify-content: center;
+  transition: all 0.18s ease; opacity: 0.7;
+}
+.match-pill .mp-btn:hover { color: var(--el-fg-primary); opacity: 1; }
+.match-pill .mp-btn.mp-yes.selected { background: #22c55e; color: #07140a; opacity: 1; }
+.match-pill .mp-btn.mp-mid.selected { background: #eab308; color: #14110a; opacity: 1; }
+.match-pill .mp-btn.mp-no.selected  { background: #ef4444; color: #fff;    opacity: 1; }
+.match-pill.label-group { margin-left: 0.5rem; padding-left: 2px; border-left: none; }
+
+/* =========================================================
+   ABOUT MODAL (mirrors legacy hamburger/about)
+   ========================================================= */
+.ld-about-overlay {
+  position: fixed; inset: 0; z-index: 100;
+  display: flex; align-items: center; justify-content: center;
+  background: var(--el-overlay); backdrop-filter: blur(4px);
+}
+.ld-about-card {
+  position: relative;
+  max-width: 460px; width: calc(100% - 40px);
+  background: var(--el-bg-secondary);
+  border: 1px solid var(--el-border-strong);
+  border-radius: var(--el-radius-xl);
+  padding: 24px; box-shadow: var(--el-shadow-md);
+}
+.ld-about-close {
+  position: absolute; top: 14px; right: 14px;
+  background: none; border: none; color: var(--el-fg-secondary);
+  font-size: 1.1rem;
+}
+.ld-about-close:hover { color: var(--el-fg-primary); }
+.ld-about-link { color: var(--el-indigo-500); text-decoration: none; }
+.ld-about-link:hover { text-decoration: underline; }
+
+/* Tighten center padding so the graph claims more of the viewport. */
+.ld-center { padding: 14px 18px; gap: 10px; }
