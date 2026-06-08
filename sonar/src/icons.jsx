@@ -155,3 +155,11 @@ export function IconInfo({ size = 14 }) {
     </svg>
   );
 }
+
+export function IconSearch({ size = 16 }) {
+  return (
+    <svg width={size} height={size} {...base} strokeWidth="2">
+      <circle cx="11" cy="11" r="7" /><path d="m21 21-4.3-4.3" />
+    </svg>
+  );
+}

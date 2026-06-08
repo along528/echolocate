@@ -1,0 +1,268 @@
+// Sonar — mobile (map-first) view. Immersive full-bleed portrait sonar map with
+// floating glass chrome and bottom sheets for search, track detail, now-playing,
+// and the playlist builder. Ported from the design handoff prototype
+// (layout-d-mobile.jsx) and rewired to the shared useSonar hook (passed as `s`)
+// so it drives the exact same state, services, and audio element as the desktop
+// view. Ships the desktop dot model (layer colors); the prototype's mock-only
+// sonic / clusters / axes variations are intentionally omitted.
+import React from 'react';
+import { Waveform } from './svg-bits.jsx';
+import {
+  IconSearch, IconListPlus, IconCheck, IconPlus, IconSimilar, IconDissimilar,
+  IconEye, IconEyeOff, IconClose, IconExternal, IconUp, IconDown,
+  IconZoomIn, IconZoomOut,
+} from './icons.jsx';
+import {
+  CANDIDATE_COLOR, fmtTime, coordsOf, distBetween,
+  layerTag, layerKindWord, prettyUrl, FeedbackPills,
+} from './sonar-utils.jsx';
+
+const MVW = 390, MVH = 780, MPAD = 46;
+const ASSET = import.meta.env.BASE_URL;
+
+function dotPosM(t) {
+  const [cx, cy] = coordsOf(t);
+  return { x: MPAD + cx * (MVW - 2 * MPAD), y: MPAD + (1 - cy) * (MVH - 2 * MPAD) };
+}
+
+export default function SonarMobile({ s }) {
+  const {
+    view, setView, vibeQuery, setVibeQuery,
+    layers, playingId, isPlaying, progress, selectedId, setSelectedId,
+    candidates, labelsByTrackId, soloLayerId, zoom, setZoom,
+    addVibeLayer, addSeedLayer, removeLayer, toggleLayerVisible, toggleSolo,
+    visibleLayers, visibleTracks, entryByTrackId, playlistById, playlist,
+    playing, selected, playlistTracks, playingTotal, vibeSuggestions, isCandidate,
+    addToPlaylist, insertCandidate, removeFromPlaylist, movePlaylist, clearPlaylist,
+    interpolateEdge, playTrack, togglePlay, step, labelTrack,
+  } = s;
+
+  // Mobile-only UI state: which bottom sheet is open (one at a time).
+  const [sheet, setSheet] = React.useState(null);
+
+  // Composition wrappers over shared handlers.
+  const openDetail = (id) => { setSelectedId(id); setSheet('detail'); };
+  const onInterpolate = (a, b) => { interpolateEdge(a, b); setSheet(null); setView('map'); };
+
+  // Mobile zoom — centered on the portrait canvas, clamped k ∈ [1, 5].
+  const zoomBy = (f) => setZoom((z) => {
+    const k = Math.max(1, Math.min(5, z.k * f));
+    const cx = MVW / 2, cy = MVH / 2;
+    return { k, x: cx - (cx - z.x) * (k / z.k), y: cy - (cy - z.y) * (k / z.k) };
+  });
+
+  return (
+    <div className="ldm-app">
+      {/* ===== MAP / LIST STAGE ===== */}
+      {view === 'map' ? (
+        <div className="ldm-stage">
+          <svg className="ldm-map" viewBox={`0 0 ${MVW} ${MVH}`} preserveAspectRatio="xMidYMid slice" onClick={() => { if (sheet) setSheet(null); }}>
+            <rect x={0} y={0} width={MVW} height={MVH} fill="transparent" />
+            <g transform={`translate(${zoom.x} ${zoom.y}) scale(${zoom.k})`}>
+              <g opacity="0.14" style={{ pointerEvents: 'none' }}>
+                {[0.25, 0.5, 0.75].map((g) => (<React.Fragment key={g}><line x1={MPAD + g * (MVW - 2 * MPAD)} y1={MPAD} x2={MPAD + g * (MVW - 2 * MPAD)} y2={MVH - MPAD} stroke="white" strokeWidth="0.5" /><line x1={MPAD} y1={MPAD + g * (MVH - 2 * MPAD)} x2={MVW - MPAD} y2={MPAD + g * (MVH - 2 * MPAD)} stroke="white" strokeWidth="0.5" /></React.Fragment>))}
+              </g>
+              {playing && [44, 90, 150, 220].map((r, i) => { const p = dotPosM(playing); return <circle key={i} cx={p.x} cy={p.y} r={r} fill="none" stroke="var(--el-yellow-500)" strokeOpacity={[0.55, 0.35, 0.22, 0.12][i]} strokeWidth={1} style={{ pointerEvents: 'none' }} />; })}
+              {playlistTracks.length > 1 && playlistTracks.slice(1).map((b, i) => { const a = playlistTracks[i], pa = dotPosM(a), pb = dotPosM(b); const active = candidates && ((candidates.aId === a.id && candidates.bId === b.id) || (candidates.aId === b.id && candidates.bId === a.id)); const mx = (pa.x + pb.x) / 2, my = (pa.y + pb.y) / 2;
+                return (<g key={`s${a.id}${b.id}`} onClick={(e) => { e.stopPropagation(); onInterpolate(a, b); }}><line x1={pa.x} y1={pa.y} x2={pb.x} y2={pb.y} stroke="transparent" strokeWidth="20" /><line x1={pa.x} y1={pa.y} x2={pb.x} y2={pb.y} stroke="var(--el-indigo-500)" strokeOpacity={active ? 0.95 : 0.55} strokeWidth={active ? 3 : 2} strokeDasharray="4 4" /><circle cx={mx} cy={my} r={11} fill="var(--el-bg-secondary)" stroke="var(--el-indigo-500)" strokeWidth="1.5" /><path d={`M${mx - 5} ${my} h10 M${mx} ${my - 5} v10`} stroke="var(--el-indigo-500)" strokeWidth="1.5" strokeLinecap="round" /></g>); })}
+              {playlistTracks.map((t) => { const p = dotPosM(t); return <circle key={'r' + t.id} cx={p.x} cy={p.y} r={13} fill="none" stroke="var(--el-indigo-500)" strokeWidth="2" strokeOpacity="0.6" style={{ pointerEvents: 'none' }} />; })}
+              {visibleTracks.map(({ track: t, color }) => { const p = dotPosM(t), isPlay = t.id === playingId, isSel = t.id === selectedId, inPl = playlistById.has(t.id); const r = isPlay ? 11 : isSel ? 9 : 7;
+                return (<g key={t.id} onClick={(e) => { e.stopPropagation(); openDetail(t.id); }}>
+                  {isSel && <circle cx={p.x} cy={p.y} r={r + 7} fill="none" stroke={color} strokeWidth="1.5" />}
+                  <circle cx={p.x} cy={p.y} r={r} fill={color} opacity={inPl ? 1 : 0.88} style={{ filter: isPlay ? `drop-shadow(0 0 8px ${color})` : 'none' }} />
+                  {inPl && <circle cx={p.x} cy={p.y} r={r + 3} fill="none" stroke="white" strokeWidth="1" />}
+                </g>); })}
+              {candidates && candidates.tracks.map((t) => { if (entryByTrackId.has(t.id)) return null; const p = dotPosM(t);
+                return (<g key={'c' + t.id} onClick={(e) => { e.stopPropagation(); openDetail(t.id); }}><circle cx={p.x} cy={p.y} r={12} fill="none" stroke={CANDIDATE_COLOR} strokeWidth="1.2" strokeOpacity="0.7" strokeDasharray="3 2" /><circle cx={p.x} cy={p.y} r={6} fill={CANDIDATE_COLOR} opacity="0.9" /></g>); })}
+            </g>
+          </svg>
+
+          <div className="ldm-caption">MERT embeddings</div>
+          {visibleLayers.length > 0 && (
+            <div className="ldm-legend">
+              {visibleLayers.slice(0, 5).map((l) => (<div key={l.id} className="ldm-legend-row"><span className="ldm-legend-dot" style={{ background: l.color }} />{layerTag(l)}</div>))}
+            </div>
+          )}
+        </div>
+      ) : (
+        <div className="ldm-listview">
+          {visibleTracks.map(({ track: t, color, sources }) => { const inPl = playlistById.has(t.id), isPlay = playingId === t.id;
+            return (<div key={t.id} className={'ldm-row ' + (isPlay ? 'is-playing' : '')} onClick={() => playTrack(t)}>
+              <span className="ldm-row-dot" style={{ background: color }} />
+              <div className="ldm-row-info"><div className="ldm-row-title">{t.title}</div><div className="ldm-row-sub">{t.artist} · {sources.map(layerTag).join(', ')}</div></div>
+              <button className={'ldm-row-add ' + (inPl ? 'is-active' : '')} onClick={(e) => { e.stopPropagation(); addToPlaylist(t); }}>{inPl ? <IconCheck size={16} /> : <IconListPlus size={16} />}</button>
+            </div>); })}
+          {visibleTracks.length === 0 && <div className="ldm-onboard-eyebrow" style={{ textAlign: 'center', marginTop: 40 }}>No results yet. Add a vibe to start.</div>}
+        </div>
+      )}
+
+      {/* ===== TOP CHROME ===== */}
+      <div className="ldm-top">
+        <div className="ldm-top-row">
+          <button className="ldm-search" onClick={() => setSheet('search')}><IconSearch size={15} /><span>{layers.length ? `${layers.length} ${layers.length === 1 ? 'search' : 'searches'} active` : 'Tag vibes or describe a mood…'}</span></button>
+          <div className="ldm-seg">
+            <button className={'ldm-seg-btn ' + (view === 'map' ? 'is-active' : '')} onClick={() => setView('map')}><svg viewBox="0 0 24 24" width="16" height="16" fill="currentColor"><circle cx="12" cy="12" r="2.5" /><circle cx="12" cy="12" r="6" fill="none" stroke="currentColor" strokeWidth="1.4" /><circle cx="12" cy="12" r="10" fill="none" stroke="currentColor" strokeWidth="1.4" opacity="0.5" /></svg></button>
+            <button className={'ldm-seg-btn ' + (view === 'list' ? 'is-active' : '')} onClick={() => setView('list')}><svg viewBox="0 0 24 24" width="16" height="16" fill="currentColor"><rect x="3" y="5" width="18" height="2" rx="1" /><rect x="3" y="11" width="18" height="2" rx="1" /><rect x="3" y="17" width="18" height="2" rx="1" /></svg></button>
+          </div>
+        </div>
+        {layers.length > 0 && (
+          <div className="ldm-chips">
+            {layers.map((l) => (
+              <span key={l.id} className={'ldm-chip ' + (l.visible ? '' : 'is-hidden ') + (soloLayerId === l.id ? 'is-solo' : '')} style={{ borderColor: l.color }} onClick={() => toggleSolo(l.id)}>
+                <span className="ldm-chip-swatch" style={{ background: l.color }} />{layerTag(l)}
+                <button className="ldm-chip-x" onClick={(e) => { e.stopPropagation(); removeLayer(l.id); }}>×</button>
+              </span>
+            ))}
+            <button className="ldm-chip ldm-chip-add" onClick={() => setSheet('search')}><IconPlus size={13} /> add</button>
+          </div>
+        )}
+      </div>
+
+      {/* ===== BOTTOM CHROME ===== */}
+      <div className="ldm-bottom">
+        <div className="ldm-fab-row">
+          {view === 'map' && (
+            <div className="ldm-zoombtns">
+              <button className="lo-btn-icon" onClick={() => zoomBy(1.3)}><IconZoomIn size={16} /></button>
+              <button className="lo-btn-icon" onClick={() => zoomBy(1 / 1.3)}><IconZoomOut size={16} /></button>
+            </div>
+          )}
+          <button className="ldm-fab" onClick={() => setSheet('playlist')} style={{ marginLeft: 'auto' }}>
+            <IconListPlus size={16} /> Playlist <span className="ldm-fab-badge">{playlistTracks.length}</span>
+          </button>
+        </div>
+        {playing && (
+          <div className="ldm-player" style={{ position: 'relative' }} onClick={() => setSheet('now')}>
+            <div className="ldm-player-art"><img src={`${ASSET}assets/artwork.svg`} alt="" /></div>
+            <div className="ldm-player-info"><div className="ldm-player-title">{playing.title}</div><div className="ldm-player-sub">{playing.artist}</div></div>
+            <button className="ldm-player-play" onClick={(e) => { e.stopPropagation(); togglePlay(); }}>{isPlaying ? <svg viewBox="0 0 24 24" fill="white" width="16" height="16"><path d="M6 5h4v14H6zm8 0h4v14h-4z" /></svg> : <svg viewBox="0 0 24 24" fill="white" width="16" height="16"><path d="M8 5v14l11-7z" /></svg>}</button>
+            <div className="ldm-player-prog"><span style={{ width: `${progress * 100}%` }} /></div>
+          </div>
+        )}
+      </div>
+
+      {/* ===== SHEETS ===== */}
+      {sheet && <div className="ldm-scrim" onClick={() => setSheet(null)} />}
+
+      {sheet === 'search' && (
+        <div className="ldm-sheet" style={{ maxHeight: '70%' }}>
+          <div className="ldm-handle" />
+          <input className="ldm-sheet-input" autoFocus placeholder="Describe a mood…" value={vibeQuery}
+            onChange={(e) => setVibeQuery(e.target.value)} onKeyDown={(e) => { if (e.key === 'Enter' && vibeQuery.trim()) { addVibeLayer(vibeQuery.trim()); setVibeQuery(''); } }} />
+          <div className="ldm-sheet-scroll">
+            <div className="lo-eyebrow" style={{ marginBottom: 8 }}>{vibeQuery ? `Matching “${vibeQuery}”` : 'Suggested vibes'}</div>
+            <div className="ldm-chipwrap">
+              {vibeSuggestions.map((v) => (
+                <button key={v} className="el-chip" onClick={() => { addVibeLayer(v); setVibeQuery(''); }}>+ {v}</button>
+              ))}
+              {vibeQuery && !vibeSuggestions.some((v) => v.toLowerCase() === vibeQuery.toLowerCase()) && (
+                <button className="el-chip" onClick={() => { addVibeLayer(vibeQuery.trim()); setVibeQuery(''); }}>+ Add “{vibeQuery}”</button>
+              )}
+            </div>
+            {layers.length > 0 && (<>
+              <div className="lo-eyebrow" style={{ margin: '18px 0 8px' }}>Active searches</div>
+              <div className="ldm-layer-manage">
+                {layers.map((l) => (
+                  <div key={l.id} className="ldm-layer-manage-row">
+                    <span className="ldm-chip-swatch" style={{ background: l.color, width: 10, height: 10 }} />
+                    <span className="ldm-lm-label">{layerKindWord(l)} · {l.label}{l.enhancedQuery ? ' ✨' : ''}</span>
+                    <button className="ldm-lm-btn" onClick={() => toggleLayerVisible(l.id)} style={l.visible ? null : { opacity: 0.5 }}>{l.visible ? <IconEye size={15} /> : <IconEyeOff size={15} />}</button>
+                    <button className="ldm-lm-btn" onClick={() => removeLayer(l.id)}><IconClose size={13} /></button>
+                  </div>
+                ))}
+              </div>
+            </>)}
+          </div>
+        </div>
+      )}
+
+      {sheet === 'detail' && selected && (() => { const t = selected; const cand = isCandidate(t.id); const sources = entryByTrackId.get(t.id)?.sources || []; const inPl = playlistById.has(t.id);
+        return (
+          <div className="ldm-sheet">
+            <div className="ldm-handle" />
+            <div className="ldm-detail-sources">
+              {cand && <span className="lc-source-tag" style={{ borderColor: CANDIDATE_COLOR, color: CANDIDATE_COLOR }}>interpolation</span>}
+              {sources.map((l) => (<span key={l.id} className="lc-source-tag" style={{ borderColor: l.color, color: l.color }}><span className="ld-layer-swatch" style={{ background: l.color }} />{layerTag(l)}</span>))}
+              {playing && playing.id !== t.id && <span className="ld-detail-dist" style={{ marginLeft: 'auto' }}>{distBetween(playing, t).toFixed(2)} away</span>}
+            </div>
+            <div className="ldm-detail-title">{t.title}</div>
+            <div className="ldm-detail-sub">{t.artist} — {t.album}</div>
+            {t.track_url && (
+              <a className="ld-detail-url" href={t.track_url} target="_blank" rel="noopener noreferrer" style={{ marginTop: 6 }}><IconExternal size={12} />{prettyUrl(t.track_url)}</a>
+            )}
+            <div className="ldm-detail-fb"><FeedbackPills track={t} value={labelsByTrackId[t.id]} onLabel={labelTrack} /></div>
+            <div className="ldm-detail-actions">
+              <button className="ldm-act is-primary" onClick={() => { playTrack(t); setSheet('now'); }}><svg viewBox="0 0 24 24" fill="currentColor" width="18" height="18"><path d="M8 5v14l11-7z" /></svg> Play</button>
+              <button className="ldm-act" onClick={() => (cand ? insertCandidate(t) : addToPlaylist(t))}>{inPl ? <IconCheck size={16} /> : <IconListPlus size={16} />} {inPl ? 'In playlist' : 'Add'}</button>
+              <button className="ldm-act" onClick={() => { addSeedLayer('similar', t); setSheet(null); }}><IconSimilar size={16} /> Similar</button>
+              <button className="ldm-act" onClick={() => { addSeedLayer('dissimilar', t); setSheet(null); }}><IconDissimilar size={16} /> Dissimilar</button>
+            </div>
+          </div>
+        ); })()}
+
+      {sheet === 'now' && playing && (
+        <div className="ldm-sheet">
+          <div className="ldm-handle" />
+          <div className="ldm-sheet-scroll">
+            <div className="ldm-now-art"><img src={`${ASSET}assets/artwork.svg`} alt="" /></div>
+            <div className="lo-eyebrow-strong">Now playing</div>
+            <div className="ldm-now-title">{playing.title}</div>
+            <div className="ldm-now-sub">{playing.artist} — {playing.album}</div>
+            <div style={{ marginTop: 14 }}><Waveform width={350} height={40} progress={progress} bars={56} seed={(playingId || 'x').charCodeAt(0) + 3} /></div>
+            <div className="ldm-now-times"><span>{fmtTime(playingTotal * progress)}</span><span>{fmtTime(playingTotal)}</span></div>
+            <div className="ldm-now-transport">
+              <button className="ldm-now-tbtn" onClick={() => step(-1)}><svg viewBox="0 0 24 24" fill="currentColor" width="18" height="18"><path d="M6 6h2v12H6zm3.5 6l8.5 6V6z" /></svg></button>
+              <button className="ldm-now-tbtn is-play" onClick={togglePlay}>{isPlaying ? <svg viewBox="0 0 24 24" fill="white" width="22" height="22"><path d="M6 5h4v14H6zm8 0h4v14h-4z" /></svg> : <svg viewBox="0 0 24 24" fill="white" width="22" height="22"><path d="M8 5v14l11-7z" /></svg>}</button>
+              <button className="ldm-now-tbtn" onClick={() => step(1)}><svg viewBox="0 0 24 24" fill="currentColor" width="18" height="18"><path d="M6 18l8.5-6L6 6v12zM16 6v12h2V6h-2z" /></svg></button>
+            </div>
+            <div className="ldm-detail-fb"><FeedbackPills track={playing} value={labelsByTrackId[playing.id]} onLabel={labelTrack} /></div>
+            <div className="ldm-now-quick">
+              <button className="ldm-act" onClick={() => { addSeedLayer('similar', playing); setSheet(null); }}><IconSimilar size={18} /> Similar</button>
+              <button className="ldm-act" onClick={() => { addSeedLayer('dissimilar', playing); setSheet(null); }}><IconDissimilar size={18} /> Dissimilar</button>
+              <button className="ldm-act" onClick={() => addToPlaylist(playing)}><IconListPlus size={18} /> Add</button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {sheet === 'playlist' && (
+        <div className="ldm-sheet">
+          <div className="ldm-handle" />
+          <div className="ldm-sheet-head">
+            <h3 className="el-h2" style={{ fontSize: '1.2rem' }}>Your playlist</h3>
+            <button className="lo-btn-ghost ld-mini-btn" onClick={clearPlaylist}>Clear</button>
+          </div>
+          <div className="ldm-onboard-eyebrow" style={{ marginBottom: 10 }}>{playlistTracks.length > 1 ? 'Tap a link between two tracks to find tracks in between.' : 'Add tracks, then tap between them to interpolate.'}</div>
+          <div className="ldm-sheet-scroll">
+            <div className="ldm-pl-list">
+              {playlist.map((slot, i) => { const t = slot.track; if (!t) return null; const prev = playlist[i - 1]?.track; const active = candidates && prev && ((candidates.aId === prev.id && candidates.bId === t.id) || (candidates.aId === t.id && candidates.bId === prev.id));
+                return (<React.Fragment key={slot.id}>
+                  {i > 0 && prev && <button className={'ldm-pl-link ' + (active ? 'is-active' : '')} onClick={() => onInterpolate(prev, t)}><IconPlus size={12} /> find in between</button>}
+                  <div className={'ldm-pl-card ' + (playingId === t.id ? 'is-playing' : '')}>
+                    <span className="ldm-pl-dot" style={{ background: slot.color || 'var(--el-indigo-500)' }} />
+                    <div className="ldm-pl-info" onClick={() => playTrack(t)}><div className="ldm-pl-title">{t.title}</div><div className="ldm-pl-sub">{t.artist}{slot.dist != null ? ` · ${slot.dist.toFixed(2)} step` : ''}</div></div>
+                    <div className="ldm-pl-ctl">
+                      <button className="ldm-lm-btn" disabled={i === 0} onClick={() => movePlaylist(slot.id, -1)} style={i === 0 ? { opacity: 0.3 } : null}><IconUp size={14} /></button>
+                      <button className="ldm-lm-btn" disabled={i === playlist.length - 1} onClick={() => movePlaylist(slot.id, 1)} style={i === playlist.length - 1 ? { opacity: 0.3 } : null}><IconDown size={14} /></button>
+                      <button className="ldm-lm-btn" onClick={() => removeFromPlaylist(slot.id)}><IconClose size={13} /></button>
+                    </div>
+                  </div>
+                </React.Fragment>); })}
+              {playlist.length === 0 && <div className="ldm-onboard-eyebrow" style={{ textAlign: 'center', padding: '24px 0' }}>No tracks yet. Tap a dot on the map, then “Add”.</div>}
+            </div>
+            {candidates && candidates.tracks.length > 0 && (<>
+              <div className="lo-eyebrow" style={{ margin: '16px 0 8px' }}>Tracks in between</div>
+              {candidates.tracks.map((t) => (
+                <div key={t.id} className="ldm-pl-card" style={{ marginBottom: 6 }}>
+                  <span className="ldm-pl-dot" style={{ background: CANDIDATE_COLOR }} />
+                  <div className="ldm-pl-info"><div className="ldm-pl-title">{t.title}</div><div className="ldm-pl-sub">{t.artist}</div></div>
+                  <button className="ldm-lm-btn" onClick={() => insertCandidate(t)}><IconPlus size={15} /></button>
+                </div>
+              ))}
+            </>)}
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
