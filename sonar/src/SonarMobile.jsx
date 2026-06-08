@@ -85,9 +85,11 @@ export default function SonarMobile({ s }) {
   // Run a map tap action unless the touch was actually a drag (pan/pinch).
   const onTap = (fn) => (e) => { e.stopPropagation(); if (movedRef.current) return; fn(); };
 
-  // Mobile zoom — centered on the portrait canvas, clamped k ∈ [1, 5].
+  // Mobile zoom — centered on the portrait canvas, clamped k ∈ [0.3, 5] (can
+  // zoom out past the plot since the grid now extends to infinity).
+  const ZK_MIN = 0.3, ZK_MAX = 5;
   const zoomBy = (f) => setZoom((z) => {
-    const k = Math.max(1, Math.min(5, z.k * f));
+    const k = Math.max(ZK_MIN, Math.min(ZK_MAX, z.k * f));
     const cx = MVW / 2, cy = MVH / 2;
     return { k, x: cx - (cx - z.x) * (k / z.k), y: cy - (cy - z.y) * (k / z.k) };
   });
@@ -124,7 +126,7 @@ export default function SonarMobile({ s }) {
       if (movedRef.current) setZoom({ k: g.z0.k, x: g.z0.x + dxs / S, y: g.z0.y + dys / S });
     } else if (g.mode === 'pinch' && t.length === 2) {
       const dist = Math.hypot(t[0].clientX - t[1].clientX, t[0].clientY - t[1].clientY);
-      const kNew = Math.max(1, Math.min(5, g.z0.k * (dist / (g.dist || dist))));
+      const kNew = Math.max(ZK_MIN, Math.min(ZK_MAX, g.z0.k * (dist / (g.dist || dist))));
       // Keep the point under the pinch midpoint fixed while scaling.
       const mx = (t[0].clientX + t[1].clientX) / 2 - g.rect.left;
       const my = (t[0].clientY + t[1].clientY) / 2 - g.rect.top;
@@ -152,6 +154,16 @@ export default function SonarMobile({ s }) {
     return () => { vv.removeEventListener('resize', update); vv.removeEventListener('scroll', update); };
   }, [sheet]);
 
+  // Focus the search input WITHOUT letting the browser scroll it into view —
+  // that scroll (esp. with autoFocus) is what shoved the sheet off the top when
+  // the keyboard opened. We keep the sheet pinned above the keyboard instead.
+  const searchInputRef = React.useRef(null);
+  React.useEffect(() => {
+    if (sheet !== 'search') return undefined;
+    const id = setTimeout(() => { try { searchInputRef.current?.focus({ preventScroll: true }); } catch { searchInputRef.current?.focus(); } }, 60);
+    return () => clearTimeout(id);
+  }, [sheet]);
+
   return (
     <div className="ldm-app">
       {/* ===== MAP / LIST STAGE ===== */}
@@ -161,10 +173,15 @@ export default function SonarMobile({ s }) {
             onClick={() => { if (!movedRef.current && sheet) setSheet(null); }}
             onTouchStart={onTouchStart} onTouchMove={onTouchMove} onTouchEnd={onTouchEnd} onTouchCancel={onTouchEnd}>
             <rect x={0} y={0} width={MVW} height={MVH} fill="transparent" />
+            <defs>
+              <pattern id="ldm-grid" width="74.5" height="74.5" patternUnits="userSpaceOnUse">
+                <path d="M 74.5 0 L 0 0 0 74.5" fill="none" stroke="white" strokeOpacity="0.14" strokeWidth="0.6" />
+              </pattern>
+            </defs>
             <g transform={`translate(${zoom.x} ${zoom.y}) scale(${zoom.k})`}>
-              <g opacity="0.14" style={{ pointerEvents: 'none' }}>
-                {[0.25, 0.5, 0.75].map((g) => (<React.Fragment key={g}><line x1={MPAD + g * (MVW - 2 * MPAD)} y1={MPAD} x2={MPAD + g * (MVW - 2 * MPAD)} y2={MVH - MPAD} stroke="white" strokeWidth="0.5" /><line x1={MPAD} y1={MPAD + g * (MVH - 2 * MPAD)} x2={MVW - MPAD} y2={MPAD + g * (MVH - 2 * MPAD)} stroke="white" strokeWidth="0.5" /></React.Fragment>))}
-              </g>
+              {/* Effectively-infinite grid: a huge rect tiled with the grid
+                  pattern, so panning / zooming out never reveals an edge. */}
+              <rect x={-6000} y={-6000} width={12000} height={12000} fill="url(#ldm-grid)" style={{ pointerEvents: 'none' }} />
               {playing && [44, 90, 150, 220].map((r, i) => { const p = dotPosM(playing); return <circle key={i} cx={p.x} cy={p.y} r={r} fill="none" stroke="var(--el-yellow-500)" strokeOpacity={[0.55, 0.35, 0.22, 0.12][i]} strokeWidth={1} style={{ pointerEvents: 'none' }} />; })}
               {playlistTracks.length > 1 && playlistTracks.slice(1).map((b, i) => { const a = playlistTracks[i], pa = dotPosM(a), pb = dotPosM(b); const active = candidates && ((candidates.aId === a.id && candidates.bId === b.id) || (candidates.aId === b.id && candidates.bId === a.id)); const mx = (pa.x + pb.x) / 2, my = (pa.y + pb.y) / 2;
                 return (<g key={`s${a.id}${b.id}`} onClick={onTap(() => onInterpolate(a, b))}><line x1={pa.x} y1={pa.y} x2={pb.x} y2={pb.y} stroke="transparent" strokeWidth="20" /><line x1={pa.x} y1={pa.y} x2={pb.x} y2={pb.y} stroke="var(--el-indigo-500)" strokeOpacity={active ? 0.95 : 0.55} strokeWidth={active ? 3 : 2} strokeDasharray="4 4" /><circle cx={mx} cy={my} r={11} fill="var(--el-bg-secondary)" stroke="var(--el-indigo-500)" strokeWidth="1.5" /><path d={`M${mx - 5} ${my} h10 M${mx} ${my - 5} v10`} stroke="var(--el-indigo-500)" strokeWidth="1.5" strokeLinecap="round" /></g>); })}
@@ -201,7 +218,7 @@ export default function SonarMobile({ s }) {
 
       {/* ===== TOP CHROME ===== */}
       <div className="ldm-top">
-        <div className="ldm-brand"><Wordmark size="sm" /></div>
+        <div className="ldm-brand"><Wordmark size="lg" /></div>
         <div className="ldm-top-row">
           <button className="ldm-search" onClick={() => setSheet('search')}><IconSearch size={15} /><span>{layers.length ? `${layers.length} ${layers.length === 1 ? 'search' : 'searches'} active` : 'Tag vibes or describe a mood…'}</span></button>
           <div className="ldm-seg">
@@ -249,8 +266,8 @@ export default function SonarMobile({ s }) {
       {sheet && <div className="ldm-scrim" onClick={() => setSheet(null)} />}
 
       {sheet === 'search' && (
-        <Sheet onClose={() => setSheet(null)} style={{ maxHeight: '70%', bottom: kbInset }}>
-          <input className="ldm-sheet-input" autoFocus placeholder="Describe a mood…" value={vibeQuery}
+        <Sheet onClose={() => setSheet(null)} style={{ maxHeight: kbInset ? `${Math.max(240, window.innerHeight - kbInset - 56)}px` : '70%', bottom: kbInset }}>
+          <input ref={searchInputRef} className="ldm-sheet-input" placeholder="Describe a mood…" value={vibeQuery}
             onChange={(e) => setVibeQuery(e.target.value)} onKeyDown={(e) => { if (e.key === 'Enter' && vibeQuery.trim()) { addVibeLayer(vibeQuery.trim()); setVibeQuery(''); } }} />
           <div className="ldm-sheet-scroll">
             <div className="lo-eyebrow" style={{ marginBottom: 8 }}>{vibeQuery ? `Matching “${vibeQuery}”` : 'Suggested vibes'}</div>
@@ -303,7 +320,7 @@ export default function SonarMobile({ s }) {
         ); })()}
 
       {sheet === 'now' && playing && (
-        <Sheet onClose={() => setSheet(null)}>
+        <Sheet onClose={() => setSheet(null)} style={{ maxHeight: '92%' }}>
           <div className="ldm-sheet-scroll">
             <div className="ldm-now-art"><img src={`${ASSET}assets/artwork.svg`} alt="" /></div>
             <div className="lo-eyebrow-strong">Now playing</div>

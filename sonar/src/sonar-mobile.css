@@ -153,7 +153,7 @@
 .ldm-detail-fb { display: flex; justify-content: center; margin-top: 14px; }
 
 /* Now-playing full sheet */
-.ldm-now-art { width: 100%; aspect-ratio: 1; max-height: 260px; border-radius: var(--el-radius-xl); background: radial-gradient(120% 80% at 30% 20%, rgba(139,92,246,0.5), transparent 60%), radial-gradient(120% 80% at 80% 90%, rgba(99,102,241,0.6), transparent 65%), var(--el-bg-tertiary); display: flex; align-items: center; justify-content: center; margin-bottom: 16px; }
+.ldm-now-art { width: 100%; aspect-ratio: 1; max-height: 190px; border-radius: var(--el-radius-xl); background: radial-gradient(120% 80% at 30% 20%, rgba(139,92,246,0.5), transparent 60%), radial-gradient(120% 80% at 80% 90%, rgba(99,102,241,0.6), transparent 65%), var(--el-bg-tertiary); display: flex; align-items: center; justify-content: center; margin-bottom: 14px; flex: 0 0 auto; }
 .ldm-now-art img { width: 46%; opacity: 0.9; }
 .ldm-now-title { font-size: 1.35rem; font-weight: var(--el-fw-bold); letter-spacing: -0.01em; }
 .ldm-now-sub { color: var(--el-fg-secondary); margin-top: 2px; }
