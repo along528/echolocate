@@ -5,12 +5,15 @@
    .lo-eyebrow*) are already defined in style.css / sonar.css. */
 
 .ldm-app {
-  position: absolute; inset: 0;
+  /* Fixed (not absolute) so the map frame stays pinned to the viewport and the
+     on-screen keyboard can't scroll the whole app out of view. */
+  position: fixed; inset: 0;
   background: var(--el-bg-primary);
   color: var(--el-fg-primary);
   font-family: var(--el-font-sans);
   display: flex; flex-direction: column;
   overflow: hidden;
+  overscroll-behavior: none;
 }
 
 /* ===== Top floating chrome (over the map) ===== */
@@ -22,6 +25,8 @@
   pointer-events: none;
 }
 .ldm-top > * { pointer-events: auto; }
+/* Brand row — the EchoLocate wordmark, floating over the map at the very top. */
+.ldm-brand { display: flex; align-items: center; }
 .ldm-top-row { display: flex; align-items: center; gap: 8px; }
 .ldm-search {
   flex: 1; display: flex; align-items: center; gap: 8px;
@@ -112,10 +117,10 @@
 .ldm-row-add.is-active { background: var(--el-indigo-500); color: white; border-color: transparent; }
 
 /* ===== Bottom sheets ===== */
-.ldm-scrim { position: absolute; inset: 0; z-index: 30; background: rgba(0,0,0,0.5); backdrop-filter: blur(2px); animation: ldm-fade .18s ease; }
+.ldm-scrim { position: fixed; inset: 0; z-index: 30; background: rgba(0,0,0,0.5); backdrop-filter: blur(2px); animation: ldm-fade .18s ease; }
 @keyframes ldm-fade { from { opacity: 0; } to { opacity: 1; } }
 .ldm-sheet {
-  position: absolute; left: 0; right: 0; bottom: 0; z-index: 31;
+  position: fixed; left: 0; right: 0; bottom: 0; z-index: 31;
   max-height: 86%; display: flex; flex-direction: column;
   background: var(--el-bg-secondary); border-top: 1px solid var(--el-border-strong);
   border-radius: 22px 22px 0 0; box-shadow: 0 -10px 40px rgba(0,0,0,0.5);

@@ -6,7 +6,7 @@
 // view. Ships the desktop dot model (layer colors); the prototype's mock-only
 // sonic / clusters / axes variations are intentionally omitted.
 import React from 'react';
-import { Waveform } from './svg-bits.jsx';
+import { Wordmark, Waveform } from './svg-bits.jsx';
 import {
   IconSearch, IconListPlus, IconCheck, IconPlus, IconSimilar, IconDissimilar,
   IconEye, IconEyeOff, IconClose, IconExternal, IconUp, IconDown,
@@ -39,10 +39,23 @@ export default function SonarMobile({ s }) {
 
   // Mobile-only UI state: which bottom sheet is open (one at a time).
   const [sheet, setSheet] = React.useState(null);
+  // Height of the on-screen keyboard while the search sheet is focused, so the
+  // sheet can be pinned above it instead of being scrolled off-screen.
+  const [kbInset, setKbInset] = React.useState(0);
+
+  // Latest zoom in a ref so the touch handlers never read a stale closure.
+  const zoomRef = React.useRef(zoom);
+  zoomRef.current = zoom;
+  // Active touch gesture (pan / pinch) bookkeeping, and a flag that a drag
+  // actually moved — so a drag that starts on a dot doesn't also tap it.
+  const gestureRef = React.useRef(null);
+  const movedRef = React.useRef(false);
 
   // Composition wrappers over shared handlers.
   const openDetail = (id) => { setSelectedId(id); setSheet('detail'); };
   const onInterpolate = (a, b) => { interpolateEdge(a, b); setSheet(null); setView('map'); };
+  // Run a map tap action unless the touch was actually a drag (pan/pinch).
+  const onTap = (fn) => (e) => { e.stopPropagation(); if (movedRef.current) return; fn(); };
 
   // Mobile zoom — centered on the portrait canvas, clamped k ∈ [1, 5].
   const zoomBy = (f) => setZoom((z) => {
@@ -51,12 +64,74 @@ export default function SonarMobile({ s }) {
     return { k, x: cx - (cx - z.x) * (k / z.k), y: cy - (cy - z.y) * (k / z.k) };
   });
 
+  // ---- touch: one-finger pan, two-finger pinch zoom (k ∈ [1, 5]) ----
+  // The SVG uses preserveAspectRatio="slice", so screen↔viewBox needs the cover
+  // scale S = max(W/MVW, H/MVH) and the centering offsets. (.ldm-map sets
+  // touch-action:none, so the browser won't scroll/zoom and we needn't
+  // preventDefault — which keeps React's passive touch listeners happy.)
+  const rectMetrics = (rect) => {
+    const S = Math.max(rect.width / MVW, rect.height / MVH);
+    return { S, offX: (rect.width - S * MVW) / 2, offY: (rect.height - S * MVH) / 2 };
+  };
+  const onTouchStart = (e) => {
+    const t = e.touches;
+    const rect = e.currentTarget.getBoundingClientRect();
+    movedRef.current = false;
+    if (t.length === 1) {
+      gestureRef.current = { mode: 'pan', x: t[0].clientX, y: t[0].clientY, z0: { ...zoomRef.current }, rect };
+    } else if (t.length === 2) {
+      const dist = Math.hypot(t[0].clientX - t[1].clientX, t[0].clientY - t[1].clientY);
+      gestureRef.current = { mode: 'pinch', dist, z0: { ...zoomRef.current }, rect };
+      movedRef.current = true;
+    }
+  };
+  const onTouchMove = (e) => {
+    const g = gestureRef.current;
+    if (!g) return;
+    const t = e.touches;
+    const { S, offX, offY } = rectMetrics(g.rect);
+    if (g.mode === 'pan' && t.length === 1) {
+      const dxs = t[0].clientX - g.x, dys = t[0].clientY - g.y;
+      if (!movedRef.current && Math.hypot(dxs, dys) > 4) movedRef.current = true;
+      if (movedRef.current) setZoom({ k: g.z0.k, x: g.z0.x + dxs / S, y: g.z0.y + dys / S });
+    } else if (g.mode === 'pinch' && t.length === 2) {
+      const dist = Math.hypot(t[0].clientX - t[1].clientX, t[0].clientY - t[1].clientY);
+      const kNew = Math.max(1, Math.min(5, g.z0.k * (dist / (g.dist || dist))));
+      // Keep the point under the pinch midpoint fixed while scaling.
+      const mx = (t[0].clientX + t[1].clientX) / 2 - g.rect.left;
+      const my = (t[0].clientY + t[1].clientY) / 2 - g.rect.top;
+      const vbx = (mx - offX) / S, vby = (my - offY) / S;
+      const ratio = kNew / g.z0.k;
+      setZoom({ k: kNew, x: vbx * (1 - ratio) + g.z0.x * ratio, y: vby * (1 - ratio) + g.z0.y * ratio });
+    }
+  };
+  const onTouchEnd = (e) => {
+    if (e.touches.length === 0) { gestureRef.current = null; return; }
+    // Lifting one finger of a pinch → continue as a pan with the remaining one.
+    if (e.touches.length === 1) {
+      gestureRef.current = { mode: 'pan', x: e.touches[0].clientX, y: e.touches[0].clientY, z0: { ...zoomRef.current }, rect: e.currentTarget.getBoundingClientRect() };
+    }
+  };
+
+  // Track the keyboard height (visualViewport) only while the search sheet is up.
+  React.useEffect(() => {
+    if (sheet !== 'search' || !window.visualViewport) { setKbInset(0); return undefined; }
+    const vv = window.visualViewport;
+    const update = () => setKbInset(Math.max(0, window.innerHeight - vv.height - vv.offsetTop));
+    update();
+    vv.addEventListener('resize', update);
+    vv.addEventListener('scroll', update);
+    return () => { vv.removeEventListener('resize', update); vv.removeEventListener('scroll', update); };
+  }, [sheet]);
+
   return (
     <div className="ldm-app">
       {/* ===== MAP / LIST STAGE ===== */}
       {view === 'map' ? (
         <div className="ldm-stage">
-          <svg className="ldm-map" viewBox={`0 0 ${MVW} ${MVH}`} preserveAspectRatio="xMidYMid slice" onClick={() => { if (sheet) setSheet(null); }}>
+          <svg className="ldm-map" viewBox={`0 0 ${MVW} ${MVH}`} preserveAspectRatio="xMidYMid slice"
+            onClick={() => { if (!movedRef.current && sheet) setSheet(null); }}
+            onTouchStart={onTouchStart} onTouchMove={onTouchMove} onTouchEnd={onTouchEnd} onTouchCancel={onTouchEnd}>
             <rect x={0} y={0} width={MVW} height={MVH} fill="transparent" />
             <g transform={`translate(${zoom.x} ${zoom.y}) scale(${zoom.k})`}>
               <g opacity="0.14" style={{ pointerEvents: 'none' }}>
@@ -64,16 +139,16 @@ export default function SonarMobile({ s }) {
               </g>
               {playing && [44, 90, 150, 220].map((r, i) => { const p = dotPosM(playing); return <circle key={i} cx={p.x} cy={p.y} r={r} fill="none" stroke="var(--el-yellow-500)" strokeOpacity={[0.55, 0.35, 0.22, 0.12][i]} strokeWidth={1} style={{ pointerEvents: 'none' }} />; })}
               {playlistTracks.length > 1 && playlistTracks.slice(1).map((b, i) => { const a = playlistTracks[i], pa = dotPosM(a), pb = dotPosM(b); const active = candidates && ((candidates.aId === a.id && candidates.bId === b.id) || (candidates.aId === b.id && candidates.bId === a.id)); const mx = (pa.x + pb.x) / 2, my = (pa.y + pb.y) / 2;
-                return (<g key={`s${a.id}${b.id}`} onClick={(e) => { e.stopPropagation(); onInterpolate(a, b); }}><line x1={pa.x} y1={pa.y} x2={pb.x} y2={pb.y} stroke="transparent" strokeWidth="20" /><line x1={pa.x} y1={pa.y} x2={pb.x} y2={pb.y} stroke="var(--el-indigo-500)" strokeOpacity={active ? 0.95 : 0.55} strokeWidth={active ? 3 : 2} strokeDasharray="4 4" /><circle cx={mx} cy={my} r={11} fill="var(--el-bg-secondary)" stroke="var(--el-indigo-500)" strokeWidth="1.5" /><path d={`M${mx - 5} ${my} h10 M${mx} ${my - 5} v10`} stroke="var(--el-indigo-500)" strokeWidth="1.5" strokeLinecap="round" /></g>); })}
+                return (<g key={`s${a.id}${b.id}`} onClick={onTap(() => onInterpolate(a, b))}><line x1={pa.x} y1={pa.y} x2={pb.x} y2={pb.y} stroke="transparent" strokeWidth="20" /><line x1={pa.x} y1={pa.y} x2={pb.x} y2={pb.y} stroke="var(--el-indigo-500)" strokeOpacity={active ? 0.95 : 0.55} strokeWidth={active ? 3 : 2} strokeDasharray="4 4" /><circle cx={mx} cy={my} r={11} fill="var(--el-bg-secondary)" stroke="var(--el-indigo-500)" strokeWidth="1.5" /><path d={`M${mx - 5} ${my} h10 M${mx} ${my - 5} v10`} stroke="var(--el-indigo-500)" strokeWidth="1.5" strokeLinecap="round" /></g>); })}
               {playlistTracks.map((t) => { const p = dotPosM(t); return <circle key={'r' + t.id} cx={p.x} cy={p.y} r={13} fill="none" stroke="var(--el-indigo-500)" strokeWidth="2" strokeOpacity="0.6" style={{ pointerEvents: 'none' }} />; })}
               {visibleTracks.map(({ track: t, color }) => { const p = dotPosM(t), isPlay = t.id === playingId, isSel = t.id === selectedId, inPl = playlistById.has(t.id); const r = isPlay ? 11 : isSel ? 9 : 7;
-                return (<g key={t.id} onClick={(e) => { e.stopPropagation(); openDetail(t.id); }}>
+                return (<g key={t.id} onClick={onTap(() => openDetail(t.id))}>
                   {isSel && <circle cx={p.x} cy={p.y} r={r + 7} fill="none" stroke={color} strokeWidth="1.5" />}
                   <circle cx={p.x} cy={p.y} r={r} fill={color} opacity={inPl ? 1 : 0.88} style={{ filter: isPlay ? `drop-shadow(0 0 8px ${color})` : 'none' }} />
                   {inPl && <circle cx={p.x} cy={p.y} r={r + 3} fill="none" stroke="white" strokeWidth="1" />}
                 </g>); })}
               {candidates && candidates.tracks.map((t) => { if (entryByTrackId.has(t.id)) return null; const p = dotPosM(t);
-                return (<g key={'c' + t.id} onClick={(e) => { e.stopPropagation(); openDetail(t.id); }}><circle cx={p.x} cy={p.y} r={12} fill="none" stroke={CANDIDATE_COLOR} strokeWidth="1.2" strokeOpacity="0.7" strokeDasharray="3 2" /><circle cx={p.x} cy={p.y} r={6} fill={CANDIDATE_COLOR} opacity="0.9" /></g>); })}
+                return (<g key={'c' + t.id} onClick={onTap(() => openDetail(t.id))}><circle cx={p.x} cy={p.y} r={12} fill="none" stroke={CANDIDATE_COLOR} strokeWidth="1.2" strokeOpacity="0.7" strokeDasharray="3 2" /><circle cx={p.x} cy={p.y} r={6} fill={CANDIDATE_COLOR} opacity="0.9" /></g>); })}
             </g>
           </svg>
 
@@ -98,6 +173,7 @@ export default function SonarMobile({ s }) {
 
       {/* ===== TOP CHROME ===== */}
       <div className="ldm-top">
+        <div className="ldm-brand"><Wordmark size="sm" /></div>
         <div className="ldm-top-row">
           <button className="ldm-search" onClick={() => setSheet('search')}><IconSearch size={15} /><span>{layers.length ? `${layers.length} ${layers.length === 1 ? 'search' : 'searches'} active` : 'Tag vibes or describe a mood…'}</span></button>
           <div className="ldm-seg">
@@ -145,7 +221,7 @@ export default function SonarMobile({ s }) {
       {sheet && <div className="ldm-scrim" onClick={() => setSheet(null)} />}
 
       {sheet === 'search' && (
-        <div className="ldm-sheet" style={{ maxHeight: '70%' }}>
+        <div className="ldm-sheet" style={{ maxHeight: '70%', bottom: kbInset }}>
           <div className="ldm-handle" />
           <input className="ldm-sheet-input" autoFocus placeholder="Describe a mood…" value={vibeQuery}
             onChange={(e) => setVibeQuery(e.target.value)} onKeyDown={(e) => { if (e.key === 'Enter' && vibeQuery.trim()) { addVibeLayer(vibeQuery.trim()); setVibeQuery(''); } }} />
