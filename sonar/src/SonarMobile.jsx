@@ -25,6 +25,34 @@ function dotPosM(t) {
   return { x: MPAD + cx * (MVW - 2 * MPAD), y: MPAD + (1 - cy) * (MVH - 2 * MPAD) };
 }
 
+// A bottom sheet whose grab handle can be dragged down to dismiss. A drag past
+// ~90px (or a quick flick) closes it; anything less snaps back. The handle's
+// grip area sets touch-action:none so the drag never scrolls the page; the
+// sheet body keeps its own scroll. Tapping the scrim still closes it too.
+function Sheet({ onClose, style, className = '', children }) {
+  const [dragY, setDragY] = React.useState(0);
+  const [dragging, setDragging] = React.useState(false);
+  const startRef = React.useRef(null);
+  const onStart = (e) => { startRef.current = { y: e.touches[0].clientY, t: Date.now() }; setDragging(true); setDragY(0); };
+  const onMove = (e) => { const s = startRef.current; if (!s) return; const dy = e.touches[0].clientY - s.y; setDragY(dy > 0 ? dy : 0); };
+  const onEnd = () => {
+    const s = startRef.current; if (!s) return;
+    const dt = Date.now() - s.t, dy = dragY;
+    startRef.current = null; setDragging(false);
+    if (dy > 90 || (dt > 0 && dy / dt > 0.5 && dy > 30)) onClose();
+    else setDragY(0);
+  };
+  return (
+    <div className={'ldm-sheet ' + className}
+      style={{ ...style, transform: dragY ? `translateY(${dragY}px)` : undefined, transition: dragging ? 'none' : 'transform 0.2s ease' }}>
+      <div className="ldm-grip" onTouchStart={onStart} onTouchMove={onMove} onTouchEnd={onEnd} onTouchCancel={onEnd}>
+        <div className="ldm-handle" />
+      </div>
+      {children}
+    </div>
+  );
+}
+
 export default function SonarMobile({ s }) {
   const {
     view, setView, vibeQuery, setVibeQuery,
@@ -221,8 +249,7 @@ export default function SonarMobile({ s }) {
       {sheet && <div className="ldm-scrim" onClick={() => setSheet(null)} />}
 
       {sheet === 'search' && (
-        <div className="ldm-sheet" style={{ maxHeight: '70%', bottom: kbInset }}>
-          <div className="ldm-handle" />
+        <Sheet onClose={() => setSheet(null)} style={{ maxHeight: '70%', bottom: kbInset }}>
           <input className="ldm-sheet-input" autoFocus placeholder="Describe a mood…" value={vibeQuery}
             onChange={(e) => setVibeQuery(e.target.value)} onKeyDown={(e) => { if (e.key === 'Enter' && vibeQuery.trim()) { addVibeLayer(vibeQuery.trim()); setVibeQuery(''); } }} />
           <div className="ldm-sheet-scroll">
@@ -249,13 +276,12 @@ export default function SonarMobile({ s }) {
               </div>
             </>)}
           </div>
-        </div>
+        </Sheet>
       )}
 
       {sheet === 'detail' && selected && (() => { const t = selected; const cand = isCandidate(t.id); const sources = entryByTrackId.get(t.id)?.sources || []; const inPl = playlistById.has(t.id);
         return (
-          <div className="ldm-sheet">
-            <div className="ldm-handle" />
+          <Sheet onClose={() => setSheet(null)}>
             <div className="ldm-detail-sources">
               {cand && <span className="lc-source-tag" style={{ borderColor: CANDIDATE_COLOR, color: CANDIDATE_COLOR }}>interpolation</span>}
               {sources.map((l) => (<span key={l.id} className="lc-source-tag" style={{ borderColor: l.color, color: l.color }}><span className="ld-layer-swatch" style={{ background: l.color }} />{layerTag(l)}</span>))}
@@ -273,12 +299,11 @@ export default function SonarMobile({ s }) {
               <button className="ldm-act" onClick={() => { addSeedLayer('similar', t); setSheet(null); }}><IconSimilar size={16} /> Similar</button>
               <button className="ldm-act" onClick={() => { addSeedLayer('dissimilar', t); setSheet(null); }}><IconDissimilar size={16} /> Dissimilar</button>
             </div>
-          </div>
+          </Sheet>
         ); })()}
 
       {sheet === 'now' && playing && (
-        <div className="ldm-sheet">
-          <div className="ldm-handle" />
+        <Sheet onClose={() => setSheet(null)}>
           <div className="ldm-sheet-scroll">
             <div className="ldm-now-art"><img src={`${ASSET}assets/artwork.svg`} alt="" /></div>
             <div className="lo-eyebrow-strong">Now playing</div>
@@ -292,18 +317,18 @@ export default function SonarMobile({ s }) {
               <button className="ldm-now-tbtn" onClick={() => step(1)}><svg viewBox="0 0 24 24" fill="currentColor" width="18" height="18"><path d="M6 18l8.5-6L6 6v12zM16 6v12h2V6h-2z" /></svg></button>
             </div>
             <div className="ldm-detail-fb"><FeedbackPills track={playing} value={labelsByTrackId[playing.id]} onLabel={labelTrack} /></div>
-            <div className="ldm-now-quick">
-              <button className="ldm-act" onClick={() => { addSeedLayer('similar', playing); setSheet(null); }}><IconSimilar size={18} /> Similar</button>
-              <button className="ldm-act" onClick={() => { addSeedLayer('dissimilar', playing); setSheet(null); }}><IconDissimilar size={18} /> Dissimilar</button>
-              <button className="ldm-act" onClick={() => addToPlaylist(playing)}><IconListPlus size={18} /> Add</button>
-            </div>
           </div>
-        </div>
+          {/* Pinned below the scroll so these always stay on-screen. */}
+          <div className="ldm-now-quick">
+            <button className="ldm-act" onClick={() => { addSeedLayer('similar', playing); setSheet(null); }}><IconSimilar size={18} /> Similar</button>
+            <button className="ldm-act" onClick={() => { addSeedLayer('dissimilar', playing); setSheet(null); }}><IconDissimilar size={18} /> Dissimilar</button>
+            <button className="ldm-act" onClick={() => addToPlaylist(playing)}><IconListPlus size={18} /> Add</button>
+          </div>
+        </Sheet>
       )}
 
       {sheet === 'playlist' && (
-        <div className="ldm-sheet">
-          <div className="ldm-handle" />
+        <Sheet onClose={() => setSheet(null)}>
           <div className="ldm-sheet-head">
             <h3 className="el-h2" style={{ fontSize: '1.2rem' }}>Your playlist</h3>
             <button className="lo-btn-ghost ld-mini-btn" onClick={clearPlaylist}>Clear</button>
@@ -337,7 +362,7 @@ export default function SonarMobile({ s }) {
               ))}
             </>)}
           </div>
-        </div>
+        </Sheet>
       )}
     </div>
   );

@@ -128,9 +128,13 @@
   animation: ldm-rise .22s cubic-bezier(.2,.8,.2,1);
 }
 @keyframes ldm-rise { from { transform: translateY(100%); } to { transform: translateY(0); } }
-.ldm-handle { width: 38px; height: 4px; border-radius: 2px; background: var(--el-border-strong); margin: 4px auto 12px; flex: 0 0 auto; }
+/* Enlarged touch target around the grab handle — drag it down to dismiss. */
+.ldm-grip { display: flex; justify-content: center; align-items: center; padding: 6px 0 10px; margin: -6px 0 0; flex: 0 0 auto; touch-action: none; cursor: grab; }
+.ldm-handle { width: 38px; height: 4px; border-radius: 2px; background: var(--el-border-strong); }
 .ldm-sheet-head { display: flex; align-items: center; justify-content: space-between; margin-bottom: 12px; }
-.ldm-sheet-scroll { overflow-y: auto; }
+/* Flex so the scroll area takes the remaining height and any pinned footer
+   (e.g. the now-playing quick actions) always stays on-screen. */
+.ldm-sheet-scroll { overflow-y: auto; flex: 1 1 auto; min-height: 0; }
 .ldm-sheet-input { width: 100%; height: 44px; padding: 0 14px; background: var(--el-bg-input); border: 1px solid var(--el-indigo-500); border-radius: var(--el-radius-md); color: var(--el-fg-primary); font-size: 1rem; margin-bottom: 12px; }
 .ldm-sheet-input::placeholder { color: var(--el-fg-secondary); }
 .ldm-chipwrap { display: flex; flex-wrap: wrap; gap: 8px; }
@@ -157,7 +161,7 @@
 .ldm-now-transport { display: flex; align-items: center; justify-content: center; gap: 22px; margin: 16px 0; }
 .ldm-now-tbtn { width: 46px; height: 46px; border-radius: 50%; background: var(--el-bg-tertiary); border: 1px solid var(--el-border); color: var(--el-fg-primary); display: inline-flex; align-items: center; justify-content: center; }
 .ldm-now-tbtn.is-play { width: 64px; height: 64px; background: var(--el-gradient); border-color: transparent; }
-.ldm-now-quick { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 8px; margin-top: 8px; }
+.ldm-now-quick { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 8px; margin-top: 10px; flex: 0 0 auto; }
 .ldm-now-quick .ldm-act { display: inline-flex; flex-direction: column; align-items: center; justify-content: center; gap: 5px; height: 60px; border-radius: var(--el-radius-md); border: 1px solid var(--el-border); background: var(--el-bg-tertiary); color: var(--el-fg-secondary); font-size: 0.72rem; }
 
 /* Playlist sheet */
