@@ -1,0 +1,12 @@
+# Descriptions pipeline (audio -> tags + captions)
+duckdb
+numpy
+tqdm
+# CLAP text encoder (generate_tags.py, evaluate_captions.py)
+torch
+transformers
+# Audio snippet loading (generate_captions.py)
+librosa
+# Vertex AI auth + HTTP (generate_captions.py)
+google-auth
+requests

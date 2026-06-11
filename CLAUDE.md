@@ -41,6 +41,14 @@ The project consists of these services:
    - Segments audio into intro/mid/outro (5s each)
    - Outputs JSONL which is then loaded into DuckDB
 
+6. **`descriptions/`** - Audio → text descriptions pipeline (local processing)
+   - The reverse of CLAP text→audio search: per-track vibe `tags` (zero-shot
+     reverse CLAP, per-tag z-score calibration for the modality gap) and a
+     free-text `description` (Gemini 2.0 Flash audio captioning on Vertex AI,
+     quality-gated by CLAP cycle-consistency evaluation)
+   - Writes JSONL artifacts to `data/descriptions/`, then loads `tags`/`description`
+     columns into the full DB; see `descriptions/README.md` for the full plan
+
 ## Common Commands
 
 **Always use the virtual environment for Python commands:**
@@ -72,6 +80,15 @@ python generate_projection.py  # Compute 2D sonar-map x,y columns; run before ge
 python generate_index_db.py    # Build stripped index DB from full DB (for baked-index deployment)
 ```
 
+### Description Generation (audio → text)
+```bash
+cd descriptions                  # run against the FULL DB, before generate_index_db.py
+python generate_tags.py          # Tier 1: zero-shot reverse-CLAP vibe tags (--stats for coverage report)
+python generate_captions.py      # Tier 2: Gemini audio captions (needs GOOGLE_CLOUD_PROJECT; --limit N to pilot)
+python evaluate_captions.py      # CLAP cycle-consistency eval (recall@k, worst offenders)
+python load_descriptions.py      # Write tags/description columns (captions gated by --max-cc-rank)
+```
+
 ### Local Development
 ```bash
 # EchoLocate MCP Server (port 8080)
@@ -101,6 +118,8 @@ The `tracks` table has columns:
 - `v_intro`, `v_mid`, `v_outro`: FLOAT[768] (MERT embeddings)
 - `v_clap`: FLOAT[512] (CLAP embeddings for semantic search)
 - `x`, `y`: DOUBLE (2D sonar-map coordinates from `generate_projection.py`, normalized [0,1]; NULL until that step runs)
+- `tags`: VARCHAR (JSON array of vibe tags from `descriptions/generate_tags.py`; NULL until that pipeline runs)
+- `description`: VARCHAR (verified Gemini caption from `descriptions/`; NULL until that pipeline runs)
 - HNSW indexes on `v_mid` (cosine) and `v_clap` (cosine) per source table
 
 ### Interpolation Methods

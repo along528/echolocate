@@ -41,6 +41,9 @@ COLUMNS = [
     "y",
 ]
 
+# Included when present in the source DB (see descriptions/ pipeline).
+OPTIONAL_COLUMNS = ["tags", "description"]
+
 
 def build_index_db(source_path: str, output_path: str) -> None:
     if not os.path.exists(source_path):
@@ -62,7 +65,22 @@ def build_index_db(source_path: str, output_path: str) -> None:
     # Attach the full DB as read-only
     con.execute(f"ATTACH '{source_path}' AS src (READ_ONLY);")
 
-    col_list = ", ".join(COLUMNS)
+    # Optional columns are only carried over when present in EVERY source
+    # table — the union view requires identical schemas.
+    optional = list(OPTIONAL_COLUMNS)
+    for table in TABLES:
+        source_cols = {
+            r[0]
+            for r in con.execute(
+                "SELECT column_name FROM information_schema.columns "
+                "WHERE table_catalog = 'src' AND table_name = ?",
+                [table],
+            ).fetchall()
+        }
+        optional = [c for c in optional if c in source_cols]
+    if optional:
+        print(f"Including optional columns: {optional}")
+    col_list = ", ".join(COLUMNS + optional)
 
     for table in TABLES:
         print(f"\nCopying {table}...")

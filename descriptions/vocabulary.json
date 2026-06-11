@@ -1,0 +1,132 @@
+{
+  "_comment": "Tag vocabulary for zero-shot reverse-CLAP tagging (generate_tags.py). Each tag maps to 1-3 CLAP text prompts which are embedded and averaged into a single anchor. Per-category top_k/min_z control selection: top_k tags by z-score, gated at z >= min_z. Edit phrases and re-run with --stats to inspect coverage; tags assigned to ~0% or ~100% of the corpus are mis-anchored.",
+  "categories": {
+    "genre": {
+      "top_k": 2,
+      "min_z": 1.0,
+      "tags": {
+        "rock": ["rock music", "a rock song with electric guitars and live drums"],
+        "indie rock": ["indie rock music", "a jangly indie rock song"],
+        "punk": ["punk rock music", "fast aggressive punk with shouted vocals"],
+        "metal": ["heavy metal music", "metal with distorted guitar riffs and double-kick drums"],
+        "post-rock": ["post-rock music", "an instrumental post-rock build with layered guitars"],
+        "shoegaze": ["shoegaze music", "a wall of blurry distorted guitars with buried dreamy vocals"],
+        "folk": ["folk music", "an acoustic folk song with fingerpicked guitar"],
+        "singer-songwriter": ["a singer-songwriter ballad", "intimate vocals over a single acoustic instrument"],
+        "country": ["country music", "a country song with twangy guitar and fiddle"],
+        "blues": ["blues music", "a slow blues with bent guitar notes"],
+        "jazz": ["jazz music", "a jazz combo with swung rhythm and improvised solos"],
+        "soul": ["soul music", "a soul song with expressive vocals and horns"],
+        "funk": ["funk music", "a funk groove with syncopated bass and rhythm guitar"],
+        "disco": ["disco music", "a disco track with four-on-the-floor drums and strings"],
+        "r&b": ["r&b music", "a smooth contemporary r&b song"],
+        "hip hop": ["hip hop music", "a hip hop beat with rapped vocals"],
+        "house": ["house music", "a four-on-the-floor house track with drum machine"],
+        "techno": ["techno music", "a repetitive driving techno track"],
+        "trance": ["trance music", "a euphoric trance track with arpeggiated synthesizers"],
+        "drum and bass": ["drum and bass music", "fast breakbeats with deep sub bass"],
+        "dubstep": ["dubstep music", "a half-time electronic track with wobbling bass"],
+        "ambient": ["ambient music", "beatless atmospheric ambient textures"],
+        "electronic": ["electronic music", "a track made of synthesizers and programmed drums"],
+        "synth-pop": ["synth-pop music", "a catchy pop song built on synthesizers and drum machine"],
+        "pop": ["pop music", "a polished catchy pop song"],
+        "classical": ["classical music", "an orchestral classical piece"],
+        "reggae": ["reggae music", "a reggae groove with offbeat guitar skanks"],
+        "dub": ["dub music", "a dub track with heavy echo and deep bass"],
+        "ska": ["ska music", "an upbeat ska song with horns and offbeat guitar"],
+        "latin": ["latin music", "a latin track with clave rhythm and percussion"],
+        "world": ["world music", "traditional music with regional folk instruments"],
+        "gospel": ["gospel music", "a gospel song with choir and organ"],
+        "experimental": ["experimental music", "abstract unconventional sound collage"],
+        "lo-fi hip hop": ["lo-fi hip hop beats", "a dusty laid-back instrumental hip hop beat"]
+      }
+    },
+    "mood": {
+      "top_k": 2,
+      "min_z": 1.0,
+      "tags": {
+        "melancholic": ["melancholic and somber music", "sad wistful music"],
+        "euphoric": ["euphoric uplifting music", "ecstatic blissful music"],
+        "dreamy": ["dreamy hazy music", "floating ethereal music"],
+        "aggressive": ["aggressive angry music", "harsh confrontational music"],
+        "peaceful": ["peaceful calm music", "gentle soothing music"],
+        "tense": ["tense suspenseful music", "anxious unsettling music"],
+        "playful": ["playful whimsical music", "lighthearted fun music"],
+        "romantic": ["romantic tender music", "a sensual love song"],
+        "nostalgic": ["nostalgic bittersweet music", "music that sounds like a faded memory"],
+        "eerie": ["eerie haunting music", "creepy unsettling atmosphere"],
+        "triumphant": ["triumphant heroic music", "soaring victorious music"],
+        "brooding": ["dark brooding music", "slow menacing music"],
+        "hypnotic": ["hypnotic trance-like music", "repetitive meditative music"],
+        "contemplative": ["contemplative introspective music", "quiet reflective music"]
+      }
+    },
+    "energy": {
+      "top_k": 1,
+      "min_z": 0.5,
+      "tags": {
+        "slow ballad": ["a slow quiet ballad", "very slow tempo music"],
+        "laid-back": ["a laid-back relaxed groove", "easygoing mid-slow tempo music"],
+        "mid-tempo": ["a steady mid-tempo groove"],
+        "driving": ["fast driving energetic music", "relentless propulsive rhythm"],
+        "frantic": ["frantic chaotic high-speed music", "breakneck intense music"],
+        "danceable": ["danceable music with a strong beat", "music that makes you dance"]
+      }
+    },
+    "instrumentation": {
+      "top_k": 3,
+      "min_z": 1.0,
+      "tags": {
+        "acoustic guitar": ["acoustic guitar", "strummed or fingerpicked acoustic guitar"],
+        "electric guitar": ["clean electric guitar", "electric guitar melody"],
+        "distorted guitar": ["distorted electric guitar", "heavy fuzzy guitar riffs"],
+        "piano": ["piano", "a piano melody"],
+        "organ": ["hammond organ", "church organ"],
+        "synthesizer": ["synthesizer", "analog synth pads and leads"],
+        "strings": ["string section", "orchestral strings"],
+        "horns": ["brass section", "trumpets and trombones"],
+        "saxophone": ["saxophone solo", "a saxophone melody"],
+        "violin": ["violin", "fiddle playing"],
+        "flute": ["flute melody"],
+        "harmonica": ["harmonica playing"],
+        "accordion": ["accordion playing"],
+        "banjo": ["banjo picking"],
+        "drum machine": ["a drum machine beat", "programmed electronic drums"],
+        "live drums": ["a live acoustic drum kit", "real drums played by a drummer"],
+        "heavy bass": ["deep heavy bass", "booming sub bass"],
+        "upright bass": ["upright double bass", "walking acoustic bass line"],
+        "turntables": ["turntable scratching", "DJ scratching and cuts"],
+        "hand percussion": ["hand percussion", "congas bongos and shakers"]
+      }
+    },
+    "vocals": {
+      "top_k": 1,
+      "min_z": 0.75,
+      "tags": {
+        "male vocals": ["a man singing", "male lead vocals"],
+        "female vocals": ["a woman singing", "female lead vocals"],
+        "group vocals": ["a choir singing", "group harmony vocals"],
+        "rapping": ["rapping", "rapped vocals over a beat"],
+        "spoken word": ["spoken word vocals", "talking over music"],
+        "instrumental": ["instrumental music with no vocals", "music without any singing"],
+        "falsetto": ["high falsetto singing"]
+      }
+    },
+    "production": {
+      "top_k": 2,
+      "min_z": 1.0,
+      "tags": {
+        "lo-fi": ["lo-fi gritty recording", "tape hiss and degraded audio quality"],
+        "polished": ["polished modern studio production", "clean hi-fi professional mix"],
+        "live recording": ["a live concert recording", "live performance with room ambience and crowd"],
+        "reverb-drenched": ["reverb-drenched cavernous sound", "washed out in echo and reverb"],
+        "distorted": ["distorted saturated production", "blown-out overdriven mix"],
+        "minimal": ["minimal sparse arrangement", "lots of empty space in the mix"],
+        "dense": ["dense layered wall of sound", "thick maximalist arrangement"],
+        "glitchy": ["glitchy stuttering electronic production", "chopped and fragmented audio"],
+        "vintage": ["vintage analog warmth", "an old recording from decades ago"],
+        "atmospheric": ["atmospheric ambient pads and textures", "spacious cinematic soundscape"]
+      }
+    }
+  }
+}
