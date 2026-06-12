@@ -35,7 +35,8 @@ export default function SonarDesktop({ s }) {
     zoom, setZoom,
     addVibeLayer, addSeedLayer, restoreLayer, removeLayer, clearLayers,
     toggleLayerVisible, toggleSolo, showAllLayers,
-    visibleLayers, anyLoading, allVisible, visibleTracks, entryByTrackId,
+    visibleLayers, displayLayers, displayVisibleLayers,
+    anyLoading, allVisible, visibleTracks, entryByTrackId,
     playlistById, playing, selected, flatResults, vibeSuggestions, playlistTracks,
     navSource, detail, detailPinned, isCandidate, playingTotal,
     addToPlaylist, insertCandidate, removeFromPlaylist, movePlaylist, clearPlaylist,
@@ -47,6 +48,17 @@ export default function SonarDesktop({ s }) {
   // Pan drag bookkeeping (click-drag to pan when zoomed in).
   const panRef = React.useRef(null); // { sx, sy, ox, oy } during a drag
   const didPanRef = React.useRef(false); // set true once a drag actually moves
+  // Inverse zoom — dots/rings/edges live inside the scaled <g>, so multiplying
+  // their radii / stroke widths by 1/k keeps them a constant SCREEN size. That's
+  // what lets you zoom in between two close dots without them ballooning.
+  const [grabbing, setGrabbing] = React.useState(false);
+  const iz = 1 / zoom.k;
+  // The tagger pills now live in a horizontal scroller (single row), which
+  // clips overflow — so the per-pill info popover can't be a child of the pill
+  // anymore. Track which pill is hovered and render ONE popover anchored to the
+  // bar (which keeps overflow visible).
+  const [infoLayerId, setInfoLayerId] = React.useState(null);
+  const infoLayer = layers.find((l) => l.id === infoLayerId) || null;
 
   const onLayerKeyDown = (e) => {
     if (e.key === 'Enter' && vibeQuery.trim()) {
@@ -114,11 +126,13 @@ export default function SonarDesktop({ s }) {
     const dy = (e.clientY - pan.sy) * (VH / pan.rect.height);
     if (!didPanRef.current && Math.abs(e.clientX - pan.sx) + Math.abs(e.clientY - pan.sy) > 3) {
       didPanRef.current = true;
+      setGrabbing(true);
     }
     if (didPanRef.current) setZoom((z) => ({ ...z, x: pan.ox + dx, y: pan.oy + dy }));
   };
   const onMapPointerUp = () => {
     panRef.current = null;
+    setGrabbing(false);
     // The click that follows mouseup fires synchronously (before this timeout),
     // so onMapBackgroundClick still sees didPanRef and swallows it. Clearing it
     // afterwards prevents a drag that ends without a click (e.g. released over a
@@ -185,39 +199,31 @@ export default function SonarDesktop({ s }) {
         <Wordmark size="md" />
 
         <div className="ld-tagger">
-          {layers.map((l) => (
-            <span
-              key={l.id}
-              className={'el-chip is-active ld-layer-pill '
-                + (l.visible ? '' : 'is-hidden ')
-                + (soloLayerId === l.id ? 'is-solo ' : '')
-                + (soloLayerId && soloLayerId !== l.id ? 'is-ghost' : '')}
-              style={{ borderColor: l.color }}
-              onClick={() => toggleSolo(l.id)}
-              title={soloLayerId === l.id ? 'Showing only this search — click to show all' : 'Show only this search'}
-            >
-              <span className="ld-layer-swatch" style={{ background: l.color }} />
-              <span className="ld-layer-label">{layerTag(l)}</span>
-              {l.enhancedQuery && <span className="ld-layer-spark" aria-hidden="true">✨</span>}
-              <button className="ld-layer-btn" onClick={(e) => { e.stopPropagation(); toggleLayerVisible(l.id); }}
-                title={l.visible ? 'Hide this search' : 'Show this search'}>
-                {l.visible ? <IconEye size={14} /> : <IconEyeOff size={14} />}
-              </button>
-              <button className="el-chip-remove" onClick={(e) => { e.stopPropagation(); removeLayer(l.id); }} title="Remove search">×</button>
-              <span className="ld-layer-info">
-                <strong>{layerKindWord(l)} “{l.label}”</strong>
-                <span className="lo-eyebrow">{l.loading ? 'searching…' : `${l.results.length} tracks`}</span>
-                {l.enhancedQuery && <em>✨ {l.enhancedQuery}</em>}
-                {/* For similar/dissimilar, surface the exact seed song and let
-                    you jump to it. */}
-                {l.seedTrack && (
-                  <button className="ld-layer-seed" onClick={(e) => { e.stopPropagation(); setSelectedId(l.seedTrack.id); }}>
-                    {l.seedTrack.title} — {l.seedTrack.artist}
-                  </button>
-                )}
+          <div className="ld-tagger-scroll">
+            {displayLayers.map((l) => (
+              <span
+                key={l.id}
+                className={'el-chip is-active ld-layer-pill '
+                  + (l.visible ? '' : 'is-hidden ')
+                  + (soloLayerId === l.id ? 'is-solo ' : '')
+                  + (soloLayerId && soloLayerId !== l.id ? 'is-ghost' : '')}
+                style={{ borderColor: l.color, background: `color-mix(in srgb, ${l.color} 10%, transparent)` }}
+                onClick={() => toggleSolo(l.id)}
+                onMouseEnter={() => setInfoLayerId(l.id)}
+                onMouseLeave={() => setInfoLayerId((p) => (p === l.id ? null : p))}
+                title={soloLayerId === l.id ? 'Showing only this search — click to show all' : 'Show only this search'}
+              >
+                <span className="ld-layer-swatch" style={{ background: l.color }} />
+                <span className="ld-layer-label">{layerTag(l)}</span>
+                {l.enhancedQuery && <span className="ld-layer-spark" aria-hidden="true">✨</span>}
+                <button className="ld-layer-btn" onClick={(e) => { e.stopPropagation(); toggleLayerVisible(l.id); }}
+                  title={l.visible ? 'Hide this search' : 'Show this search'}>
+                  {l.visible ? <IconEye size={14} /> : <IconEyeOff size={14} />}
+                </button>
+                <button className="el-chip-remove" onClick={(e) => { e.stopPropagation(); removeLayer(l.id); }} title="Remove search">×</button>
               </span>
-            </span>
-          ))}
+            ))}
+          </div>
           <input
             className="ld-tagger-input"
             placeholder={layers.length ? '+ another search…' : 'Tag vibes or describe a mood…'}
@@ -235,6 +241,23 @@ export default function SonarDesktop({ s }) {
               <button className="lo-btn-ghost ld-mini-btn" onClick={showAllLayers} disabled={allVisible}>Show all</button>
               <button className="lo-btn-ghost ld-mini-btn" onClick={clearLayers}>Clear all</button>
             </div>
+          )}
+          {/* Single popover, anchored to the bar so the scroller's overflow
+              can't clip it. Stays open while the cursor is over it so the
+              seed-track jump link is clickable. */}
+          {infoLayer && (
+            <span className="ld-layer-info is-open"
+              onMouseEnter={() => setInfoLayerId(infoLayer.id)}
+              onMouseLeave={() => setInfoLayerId(null)}>
+              <strong>{layerKindWord(infoLayer)} “{infoLayer.label}”</strong>
+              <span className="lo-eyebrow">{infoLayer.loading ? 'searching…' : `${infoLayer.results.length} tracks`}</span>
+              {infoLayer.enhancedQuery && <em>✨ {infoLayer.enhancedQuery}</em>}
+              {infoLayer.seedTrack && (
+                <button className="ld-layer-seed" onClick={(e) => { e.stopPropagation(); setSelectedId(infoLayer.seedTrack.id); }}>
+                  {infoLayer.seedTrack.title} — {infoLayer.seedTrack.artist}
+                </button>
+              )}
+            </span>
           )}
         </div>
 
@@ -385,7 +408,7 @@ export default function SonarDesktop({ s }) {
             <div className="ld-map-wrap">
               <svg
                 className="lc-canvas" viewBox={`0 0 ${VW} ${VH}`} preserveAspectRatio="xMidYMid meet"
-                style={{ cursor: zoom.k > 1 ? 'grab' : 'default' }}
+                style={{ cursor: grabbing ? 'grabbing' : zoom.k > 1 ? 'grab' : 'default' }}
                 onClick={onMapBackgroundClick}
                 onWheel={onWheelMap}
                 onMouseDown={onMapPointerDown}
@@ -409,7 +432,7 @@ export default function SonarDesktop({ s }) {
                   {/* sonar rings on playing dot */}
                   {playing && [50, 100, 160, 230].map((r, i) => {
                     const pos = dotPos(playing);
-                    return <circle key={i} cx={pos.x} cy={pos.y} r={r} fill="none" stroke="var(--el-yellow-500)" strokeOpacity={[0.55, 0.35, 0.22, 0.12][i]} strokeWidth={1} style={{ pointerEvents: 'none' }} />;
+                    return <circle key={i} cx={pos.x} cy={pos.y} r={r * iz} fill="none" stroke="var(--el-yellow-500)" strokeOpacity={[0.55, 0.35, 0.22, 0.12][i]} strokeWidth={iz} style={{ pointerEvents: 'none' }} />;
                   })}
 
                   {/* playlist edges — clickable to interpolate between endpoints */}
@@ -423,19 +446,19 @@ export default function SonarDesktop({ s }) {
                       <g key={`seg_${a.id}_${b.id}`} className="ld-edge" style={{ cursor: 'pointer' }}
                         onClick={(e) => { e.stopPropagation(); interpolateEdge(a, b); }}>
                         <title>Find tracks between “{a.title}” and “{b.title}”</title>
-                        <line x1={pa.x} y1={pa.y} x2={pb.x} y2={pb.y} stroke="transparent" strokeWidth="16" />
+                        <line x1={pa.x} y1={pa.y} x2={pb.x} y2={pb.y} stroke="transparent" strokeWidth={16 * iz} />
                         <line x1={pa.x} y1={pa.y} x2={pb.x} y2={pb.y}
                           stroke="var(--el-indigo-500)" strokeOpacity={active ? 0.95 : 0.5}
-                          strokeWidth={active ? 3 : 2} strokeDasharray="4 4" />
+                          strokeWidth={(active ? 3 : 2) * iz} strokeDasharray={`${4 * iz} ${4 * iz}`} />
                         {/* midpoint "+" affordance signalling the line is clickable */}
-                        <circle className="ld-edge-mid" cx={mx} cy={my} r={9} fill="var(--el-bg-secondary)" stroke="var(--el-indigo-500)" strokeWidth="1.5" strokeOpacity={active ? 1 : 0.7} />
-                        <path className="ld-edge-mid" d={`M${mx - 4} ${my} h8 M${mx} ${my - 4} v8`} stroke="var(--el-indigo-500)" strokeWidth="1.5" strokeLinecap="round" />
+                        <circle className="ld-edge-mid" cx={mx} cy={my} r={9 * iz} fill="var(--el-bg-secondary)" stroke="var(--el-indigo-500)" strokeWidth={1.5 * iz} strokeOpacity={active ? 1 : 0.7} />
+                        <path className="ld-edge-mid" d={`M${mx - 4 * iz} ${my} h${8 * iz} M${mx} ${my - 4 * iz} v${8 * iz}`} stroke="var(--el-indigo-500)" strokeWidth={1.5 * iz} strokeLinecap="round" />
                       </g>
                     );
                   })}
                   {playlistTracks.map((t) => {
                     const p = dotPos(t);
-                    return <circle key={'tr_' + t.id} cx={p.x} cy={p.y} r={11} fill="none" stroke="var(--el-indigo-500)" strokeWidth="2" strokeOpacity="0.6" style={{ pointerEvents: 'none' }} />;
+                    return <circle key={'tr_' + t.id} cx={p.x} cy={p.y} r={11 * iz} fill="none" stroke="var(--el-indigo-500)" strokeWidth={2 * iz} strokeOpacity="0.6" style={{ pointerEvents: 'none' }} />;
                   })}
 
                   {/* result dots, colored by their search layer */}
@@ -445,7 +468,7 @@ export default function SonarDesktop({ s }) {
                     const isSel = t.id === selectedId;
                     const isHov = t.id === hoverId;
                     const inPlaylist = playlistById.has(t.id);
-                    const r = isPlay ? 9 : isSel ? 7 : 5;
+                    const r = (isPlay ? 9 : isSel ? 7 : 5) * iz;
                     return (
                       <g key={t.id}
                         onMouseEnter={() => setHoverId(t.id)}
@@ -454,11 +477,11 @@ export default function SonarDesktop({ s }) {
                         onDoubleClick={(e) => { e.stopPropagation(); addToPlaylist(t); }}
                         style={{ cursor: 'pointer' }}>
                         {(isHov || isSel) && (
-                          <circle cx={p.x} cy={p.y} r={r + 6} fill="none" stroke={isSel ? color : 'rgba(255,255,255,0.3)'} strokeWidth="1.5" />
+                          <circle cx={p.x} cy={p.y} r={r + 6 * iz} fill="none" stroke={isSel ? color : 'rgba(255,255,255,0.3)'} strokeWidth={1.5 * iz} />
                         )}
                         <circle cx={p.x} cy={p.y} r={r} fill={color} opacity={inPlaylist ? 1 : 0.85}
                           style={{ filter: isPlay ? `drop-shadow(0 0 8px ${color})` : 'none' }} />
-                        {inPlaylist && <circle cx={p.x} cy={p.y} r={r + 3} fill="none" stroke="white" strokeWidth="1" />}
+                        {inPlaylist && <circle cx={p.x} cy={p.y} r={r + 3 * iz} fill="none" stroke="white" strokeWidth={iz} />}
                       </g>
                     );
                   })}
@@ -479,9 +502,9 @@ export default function SonarDesktop({ s }) {
                         onClick={(e) => { e.stopPropagation(); setSelectedId(t.id); }}
                         onDoubleClick={(e) => { e.stopPropagation(); addToPlaylist(t); }}
                         style={{ cursor: 'pointer' }}>
-                        {isSel && <circle cx={p.x} cy={p.y} r={12} fill="none" stroke={color} strokeWidth="1.5" />}
-                        <circle cx={p.x} cy={p.y} r={isPlay ? 9 : 6} fill={color} opacity={0.9} />
-                        <circle cx={p.x} cy={p.y} r={9} fill="none" stroke="white" strokeWidth="1" strokeOpacity="0.7" />
+                        {isSel && <circle cx={p.x} cy={p.y} r={12 * iz} fill="none" stroke={color} strokeWidth={1.5 * iz} />}
+                        <circle cx={p.x} cy={p.y} r={(isPlay ? 9 : 6) * iz} fill={color} opacity={0.9} />
+                        <circle cx={p.x} cy={p.y} r={9 * iz} fill="none" stroke="white" strokeWidth={iz} strokeOpacity="0.7" />
                       </g>
                     );
                   })}
@@ -498,8 +521,8 @@ export default function SonarDesktop({ s }) {
                         onClick={(e) => { e.stopPropagation(); setSelectedId(t.id); }}
                         onDoubleClick={(e) => { e.stopPropagation(); insertCandidate(t); }}
                         style={{ cursor: 'pointer' }}>
-                        <circle cx={p.x} cy={p.y} r={9} fill="none" stroke={CANDIDATE_COLOR} strokeWidth="1.2" strokeOpacity="0.7" strokeDasharray="3 2" />
-                        <circle cx={p.x} cy={p.y} r={4.5} fill={CANDIDATE_COLOR} opacity={isSel ? 1 : 0.85} />
+                        <circle cx={p.x} cy={p.y} r={9 * iz} fill="none" stroke={CANDIDATE_COLOR} strokeWidth={1.2 * iz} strokeOpacity="0.7" strokeDasharray={`${3 * iz} ${2 * iz}`} />
+                        <circle cx={p.x} cy={p.y} r={4.5 * iz} fill={CANDIDATE_COLOR} opacity={isSel ? 1 : 0.85} />
                       </g>
                     );
                   })}
@@ -528,7 +551,7 @@ export default function SonarDesktop({ s }) {
               </div>
 
               <div className="lc-legend">
-                {visibleLayers.map((l) => (
+                {displayVisibleLayers.map((l) => (
                   <div key={l.id} className="lc-legend-row">
                     <span className="lc-legend-dot" style={{ background: l.color }} /> {layerTag(l)}
                   </div>

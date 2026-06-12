@@ -326,6 +326,7 @@
   color: var(--el-fg-secondary);
   display: flex; flex-direction: column; gap: 6px;
   backdrop-filter: blur(6px);
+  max-height: 40%; overflow-y: auto;
 }
 .lc-legend-row { display: flex; align-items: center; gap: 8px; }
 .lc-legend-dot { width: 10px; height: 10px; border-radius: 50%; display: inline-block; }
@@ -393,10 +394,12 @@
   z-index: 4;
 }
 
-/* Vibe tagger */
+/* Vibe tagger — single row; pills scroll horizontally instead of wrapping into
+   multiple lines (which used to push the whole header taller). */
 .ld-tagger {
+  position: relative;
   flex: 1;
-  display: flex; align-items: center; gap: 6px; flex-wrap: wrap;
+  display: flex; align-items: center; gap: 6px; flex-wrap: nowrap;
   padding: 6px 8px 6px 14px;
   background: var(--el-bg-input);
   border: 1px solid var(--el-border);
@@ -407,9 +410,16 @@
   transition: border-color .18s ease;
 }
 .ld-tagger:focus-within { border-color: var(--el-indigo-500); }
+.ld-tagger-scroll {
+  display: flex; align-items: center; gap: 6px;
+  flex: 0 1 auto; max-width: 55%;
+  overflow-x: auto; scrollbar-width: none;
+}
+.ld-tagger-scroll::-webkit-scrollbar { display: none; }
+.ld-tagger-scroll .ld-layer-pill { flex: 0 0 auto; }
 .ld-tag { padding-right: 4px; }
 .ld-tagger-input {
-  flex: 1; min-width: 160px;
+  flex: 1 1 auto; min-width: 140px;
   background: transparent;
   border: none;
   color: var(--el-fg-primary);
@@ -470,9 +480,12 @@
 }
 .ld-suggest-list {
   flex: 1;
-  display: flex; gap: 6px; flex-wrap: wrap;
+  display: flex; gap: 6px; flex-wrap: nowrap;
   align-items: center;
+  overflow-x: auto; scrollbar-width: none;
 }
+.ld-suggest-list::-webkit-scrollbar { display: none; }
+.ld-suggest-list .el-chip { flex: 0 0 auto; }
 
 /* ===== MAIN ===== */
 .ld-main {
@@ -580,11 +593,13 @@
   font-size: 0.8rem; line-height: 1; padding: 0 2px;
 }
 .ld-layer-eye:hover { opacity: 1; }
-/* Enhanced-query popover, shown on pill hover (pure CSS — no flicker) */
+/* Enhanced-query popover. Anchored to the tagger bar (not the pill) and driven
+   by React hover state, so the pills' horizontal scroller can clip its own
+   overflow without hiding the popover. */
 .ld-layer-info {
   position: absolute;
   top: calc(100% + 8px);
-  left: 0;
+  left: 14px;
   z-index: 30;
   display: none;
   flex-direction: column;
@@ -598,7 +613,7 @@
   white-space: normal;
 }
 .ld-layer-info em { color: var(--el-purple-400); font-style: normal; font-size: var(--el-fs-sm); }
-.ld-layer-pill:hover .ld-layer-info { display: flex; }
+.ld-layer-info.is-open { display: flex; }
 
 /* ===== Trail rail hint + clickable interpolation link ===== */
 .ld-trail-hint { line-height: 1.4; }
@@ -807,8 +822,9 @@
 }
 .ld-srclink:hover { opacity: 1; color: var(--el-indigo-500); }
 
-/* Seekable waveform cursor */
-.lo-wave-seek { cursor: pointer; }
+/* Seekable waveform cursor. touch-action:none so dragging to scrub doesn't
+   scroll the mobile now-playing sheet. */
+.lo-wave-seek { cursor: pointer; touch-action: none; }
 
 /* Playlist card controls (reorder / restore / remove) */
 .ld-trail-card-ctl { display: flex; flex-direction: column; gap: 3px; align-self: center; }
@@ -879,3 +895,10 @@
 
 /* Tighten center padding so the graph claims more of the viewport. */
 .ld-center { padding: 14px 18px; gap: 10px; }
+
+/* Keyboard-focus visibility (mouse users never see this — :focus-visible only). */
+.ld-shell button:focus-visible,
+.ld-tagger-input:focus-visible {
+  outline: 2px solid var(--el-indigo-500);
+  outline-offset: 1px;
+}

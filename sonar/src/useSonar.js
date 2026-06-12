@@ -201,6 +201,13 @@ export function useSonar({ initialView = 'map' } = {}) {
   const anyLoading = layers.some((l) => l.loading);
   const allVisible = !soloLayerId && layers.length > 0 && layers.every((l) => l.visible);
 
+  // Newest-first views for display only (pills, chips, legends). The underlying
+  // `layers` array stays append-ordered — color assignment, dedupe, originFor,
+  // and Backspace-removes-last all depend on that order — so never reverse it
+  // in place.
+  const displayLayers = React.useMemo(() => [...layers].reverse(), [layers]);
+  const displayVisibleLayers = React.useMemo(() => [...visibleLayers].reverse(), [visibleLayers]);
+
   // De-duped union of visible layers' results. Overlap takes the first (oldest)
   // visible layer's color; sources lists every visible layer the track is in.
   const visibleTracks = React.useMemo(() => {
@@ -522,7 +529,8 @@ export function useSonar({ initialView = 'map' } = {}) {
     addVibeLayer, addSeedLayer, restoreLayer, removeLayer, clearLayers,
     toggleLayerVisible, toggleSolo, showAllLayers,
     // derived
-    isLayerShown, visibleLayers, anyLoading, allVisible, visibleTracks,
+    isLayerShown, visibleLayers, displayLayers, displayVisibleLayers,
+    anyLoading, allVisible, visibleTracks,
     entryByTrackId, playlistById, tracksById, playing, hover, selected,
     flatResults, vibeSuggestions, playlistTracks, navList, navSource,
     detail, detailPinned, isCandidate, playingTotal,
