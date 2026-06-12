@@ -45,14 +45,22 @@ export function useSonar({ initialView = 'map' } = {}) {
 
   // ---- search layers ----
   const colorIdxRef = React.useRef(boot?.colorIdx || 0);
-  const makeLayer = React.useCallback((kind, extra) => ({
+  // A new layer takes the first palette color no current layer is using, so
+  // colors never collide while ≤8 searches are active (the persisted round
+  // robin index is only a fallback once every hue is taken).
+  const pickColor = (existing = []) => {
+    const used = new Set(existing.map((l) => l.color));
+    return LAYER_COLORS.find((c) => !used.has(c))
+      || LAYER_COLORS[colorIdxRef.current++ % LAYER_COLORS.length];
+  };
+  const makeLayer = React.useCallback((kind, extra, existing = []) => ({
     id: `L_${Date.now()}_${Math.random().toString(36).slice(2, 7)}`,
     kind,
     label: '',
     query: '',
     seedTrackId: null,
     seedTrack: null,
-    color: LAYER_COLORS[colorIdxRef.current++ % LAYER_COLORS.length],
+    color: pickColor(existing),
     visible: true,
     loading: false,
     fetched: false,
@@ -144,12 +152,12 @@ export function useSonar({ initialView = 'map' } = {}) {
     const t = (text || '').trim();
     if (!t) return;
     setLayers((ls) => (ls.some((l) => l.kind === 'vibe' && l.query.toLowerCase() === t.toLowerCase())
-      ? ls : [...ls, makeLayer('vibe', { label: t, query: t })]));
+      ? ls : [...ls, makeLayer('vibe', { label: t, query: t }, ls)]));
   };
   const addSeedLayer = (kind, track) => {
     if (!track) return;
     setLayers((ls) => (ls.some((l) => l.kind === kind && l.seedTrackId === track.id)
-      ? ls : [...ls, makeLayer(kind, { label: track.title, seedTrackId: track.id, seedTrack: track })]));
+      ? ls : [...ls, makeLayer(kind, { label: track.title, seedTrackId: track.id, seedTrack: track }, ls)]));
   };
 
   // Fresh session (nothing restored from localStorage): seed two random vibe
@@ -179,7 +187,7 @@ export function useSonar({ initialView = 'map' } = {}) {
       return [...ls, makeLayer(origin.kind, {
         label: origin.label, query: origin.query || '',
         seedTrackId: origin.seedTrackId || null, seedTrack: origin.seedTrack || null,
-      })];
+      }, ls)];
     });
   };
   const removeLayer = (id) => {

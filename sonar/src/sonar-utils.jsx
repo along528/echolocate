@@ -10,17 +10,18 @@ import { IconCheck, IconTilde, IconX, IconExternal } from './icons.jsx';
 
 // Per-search layer colors. A search's color is its identity everywhere (pill,
 // dots, list rows). White is reserved for interpolation candidates. Eight
-// evenly-spaced hues of similar luminance on the dark bg, with a deliberate
+// hues of similar luminance on the dark bg, ordered so CONSECUTIVE picks are
+// far apart in hue (new layers grab the first unused entry), with a deliberate
 // gap around brand indigo (#6366f1) so no layer reads as the playlist color.
 export const LAYER_COLORS = [
   '#22d3ee', // cyan
-  '#34d399', // emerald
-  '#a3e635', // lime
-  '#fbbf24', // amber
-  '#fb923c', // orange
   '#f87171', // coral
-  '#f472b6', // pink
+  '#a3e635', // lime
   '#c084fc', // violet
+  '#fbbf24', // amber
+  '#34d399', // emerald
+  '#f472b6', // pink
+  '#fb923c', // orange
 ];
 export const CANDIDATE_COLOR = '#ffffff';
 export const FALLBACK_COLOR = '#94a3b8';
