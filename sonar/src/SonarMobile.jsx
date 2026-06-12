@@ -575,9 +575,9 @@ export default function SonarMobile({ s }) {
             <div className="ldm-detail-sub">{t.artist} — {t.album}</div>
             {t.track_url && (<a className="ld-detail-url" href={t.track_url} target="_blank" rel="noopener noreferrer" style={{ marginTop: 6 }}><IconExternal size={12} />{prettyUrl(t.track_url)}</a>)}
             <div className="ldm-detail-fb"><FeedbackPills track={t} value={labelsByTrackId[t.id]} onLabel={labelTrack} /></div>
+            {/* No Add button here — the peek header's add button covers it. */}
             <div className="ldm-detail-actions">
               <button className="ldm-act is-primary" onClick={() => playTrack(t)}><svg viewBox="0 0 24 24" fill="currentColor" width="18" height="18"><path d="M8 5v14l11-7z" /></svg> Play</button>
-              <button className="ldm-act" onClick={() => (cand ? insertCandidate(t) : addToPlaylist(t))}>{inPl ? <IconCheck size={16} /> : <IconListPlus size={16} />} {inPl ? 'In playlist' : 'Add'}</button>
               <button className="ldm-act" onClick={() => { addSeedLayer('similar', t); setDetailMode('peek'); }}><IconSimilar size={16} /> Similar</button>
               <button className="ldm-act" onClick={() => { addSeedLayer('dissimilar', t); setDetailMode('peek'); }}><IconDissimilar size={16} /> Dissimilar</button>
             </div>
