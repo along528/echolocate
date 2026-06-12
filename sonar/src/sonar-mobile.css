@@ -105,6 +105,26 @@
   to { transform: scale(1); opacity: 0.95; }
 }
 
+/* Candidate reveal wave — a ring expands from the charged dot, and each
+   candidate fades/pops in (per-dot animation-delay) as the ring reaches it. */
+.ldm-wave-ring {
+  fill: none; stroke: #ffffff;
+  transform-box: fill-box; transform-origin: center;
+  animation: ldm-wave ease-out forwards; /* duration set inline */
+}
+@keyframes ldm-wave {
+  from { transform: scale(0.04); opacity: 0.6; }
+  to { transform: scale(1); opacity: 0; }
+}
+.ldm-cand-in {
+  transform-box: fill-box; transform-origin: center;
+  animation: ldm-cand-in 0.3s ease-out both; /* delay set inline per dot */
+}
+@keyframes ldm-cand-in {
+  from { opacity: 0; transform: scale(0.4); }
+  to { opacity: 1; transform: scale(1); }
+}
+
 /* ===== Bottom dock: now strip + tab bar ===== */
 .ldm-dock { position: fixed; left: 0; right: 0; bottom: 0; z-index: 20; display: flex; flex-direction: column; }
 .ldm-tabbar {

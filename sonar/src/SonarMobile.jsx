@@ -184,7 +184,15 @@ export default function SonarMobile({ s }) {
   // Composition wrappers over shared handlers. A dot tap opens the peek panel
   // (non-modal) rather than a modal sheet.
   const openDetail = (id) => { setSelectedId(id); setDetailMode('peek'); };
-  const onInterpolate = (a, b) => { interpolateEdge(a, b); setSheet(null); setView('map'); };
+  // Origin (plot coords) of the candidate reveal wave — the charged dot for a
+  // long-press, the link midpoint for a playlist-sheet interpolation. The wave
+  // plays when the candidates mount (i.e., when the API responds).
+  const waveRef = React.useRef(null);
+  const onInterpolate = (a, b) => {
+    const pa = dotPosM(a), pb = dotPosM(b);
+    waveRef.current = { x: (pa.x + pb.x) / 2, y: (pa.y + pb.y) / 2 };
+    interpolateEdge(a, b); setSheet(null); setView('map');
+  };
   // Run a map tap action unless the touch was actually a drag (pan/pinch) or a
   // long press that already fired its interpolation.
   const onTap = (fn) => (e) => {
@@ -234,6 +242,7 @@ export default function SonarMobile({ s }) {
       if (movedRef.current) { hapticCancel(); return; } // turned into a pan — cancel
       longPressFiredRef.current = true;
       haptic(35); // confirm buzz
+      waveRef.current = { x: p.x, y: p.y }; // reveal wave radiates from the charged dot
       interpolateEdge(anchor, t); // candidates appear between the two on the map
     }, 500);
   };
@@ -451,25 +460,41 @@ export default function SonarMobile({ s }) {
               {candidates ? (
                 /* ===== INTERPOLATION FOCUS MODE — only the two endpoints and
                    the candidates between them; everything else hides (like
-                   solo-ing a pill) until the ✕ chip dismisses it. ===== */
-                <>
-                  {(() => { const a = tracksById.get(candidates.aId), b = tracksById.get(candidates.bId); if (!a || !b) return null; const pa = dotPosM(a), pb = dotPosM(b);
-                    return <line x1={pa.x} y1={pa.y} x2={pb.x} y2={pb.y} stroke={CANDIDATE_COLOR} strokeOpacity="0.45" strokeWidth={1.5 * iz} strokeDasharray={`${4 * iz} ${4 * iz}`} style={{ pointerEvents: 'none' }} />; })()}
-                  {[candidates.aId, candidates.bId].map((id) => { const t = tracksById.get(id); if (!t) return null; const p = dotPosM(t); const color = entryByTrackId.get(id)?.color || playlistById.get(id)?.color || FALLBACK_COLOR; const isSel = id === selectedId, isPlay = id === playingId;
-                    return (<g key={'ep' + id} onClick={onTap(() => openDetail(id))} {...dotPress(t)}>
-                      <circle cx={p.x} cy={p.y} r={14 * iz} fill="transparent" />
-                      {isSel && <circle cx={p.x} cy={p.y} r={13 * iz} fill="none" stroke={color} strokeWidth={1.5 * iz} />}
-                      <circle cx={p.x} cy={p.y} r={(isPlay ? 9.5 : 7.5) * iz} fill={color} style={{ filter: isPlay ? `drop-shadow(0 0 8px ${color})` : 'none' }} />
-                      <circle cx={p.x} cy={p.y} r={10 * iz} fill="none" stroke="white" strokeWidth={iz} strokeOpacity="0.7" />
-                    </g>); })}
-                  {candidates.tracks.map((t) => { const p = dotPosM(t); const isSel = t.id === selectedId, isPlay = t.id === playingId;
-                    return (<g key={'c' + t.id} onClick={onTap(() => openDetail(t.id))} {...dotPress(t)}>
-                      <circle cx={p.x} cy={p.y} r={14 * iz} fill="transparent" />
-                      {isSel && <circle cx={p.x} cy={p.y} r={12 * iz} fill="none" stroke={CANDIDATE_COLOR} strokeWidth={1.5 * iz} />}
-                      <circle cx={p.x} cy={p.y} r={10 * iz} fill="none" stroke={CANDIDATE_COLOR} strokeWidth={1.2 * iz} strokeOpacity="0.7" strokeDasharray={`${3 * iz} ${2 * iz}`} />
-                      <circle cx={p.x} cy={p.y} r={(isPlay ? 7 : 5) * iz} fill={CANDIDATE_COLOR} opacity="0.9" style={{ filter: isPlay ? `drop-shadow(0 0 8px ${CANDIDATE_COLOR})` : 'none' }} />
-                    </g>); })}
-                </>
+                   solo-ing a pill) until the ✕ chip dismisses it. The
+                   candidates reveal as a wave: a ring expands from the charged
+                   dot and each one fades in as the ring reaches it. ===== */
+                (() => {
+                  const wave = waveRef.current;
+                  const setKey = candidates.aId + candidates.bId; // remount per interpolation
+                  const dists = candidates.tracks.map((t) => { const p = dotPosM(t); return wave ? Math.hypot(p.x - wave.x, p.y - wave.y) : 0; });
+                  const maxD = Math.max(1, ...dists);
+                  const WAVE_MS = 500; // ring sweep time; per-dot delay tracks it
+                  return (<>
+                    {(() => { const a = tracksById.get(candidates.aId), b = tracksById.get(candidates.bId); if (!a || !b) return null; const pa = dotPosM(a), pb = dotPosM(b);
+                      return <line x1={pa.x} y1={pa.y} x2={pb.x} y2={pb.y} stroke={CANDIDATE_COLOR} strokeOpacity="0.45" strokeWidth={1.5 * iz} strokeDasharray={`${4 * iz} ${4 * iz}`} style={{ pointerEvents: 'none' }} />; })()}
+                    {wave && (
+                      <circle key={'w' + setKey} className="ldm-wave-ring" cx={wave.x} cy={wave.y} r={maxD * 1.1}
+                        strokeWidth={1.5 * iz} style={{ pointerEvents: 'none', animationDuration: `${WAVE_MS + 150}ms` }} />
+                    )}
+                    {[candidates.aId, candidates.bId].map((id) => { const t = tracksById.get(id); if (!t) return null; const p = dotPosM(t); const color = entryByTrackId.get(id)?.color || playlistById.get(id)?.color || FALLBACK_COLOR; const isSel = id === selectedId, isPlay = id === playingId;
+                      return (<g key={'ep' + id} onClick={onTap(() => openDetail(id))} {...dotPress(t)}>
+                        <circle cx={p.x} cy={p.y} r={14 * iz} fill="transparent" />
+                        {isSel && <circle cx={p.x} cy={p.y} r={13 * iz} fill="none" stroke={color} strokeWidth={1.5 * iz} />}
+                        <circle cx={p.x} cy={p.y} r={(isPlay ? 9.5 : 7.5) * iz} fill={color} style={{ filter: isPlay ? `drop-shadow(0 0 8px ${color})` : 'none' }} />
+                        <circle cx={p.x} cy={p.y} r={10 * iz} fill="none" stroke="white" strokeWidth={iz} strokeOpacity="0.7" />
+                      </g>); })}
+                    {candidates.tracks.map((t, i) => { const p = dotPosM(t); const isSel = t.id === selectedId, isPlay = t.id === playingId;
+                      const delay = wave ? (dists[i] / maxD) * WAVE_MS : 0;
+                      return (<g key={'c' + setKey + t.id} className={wave ? 'ldm-cand-in' : undefined}
+                        style={wave ? { animationDelay: `${Math.round(delay)}ms` } : undefined}
+                        onClick={onTap(() => openDetail(t.id))} {...dotPress(t)}>
+                        <circle cx={p.x} cy={p.y} r={14 * iz} fill="transparent" />
+                        {isSel && <circle cx={p.x} cy={p.y} r={12 * iz} fill="none" stroke={CANDIDATE_COLOR} strokeWidth={1.5 * iz} />}
+                        <circle cx={p.x} cy={p.y} r={10 * iz} fill="none" stroke={CANDIDATE_COLOR} strokeWidth={1.2 * iz} strokeOpacity="0.7" strokeDasharray={`${3 * iz} ${2 * iz}`} />
+                        <circle cx={p.x} cy={p.y} r={(isPlay ? 7 : 5) * iz} fill={CANDIDATE_COLOR} opacity="0.9" style={{ filter: isPlay ? `drop-shadow(0 0 8px ${CANDIDATE_COLOR})` : 'none' }} />
+                      </g>); })}
+                  </>);
+                })()
               ) : (
                 <>
                   {playlistTracks.length > 1 && playlistTracks.slice(1).map((b, i) => { const a = playlistTracks[i], pa = dotPosM(a), pb = dotPosM(b); const mx = (pa.x + pb.x) / 2, my = (pa.y + pb.y) / 2;
