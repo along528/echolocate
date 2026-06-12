@@ -12,7 +12,7 @@ import {
 } from './icons.jsx';
 import {
   CANDIDATE_COLOR, FALLBACK_COLOR, fmtTime, coordsOf, distBetween, distChipValue,
-  layerTag, layerKindWord, prettyUrl, FeedbackPills, SourceLink,
+  layerTag, layerKindWord, prettyUrl, FeedbackPills, SourceLink, AboutModal,
 } from './sonar-utils.jsx';
 
 const VW = 760;
@@ -672,25 +672,7 @@ export default function SonarDesktop({ s }) {
       </main>
 
       {/* ===== ABOUT MODAL — mirrors the legacy frontend's hamburger/about ===== */}
-      {aboutOpen && (
-        <div className="ld-about-overlay" role="dialog" aria-modal="true" aria-label="About EchoLocate"
-          onClick={(e) => { if (e.target === e.currentTarget) setAboutOpen(false); }}>
-          <div className="ld-about-card">
-            <button className="ld-about-close" aria-label="Close" onClick={() => setAboutOpen(false)}>✕</button>
-            <h2 className="el-h2" style={{ fontSize: '1.4rem', marginBottom: 8 }}>About EchoLocate</h2>
-            <p className="el-body-muted">
-              EchoLocate is an AI-powered music discovery system that uses audio embeddings for
-              sonic similarity search. The sonar map plots tracks by a 2D PCA projection of their
-              MERT <code>v_mid</code> embedding — the same vector used for interpolation. Search
-              layers, build a playlist, and click the lines between tracks to interpolate.
-            </p>
-            <p className="el-body-muted" style={{ marginTop: 10 }}>
-              <a className="ld-about-link" href="https://github.com/along528/echolocate" target="_blank" rel="noopener noreferrer">View on GitHub ↗</a>
-            </p>
-            <p className="el-italic-muted" style={{ marginTop: 12 }}>Built with MERT + CLAP embeddings, DuckDB VSS, and HNSW indexing.</p>
-          </div>
-        </div>
-      )}
+      {aboutOpen && <AboutModal onClose={() => setAboutOpen(false)} />}
     </div>
   );
 }

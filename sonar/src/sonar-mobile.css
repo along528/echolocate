@@ -18,16 +18,15 @@
 }
 .ldm-app.is-peek { --ldm-peek-h: 92px; }
 
-/* ===== Top floating chrome (brand + pills) ===== */
+/* ===== Top floating chrome — pills only, the map runs to the very top ===== */
 .ldm-top {
   position: absolute; top: 0; left: 0; right: 0; z-index: 12;
-  padding: 54px 12px 10px;
+  padding: calc(env(safe-area-inset-top, 0px) + 12px) 12px 8px;
   display: flex; flex-direction: column; gap: 10px;
-  background: linear-gradient(180deg, rgba(10,10,15,0.92) 45%, rgba(10,10,15,0));
+  background: linear-gradient(180deg, rgba(10,10,15,0.75), rgba(10,10,15,0));
   pointer-events: none;
 }
 .ldm-top > * { pointer-events: auto; }
-.ldm-brand { display: flex; align-items: center; }
 
 .ldm-chips { display: flex; gap: 6px; overflow-x: auto; padding: 2px 0 4px; scrollbar-width: none; }
 .ldm-chips::-webkit-scrollbar { display: none; }
@@ -65,7 +64,7 @@
 }
 
 .ldm-caption {
-  position: absolute; right: 12px; top: 150px; z-index: 6;
+  position: absolute; right: 12px; top: calc(var(--ldm-top-h, 64px) + 6px); z-index: 6;
   display: inline-flex; align-items: center; gap: 5px;
   padding: 4px 8px; font-size: 0.66rem; text-transform: uppercase; letter-spacing: 0.5px;
   color: var(--el-fg-secondary); background: rgba(18,18,26,0.7);
@@ -141,6 +140,7 @@
 .ldm-tab.is-active { color: var(--el-fg-primary); }
 .ldm-tab:active { transform: scale(0.95); }
 .ldm-tab-iconwrap { position: relative; display: inline-flex; }
+.ldm-tab-logo { display: inline-flex; height: 20px; align-items: center; }
 .ldm-tab-badge {
   position: absolute; top: -5px; right: -10px; min-width: 15px; height: 15px; padding: 0 4px;
   border-radius: 8px; background: var(--el-gradient); color: white; font-size: 0.6rem;

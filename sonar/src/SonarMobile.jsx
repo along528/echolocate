@@ -5,7 +5,7 @@
 // All state/services/audio come from the shared useSonar hook (passed as `s`)
 // so this drives the exact same brain as the desktop view.
 import React from 'react';
-import { Wordmark, Waveform } from './svg-bits.jsx';
+import { MascotSmall, Waveform } from './svg-bits.jsx';
 import {
   IconSearch, IconListPlus, IconCheck, IconPlus, IconSimilar, IconDissimilar,
   IconEye, IconEyeOff, IconClose, IconExternal, IconUp, IconDown,
@@ -13,7 +13,7 @@ import {
 } from './icons.jsx';
 import {
   CANDIDATE_COLOR, FALLBACK_COLOR, fmtTime, coordsOf, distBetween,
-  layerTag, layerKindWord, prettyUrl, FeedbackPills,
+  layerTag, layerKindWord, prettyUrl, FeedbackPills, AboutModal,
 } from './sonar-utils.jsx';
 
 const MVW = 390, MVH = 780, MPAD = 46;
@@ -143,7 +143,7 @@ function PeekSheet({ mode, onFull, onPeek, onHide, header, children }) {
 
 export default function SonarMobile({ s }) {
   const {
-    view, setView, vibeQuery, setVibeQuery,
+    view, setView, vibeQuery, setVibeQuery, aboutOpen, setAboutOpen,
     layers, playingId, isPlaying, progress, selectedId, setSelectedId,
     candidates, labelsByTrackId, soloLayerId, zoom, setZoom,
     addVibeLayer, addSeedLayer, removeLayer, toggleLayerVisible, toggleSolo,
@@ -570,9 +570,8 @@ export default function SonarMobile({ s }) {
         </div>
       )}
 
-      {/* ===== TOP CHROME — brand + pills only ===== */}
+      {/* ===== TOP CHROME — just the pills, overlaid on the full-bleed map ===== */}
       <div className="ldm-top" ref={topRef}>
-        <div className="ldm-brand"><Wordmark size="lg" /></div>
         {layers.length > 0 && (
           <div className="ldm-chips">
             {displayLayers.map((l) => (
@@ -656,8 +655,15 @@ export default function SonarMobile({ s }) {
             <span className="ldm-tab-iconwrap"><IconListPlus size={20} />{playlistTracks.length > 0 && <span className="ldm-tab-badge">{playlistTracks.length}</span>}</span>
             <span>Playlist</span>
           </button>
+          <button className={'ldm-tab ' + (aboutOpen ? 'is-active' : '')} onClick={() => setAboutOpen(true)}>
+            <span className="ldm-tab-logo"><MascotSmall size={18} /></span>
+            <span>About</span>
+          </button>
         </nav>
       </div>
+
+      {/* ===== ABOUT MODAL (shared with desktop) ===== */}
+      {aboutOpen && <AboutModal onClose={() => setAboutOpen(false)} />}
 
       {/* ===== MODAL SHEETS ===== */}
       {sheet && <div className="ldm-scrim" onClick={() => setSheet(null)} />}

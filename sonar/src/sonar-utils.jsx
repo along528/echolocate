@@ -104,3 +104,26 @@ export function SourceLink({ track, className = '' }) {
     </a>
   );
 }
+
+// About modal — shared by the desktop header button and the mobile About tab.
+export function AboutModal({ onClose }) {
+  return (
+    <div className="ld-about-overlay" role="dialog" aria-modal="true" aria-label="About EchoLocate"
+      onClick={(e) => { if (e.target === e.currentTarget) onClose(); }}>
+      <div className="ld-about-card">
+        <button className="ld-about-close" aria-label="Close" onClick={onClose}>✕</button>
+        <h2 className="el-h2" style={{ fontSize: '1.4rem', marginBottom: 8 }}>About EchoLocate</h2>
+        <p className="el-body-muted">
+          EchoLocate is an AI-powered music discovery system that uses audio embeddings for
+          sonic similarity search. The sonar map plots tracks by a 2D PCA projection of their
+          MERT <code>v_mid</code> embedding — the same vector used for interpolation. Search
+          layers, build a playlist, and click the lines between tracks to interpolate.
+        </p>
+        <p className="el-body-muted" style={{ marginTop: 10 }}>
+          <a className="ld-about-link" href="https://github.com/along528/echolocate" target="_blank" rel="noopener noreferrer">View on GitHub ↗</a>
+        </p>
+        <p className="el-italic-muted" style={{ marginTop: 12 }}>Built with MERT + CLAP embeddings, DuckDB VSS, and HNSW indexing.</p>
+      </div>
+    </div>
+  );
+}
