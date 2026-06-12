@@ -194,13 +194,28 @@ export default function SonarMobile({ s }) {
     fn();
   };
 
+  // ---- haptics ----
+  // Android: Vibration API (patterns, cancellable). iOS Safari has no vibrate;
+  // programmatically toggling a hidden checkbox-switch produces a single
+  // system tick on iOS 17.4+ — a best-effort fallback that no-ops elsewhere.
+  const hapticSwitchRef = React.useRef(null);
+  const haptic = (pattern) => {
+    try {
+      if (navigator.vibrate) navigator.vibrate(pattern);
+      else hapticSwitchRef.current?.click();
+    } catch { /* ignore */ }
+  };
+  const hapticCancel = () => { try { navigator.vibrate && navigator.vibrate(0); } catch { /* ignore */ } };
+
   // ---- long-press a dot → interpolate between the reticle track and it ----
   // A 500ms still hold (a pan cancels it) fires interpolateEdge(selected, t);
-  // while holding, a "charging" ring converges on the pressed dot.
+  // while holding, a "charging" ring converges on the pressed dot and the
+  // phone ticks with an escalating haptic pattern.
   const pressTimerRef = React.useRef(null);
   const longPressFiredRef = React.useRef(false);
   const [pressing, setPressing] = React.useState(null); // { x, y } plot coords
   const clearPress = () => {
+    if (pressTimerRef.current) hapticCancel(); // released early — stop the buzz
     clearTimeout(pressTimerRef.current);
     pressTimerRef.current = null;
     setPressing(null);
@@ -211,12 +226,14 @@ export default function SonarMobile({ s }) {
     if (!anchor || anchor.id === t.id) return; // nothing to interpolate against
     const p = dotPosM(t);
     setPressing({ x: p.x, y: p.y });
+    haptic([8, 90, 10, 80, 12, 70, 14, 60, 16]); // escalating ticks over the hold
     clearTimeout(pressTimerRef.current);
     pressTimerRef.current = setTimeout(() => {
       pressTimerRef.current = null;
       setPressing(null);
-      if (movedRef.current) return; // the hold turned into a pan — cancel
+      if (movedRef.current) { hapticCancel(); return; } // turned into a pan — cancel
       longPressFiredRef.current = true;
+      haptic(35); // confirm buzz
       interpolateEdge(anchor, t); // candidates appear between the two on the map
     }, 500);
   };
@@ -411,6 +428,10 @@ export default function SonarMobile({ s }) {
 
   return (
     <div ref={appRef} className={'ldm-app' + (detailMode === 'peek' ? ' is-peek' : '')}>
+      {/* iOS haptic shim — toggling a switch input produces a system tick. */}
+      <input ref={hapticSwitchRef} type="checkbox" switch="" tabIndex={-1} aria-hidden="true"
+        style={{ position: 'absolute', width: 1, height: 1, opacity: 0, pointerEvents: 'none' }}
+        onChange={() => {}} />
       {/* ===== MAP / LIST STAGE ===== */}
       {view === 'map' ? (
         <div className="ldm-stage">
