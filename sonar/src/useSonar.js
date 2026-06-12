@@ -283,7 +283,9 @@ export function useSonar({ initialView = 'map' } = {}) {
       return recomputeDist([...t, slot]);
     });
   };
-  // Insert a candidate between its edge's two endpoints (does not clear candidates).
+  // Insert a candidate between its edge's two endpoints, then clear the
+  // remaining candidates — once you've picked one, the rest go away (re-click
+  // the edge to interpolate again).
   const insertCandidate = (track) => {
     if (!candidates) { addToPlaylist(track); return; }
     const origin = { kind: 'interp', label: 'interpolation', color: CANDIDATE_COLOR };
@@ -296,6 +298,7 @@ export function useSonar({ initialView = 'map' } = {}) {
       const at = Math.max(ai, bi);
       return recomputeDist([...t.slice(0, at), slot, ...t.slice(at)]);
     });
+    setCandidates(null);
   };
   const removeFromPlaylist = (id) => setPlaylist((t) => recomputeDist(t.filter((s) => s.id !== id)));
   const movePlaylist = (id, dir) => setPlaylist((t) => {

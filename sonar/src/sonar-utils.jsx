@@ -9,12 +9,18 @@ import React from 'react';
 import { IconCheck, IconTilde, IconX, IconExternal } from './icons.jsx';
 
 // Per-search layer colors. A search's color is its identity everywhere (pill,
-// dots, list rows). White is reserved for interpolation candidates.
+// dots, list rows). White is reserved for interpolation candidates. Eight
+// evenly-spaced hues of similar luminance on the dark bg, with a deliberate
+// gap around brand indigo (#6366f1) so no layer reads as the playlist color.
 export const LAYER_COLORS = [
-  '#22d3ee', '#f472b6', '#fbbf24', '#a78bfa', '#34d399',
-  '#60a5fa', '#fb7185', '#c084fc', '#facc15', '#4ade80',
-  '#2dd4bf', '#f59e0b', '#e879f9', '#38bdf8', '#a3e635',
-  '#fca5a5', '#fdba74', '#5eead4', '#93c5fd', '#d8b4fe',
+  '#22d3ee', // cyan
+  '#34d399', // emerald
+  '#a3e635', // lime
+  '#fbbf24', // amber
+  '#fb923c', // orange
+  '#f87171', // coral
+  '#f472b6', // pink
+  '#c084fc', // violet
 ];
 export const CANDIDATE_COLOR = '#ffffff';
 export const FALLBACK_COLOR = '#94a3b8';
