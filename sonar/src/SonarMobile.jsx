@@ -25,6 +25,14 @@ function dotPosM(t) {
   return { x: MPAD + cx * (MVW - 2 * MPAD), y: MPAD + (1 - cy) * (MVH - 2 * MPAD) };
 }
 
+// Rotate a point by `a` radians (matches SVG rotate()'s matrix, y-down).
+// The map transform is screen = T + k·R(r)·p, so inverting screen→plot is
+// rot((s − T)/k, −r).
+const rot = (p, a) => ({
+  x: Math.cos(a) * p.x - Math.sin(a) * p.y,
+  y: Math.sin(a) * p.x + Math.cos(a) * p.y,
+});
+
 // A modal bottom sheet (search / now / playlist). The whole sheet — not just the
 // grip — can be dragged down to dismiss: a drag past ~90px (or a quick flick)
 // closes it. A drag that starts inside the scroll body only "engages" the
@@ -139,11 +147,11 @@ export default function SonarMobile({ s }) {
     layers, playingId, isPlaying, progress, selectedId, setSelectedId,
     candidates, labelsByTrackId, soloLayerId, zoom, setZoom,
     addVibeLayer, addSeedLayer, removeLayer, toggleLayerVisible, toggleSolo,
-    visibleTracks, displayLayers, displayVisibleLayers,
-    entryByTrackId, playlistById, playlist,
+    visibleTracks, displayLayers,
+    entryByTrackId, playlistById, playlist, tracksById,
     playing, selected, playlistTracks, playingTotal, vibeSuggestions, isCandidate,
     addToPlaylist, insertCandidate, removeFromPlaylist, movePlaylist, clearPlaylist,
-    interpolateEdge, playTrack, togglePlay, step, labelTrack, seekTo,
+    interpolateEdge, clearCandidates, playTrack, togglePlay, step, labelTrack, seekTo,
   } = s;
 
   // Mobile-only UI state. `sheet` is the modal layer (search / now / playlist);
@@ -243,11 +251,12 @@ export default function SonarMobile({ s }) {
   }, []);
 
   // Mobile zoom — centered on the visible map band, clamped k ∈ [0.3, 5].
+  // (Scaling about a fixed screen point is rotation-agnostic: c−T' = (k'/k)(c−T).)
   const ZK_MIN = 0.3, ZK_MAX = 5;
   const zoomBy = (f) => setZoom((z) => {
     const k = Math.max(ZK_MIN, Math.min(ZK_MAX, z.k * f));
     const cx = MVW / 2, cy = MVH / 2;
-    return { k, x: cx - (cx - z.x) * (k / z.k), y: cy - (cy - z.y) * (k / z.k) };
+    return { k, r: z.r || 0, x: cx - (cx - z.x) * (k / z.k), y: cy - (cy - z.y) * (k / z.k) };
   });
 
   // ---- snap-to-center animation (rAF tween of zoom state) ----
@@ -264,6 +273,7 @@ export default function SonarMobile({ s }) {
         k: from.k + (target.k - from.k) * e,
         x: from.x + (target.x - from.x) * e,
         y: from.y + (target.y - from.y) * e,
+        r: (from.r || 0) + ((target.r || 0) - (from.r || 0)) * e,
       });
       if (u < 1) animRef.current = requestAnimationFrame(tick);
     };
@@ -285,19 +295,28 @@ export default function SonarMobile({ s }) {
     // reticle sits at the center of the visible band (above the dock)
     const cvx = (rect.width / 2 - offX) / S;
     const cvy = ((rect.height - dockH) / 2 - offY) / S;
-    const cpx = (cvx - z.x) / z.k, cpy = (cvy - z.y) / z.k; // plot coords under reticle
+    // plot coords under the reticle (inverting translate∘scale∘rotate)
+    const cp = rot({ x: (cvx - z.x) / z.k, y: (cvy - z.y) / z.k }, -(z.r || 0));
     let best = null, bestD = Infinity;
     const consider = (t) => {
       const p = dotPosM(t);
-      const d = Math.hypot(p.x - cpx, p.y - cpy);
+      const d = Math.hypot(p.x - cp.x, p.y - cp.y); // rotation preserves distance
       if (d < bestD) { bestD = d; best = t; }
     };
-    visibleTracks.forEach((e) => consider(e.track));
-    playlistTracks.forEach(consider);
-    if (candidates) candidates.tracks.forEach(consider);
+    if (candidates) {
+      // Interpolation focus mode: only the candidates and the two endpoints
+      // are on the map, so only they are snappable.
+      candidates.tracks.forEach(consider);
+      const ea = tracksById.get(candidates.aId), eb = tracksById.get(candidates.bId);
+      if (ea) consider(ea);
+      if (eb) consider(eb);
+    } else {
+      visibleTracks.forEach((e) => consider(e.track));
+      playlistTracks.forEach(consider);
+    }
     if (!best || bestD * z.k * S > SNAP_MAX_PX) { lastSnapIdRef.current = null; return; }
-    const p = dotPosM(best);
-    animateZoomTo({ k: z.k, x: cvx - z.k * p.x, y: cvy - z.k * p.y });
+    const rp = rot(dotPosM(best), z.r || 0);
+    animateZoomTo({ k: z.k, r: z.r || 0, x: cvx - z.k * rp.x, y: cvy - z.k * rp.y });
     if (autoPlayRef.current) {
       if (best.id !== lastSnapIdRef.current && best.id !== playingId) {
         lastSnapIdRef.current = best.id;
@@ -319,8 +338,10 @@ export default function SonarMobile({ s }) {
       gestureRef.current = { mode: 'pan', x: t[0].clientX, y: t[0].clientY, z0: { ...zoomRef.current }, rect };
     } else if (t.length === 2) {
       const dist = Math.hypot(t[0].clientX - t[1].clientX, t[0].clientY - t[1].clientY);
-      gestureRef.current = { mode: 'pinch', dist, z0: { ...zoomRef.current }, rect };
+      const angle = Math.atan2(t[1].clientY - t[0].clientY, t[1].clientX - t[0].clientX);
+      gestureRef.current = { mode: 'pinch', dist, angle, z0: { ...zoomRef.current }, rect };
       movedRef.current = true;
+      clearPress();
     }
   };
   const onTouchMove = (e) => {
@@ -332,15 +353,21 @@ export default function SonarMobile({ s }) {
       const dxs = t[0].clientX - g.x, dys = t[0].clientY - g.y;
       g.maxDist = Math.max(g.maxDist || 0, Math.hypot(dxs, dys));
       if (!movedRef.current && Math.hypot(dxs, dys) > 4) { movedRef.current = true; clearPress(); }
-      if (movedRef.current) setZoom({ k: g.z0.k, x: g.z0.x + dxs / S, y: g.z0.y + dys / S });
+      if (movedRef.current) setZoom({ k: g.z0.k, r: g.z0.r || 0, x: g.z0.x + dxs / S, y: g.z0.y + dys / S });
     } else if (g.mode === 'pinch' && t.length === 2) {
+      // Two-finger pinch scales AND rotates, anchored on the RETICLE — the
+      // tuned point stays put while the map zooms/spins around it.
       const dist = Math.hypot(t[0].clientX - t[1].clientX, t[0].clientY - t[1].clientY);
+      const angle = Math.atan2(t[1].clientY - t[0].clientY, t[1].clientX - t[0].clientX);
       const kNew = Math.max(ZK_MIN, Math.min(ZK_MAX, g.z0.k * (dist / (g.dist || dist))));
-      const mx = (t[0].clientX + t[1].clientX) / 2 - g.rect.left;
-      const my = (t[0].clientY + t[1].clientY) / 2 - g.rect.top;
-      const vbx = (mx - offX) / S, vby = (my - offY) / S;
-      const ratio = kNew / g.z0.k;
-      setZoom({ k: kNew, x: vbx * (1 - ratio) + g.z0.x * ratio, y: vby * (1 - ratio) + g.z0.y * ratio });
+      const rNew = (g.z0.r || 0) + (angle - g.angle);
+      // reticle center in viewBox coords (center of the visible band above the dock)
+      const cvx = (g.rect.width / 2 - offX) / S;
+      const cvy = ((g.rect.height - dockH) / 2 - offY) / S;
+      // plot point under the reticle at gesture start, re-projected with the new k/r
+      const p0 = rot({ x: (cvx - g.z0.x) / g.z0.k, y: (cvy - g.z0.y) / g.z0.k }, -(g.z0.r || 0));
+      const rp = rot(p0, rNew);
+      setZoom({ k: kNew, r: rNew, x: cvx - kNew * rp.x, y: cvy - kNew * rp.y });
     }
   };
   const onTouchEnd = (e) => {
@@ -396,36 +423,56 @@ export default function SonarMobile({ s }) {
                 <path d="M 74.5 0 L 0 0 0 74.5" fill="none" stroke="white" strokeOpacity="0.14" strokeWidth="0.6" />
               </pattern>
             </defs>
-            <g transform={`translate(${zoom.x} ${zoom.y}) scale(${zoom.k})`}>
+            <g transform={`translate(${zoom.x} ${zoom.y}) scale(${zoom.k}) rotate(${((zoom.r || 0) * 180) / Math.PI})`}>
               {/* Effectively-infinite grid (stays in plot space — scales with zoom). */}
               <rect x={-6000} y={-6000} width={12000} height={12000} fill="url(#ldm-grid)" style={{ pointerEvents: 'none' }} />
               {playing && [44, 90, 150, 220].map((r, i) => { const p = dotPosM(playing); return <circle key={i} cx={p.x} cy={p.y} r={r * iz} fill="none" stroke="var(--el-yellow-500)" strokeOpacity={[0.55, 0.35, 0.22, 0.12][i]} strokeWidth={iz} style={{ pointerEvents: 'none' }} />; })}
-              {playlistTracks.length > 1 && playlistTracks.slice(1).map((b, i) => { const a = playlistTracks[i], pa = dotPosM(a), pb = dotPosM(b); const active = candidates && ((candidates.aId === a.id && candidates.bId === b.id) || (candidates.aId === b.id && candidates.bId === a.id)); const mx = (pa.x + pb.x) / 2, my = (pa.y + pb.y) / 2;
-                return (<g key={`s${a.id}${b.id}`} onClick={onTap(() => onInterpolate(a, b))}><line x1={pa.x} y1={pa.y} x2={pb.x} y2={pb.y} stroke="transparent" strokeWidth={20 * iz} /><line x1={pa.x} y1={pa.y} x2={pb.x} y2={pb.y} stroke="var(--el-indigo-500)" strokeOpacity={active ? 0.95 : 0.55} strokeWidth={(active ? 3 : 2) * iz} strokeDasharray={`${4 * iz} ${4 * iz}`} /><circle cx={mx} cy={my} r={11 * iz} fill="var(--el-bg-secondary)" stroke="var(--el-indigo-500)" strokeWidth={1.5 * iz} /><path d={`M${mx - 5 * iz} ${my} h${10 * iz} M${mx} ${my - 5 * iz} v${10 * iz}`} stroke="var(--el-indigo-500)" strokeWidth={1.5 * iz} strokeLinecap="round" /></g>); })}
-              {playlistTracks.map((t) => { const p = dotPosM(t); return <circle key={'r' + t.id} cx={p.x} cy={p.y} r={13 * iz} fill="none" stroke="var(--el-indigo-500)" strokeWidth={2 * iz} strokeOpacity="0.6" style={{ pointerEvents: 'none' }} />; })}
-              {visibleTracks.map(({ track: t, color }) => { const p = dotPosM(t), isPlay = t.id === playingId, isSel = t.id === selectedId, inPl = playlistById.has(t.id); const r = (isPlay ? 9.5 : isSel ? 8 : 5.5) * iz;
-                return (<g key={t.id} onClick={onTap(() => openDetail(t.id))} {...dotPress(t)}>
-                  <circle cx={p.x} cy={p.y} r={14 * iz} fill="transparent" />
-                  {isSel && <circle cx={p.x} cy={p.y} r={r + 6 * iz} fill="none" stroke={color} strokeWidth={1.5 * iz} />}
-                  <circle cx={p.x} cy={p.y} r={r} fill={color} opacity={inPl ? 1 : 0.88} style={{ filter: isPlay ? `drop-shadow(0 0 8px ${color})` : 'none' }} />
-                  {inPl && <circle cx={p.x} cy={p.y} r={r + 3 * iz} fill="none" stroke="white" strokeWidth={iz} />}
-                </g>); })}
-              {/* playlist tracks whose source layer is no longer visible still
-                  get a dot (colored by their saved origin), so the trail stays
-                  on the map after the searches are cleared. */}
-              {playlistTracks.map((t) => { if (entryByTrackId.has(t.id)) return null; const p = dotPosM(t); const slot = playlistById.get(t.id); const color = slot?.color || FALLBACK_COLOR; const isPlay = t.id === playingId, isSel = t.id === selectedId;
-                return (<g key={'pl' + t.id} onClick={onTap(() => openDetail(t.id))} {...dotPress(t)}>
-                  <circle cx={p.x} cy={p.y} r={14 * iz} fill="transparent" />
-                  {isSel && <circle cx={p.x} cy={p.y} r={12 * iz} fill="none" stroke={color} strokeWidth={1.5 * iz} />}
-                  <circle cx={p.x} cy={p.y} r={(isPlay ? 9.5 : 7) * iz} fill={color} opacity={0.9} />
-                  <circle cx={p.x} cy={p.y} r={9.5 * iz} fill="none" stroke="white" strokeWidth={iz} strokeOpacity="0.7" />
-                </g>); })}
-              {candidates && candidates.tracks.map((t) => { if (entryByTrackId.has(t.id)) return null; const p = dotPosM(t);
-                return (<g key={'c' + t.id} onClick={onTap(() => openDetail(t.id))} {...dotPress(t)}>
-                  <circle cx={p.x} cy={p.y} r={14 * iz} fill="transparent" />
-                  <circle cx={p.x} cy={p.y} r={10 * iz} fill="none" stroke={CANDIDATE_COLOR} strokeWidth={1.2 * iz} strokeOpacity="0.7" strokeDasharray={`${3 * iz} ${2 * iz}`} />
-                  <circle cx={p.x} cy={p.y} r={5 * iz} fill={CANDIDATE_COLOR} opacity="0.9" />
-                </g>); })}
+              {candidates ? (
+                /* ===== INTERPOLATION FOCUS MODE — only the two endpoints and
+                   the candidates between them; everything else hides (like
+                   solo-ing a pill) until the ✕ chip dismisses it. ===== */
+                <>
+                  {(() => { const a = tracksById.get(candidates.aId), b = tracksById.get(candidates.bId); if (!a || !b) return null; const pa = dotPosM(a), pb = dotPosM(b);
+                    return <line x1={pa.x} y1={pa.y} x2={pb.x} y2={pb.y} stroke={CANDIDATE_COLOR} strokeOpacity="0.45" strokeWidth={1.5 * iz} strokeDasharray={`${4 * iz} ${4 * iz}`} style={{ pointerEvents: 'none' }} />; })()}
+                  {[candidates.aId, candidates.bId].map((id) => { const t = tracksById.get(id); if (!t) return null; const p = dotPosM(t); const color = entryByTrackId.get(id)?.color || playlistById.get(id)?.color || FALLBACK_COLOR; const isSel = id === selectedId, isPlay = id === playingId;
+                    return (<g key={'ep' + id} onClick={onTap(() => openDetail(id))} {...dotPress(t)}>
+                      <circle cx={p.x} cy={p.y} r={14 * iz} fill="transparent" />
+                      {isSel && <circle cx={p.x} cy={p.y} r={13 * iz} fill="none" stroke={color} strokeWidth={1.5 * iz} />}
+                      <circle cx={p.x} cy={p.y} r={(isPlay ? 9.5 : 7.5) * iz} fill={color} style={{ filter: isPlay ? `drop-shadow(0 0 8px ${color})` : 'none' }} />
+                      <circle cx={p.x} cy={p.y} r={10 * iz} fill="none" stroke="white" strokeWidth={iz} strokeOpacity="0.7" />
+                    </g>); })}
+                  {candidates.tracks.map((t) => { const p = dotPosM(t); const isSel = t.id === selectedId, isPlay = t.id === playingId;
+                    return (<g key={'c' + t.id} onClick={onTap(() => openDetail(t.id))} {...dotPress(t)}>
+                      <circle cx={p.x} cy={p.y} r={14 * iz} fill="transparent" />
+                      {isSel && <circle cx={p.x} cy={p.y} r={12 * iz} fill="none" stroke={CANDIDATE_COLOR} strokeWidth={1.5 * iz} />}
+                      <circle cx={p.x} cy={p.y} r={10 * iz} fill="none" stroke={CANDIDATE_COLOR} strokeWidth={1.2 * iz} strokeOpacity="0.7" strokeDasharray={`${3 * iz} ${2 * iz}`} />
+                      <circle cx={p.x} cy={p.y} r={(isPlay ? 7 : 5) * iz} fill={CANDIDATE_COLOR} opacity="0.9" style={{ filter: isPlay ? `drop-shadow(0 0 8px ${CANDIDATE_COLOR})` : 'none' }} />
+                    </g>); })}
+                </>
+              ) : (
+                <>
+                  {playlistTracks.length > 1 && playlistTracks.slice(1).map((b, i) => { const a = playlistTracks[i], pa = dotPosM(a), pb = dotPosM(b); const mx = (pa.x + pb.x) / 2, my = (pa.y + pb.y) / 2;
+                    return (<g key={`s${a.id}${b.id}`} onClick={onTap(() => onInterpolate(a, b))}><line x1={pa.x} y1={pa.y} x2={pb.x} y2={pb.y} stroke="transparent" strokeWidth={20 * iz} /><line x1={pa.x} y1={pa.y} x2={pb.x} y2={pb.y} stroke="var(--el-indigo-500)" strokeOpacity={0.55} strokeWidth={2 * iz} strokeDasharray={`${4 * iz} ${4 * iz}`} /><circle cx={mx} cy={my} r={11 * iz} fill="var(--el-bg-secondary)" stroke="var(--el-indigo-500)" strokeWidth={1.5 * iz} /><path d={`M${mx - 5 * iz} ${my} h${10 * iz} M${mx} ${my - 5 * iz} v${10 * iz}`} stroke="var(--el-indigo-500)" strokeWidth={1.5 * iz} strokeLinecap="round" /></g>); })}
+                  {playlistTracks.map((t) => { const p = dotPosM(t); return <circle key={'r' + t.id} cx={p.x} cy={p.y} r={13 * iz} fill="none" stroke="var(--el-indigo-500)" strokeWidth={2 * iz} strokeOpacity="0.6" style={{ pointerEvents: 'none' }} />; })}
+                  {visibleTracks.map(({ track: t, color }) => { const p = dotPosM(t), isPlay = t.id === playingId, isSel = t.id === selectedId, inPl = playlistById.has(t.id); const r = (isPlay ? 9.5 : isSel ? 8 : 5.5) * iz;
+                    return (<g key={t.id} onClick={onTap(() => openDetail(t.id))} {...dotPress(t)}>
+                      <circle cx={p.x} cy={p.y} r={14 * iz} fill="transparent" />
+                      {isSel && <circle cx={p.x} cy={p.y} r={r + 6 * iz} fill="none" stroke={color} strokeWidth={1.5 * iz} />}
+                      <circle cx={p.x} cy={p.y} r={r} fill={color} opacity={inPl ? 1 : 0.88} style={{ filter: isPlay ? `drop-shadow(0 0 8px ${color})` : 'none' }} />
+                      {inPl && <circle cx={p.x} cy={p.y} r={r + 3 * iz} fill="none" stroke="white" strokeWidth={iz} />}
+                    </g>); })}
+                  {/* playlist tracks whose source layer is no longer visible still
+                      get a dot (colored by their saved origin), so the trail stays
+                      on the map after the searches are cleared. */}
+                  {playlistTracks.map((t) => { if (entryByTrackId.has(t.id)) return null; const p = dotPosM(t); const slot = playlistById.get(t.id); const color = slot?.color || FALLBACK_COLOR; const isPlay = t.id === playingId, isSel = t.id === selectedId;
+                    return (<g key={'pl' + t.id} onClick={onTap(() => openDetail(t.id))} {...dotPress(t)}>
+                      <circle cx={p.x} cy={p.y} r={14 * iz} fill="transparent" />
+                      {isSel && <circle cx={p.x} cy={p.y} r={12 * iz} fill="none" stroke={color} strokeWidth={1.5 * iz} />}
+                      <circle cx={p.x} cy={p.y} r={(isPlay ? 9.5 : 7) * iz} fill={color} opacity={0.9} />
+                      <circle cx={p.x} cy={p.y} r={9.5 * iz} fill="none" stroke="white" strokeWidth={iz} strokeOpacity="0.7" />
+                    </g>); })}
+                </>
+              )}
               {/* long-press charge ring — converges on the held dot over 500ms */}
               {pressing && <circle className="ldm-press-ring" cx={pressing.x} cy={pressing.y} r={16 * iz} strokeWidth={2 * iz} style={{ pointerEvents: 'none' }} />}
             </g>
@@ -435,10 +482,12 @@ export default function SonarMobile({ s }) {
           <div className="ldm-reticle" aria-hidden="true" />
 
           <div className="ldm-caption">MERT embeddings</div>
-          {displayVisibleLayers.length > 0 && (
-            <div className="ldm-legend">
-              {displayVisibleLayers.slice(0, 5).map((l) => (<div key={l.id} className="ldm-legend-row"><span className="ldm-legend-dot" style={{ background: l.color }} />{layerTag(l)}</div>))}
-            </div>
+          {/* Interpolation focus mode banner — one tap dismisses the candidates
+              and un-hides the rest of the map. */}
+          {candidates && (
+            <button className="ldm-interp-clear" onClick={clearCandidates}>
+              <span className="ldm-interp-dot" /> tracks in between — tap to dismiss ✕
+            </button>
           )}
           <div className="ldm-zoombtns">
             <button className="lo-btn-icon" onClick={() => zoomBy(1.3)}><IconZoomIn size={16} /></button>

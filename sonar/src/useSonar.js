@@ -89,7 +89,10 @@ export function useSonar({ initialView = 'map' } = {}) {
   // When set, only this layer's tracks are shown (click a pill to filter to its
   // members). null = show every layer that isn't explicitly hidden.
   const [soloLayerId, setSoloLayerId] = React.useState(null);
-  const [zoom, setZoom] = React.useState({ k: 1, x: 0, y: 0 });
+  // Zoom/pan/rotation of the map: screen = translate(x,y) ∘ scale(k) ∘ rotate(r).
+  // Rotation (radians) is only driven by the mobile two-finger gesture; the
+  // desktop view ignores it.
+  const [zoom, setZoom] = React.useState({ k: 1, x: 0, y: 0, r: 0 });
   const audioRef = React.useRef(null);
 
   React.useEffect(() => { Labels.init(); }, []);
@@ -511,7 +514,7 @@ export function useSonar({ initialView = 'map' } = {}) {
   const detailPinned = !hover && !!selected;
 
   // ---- shared zoom (reset is geometry-agnostic; zoomBy is per-view) ----
-  const resetZoom = () => setZoom({ k: 1, x: 0, y: 0 });
+  const resetZoom = () => setZoom({ k: 1, x: 0, y: 0, r: 0 });
 
   // ---- audio element event handlers (the <audio> lives in the shell) ----
   const onAudioTimeUpdate = (e) => {
