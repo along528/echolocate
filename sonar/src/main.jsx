@@ -4,6 +4,7 @@ import Sonar from './Sonar.jsx';
 
 import './style.css';
 import './sonar.css';
+import './sonar-mobile.css';
 
 createRoot(document.getElementById('root')).render(
   <React.StrictMode>

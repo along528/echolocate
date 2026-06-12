@@ -38,7 +38,14 @@ The handoff suggests consolidating the A/C class families into the component's o
 
 ## Misc
 - Sort control in the center header (mockup shows "distance ↓") is not yet wired.
-- Mobile/responsive layout not yet adapted.
+- ~~Mobile/responsive layout not yet adapted.~~ **Done:** a map-first mobile view
+  ships (`SonarMobile.jsx`, `sonar-mobile.css`) from the `design_handoff_mobile`
+  handoff. State/logic is now shared between desktop and mobile via the `useSonar`
+  hook (`Sonar.jsx` is a responsive shell that renders `SonarDesktop` or
+  `SonarMobile` by viewport width), so both share one playlist / layer set / player
+  / audio element. Pure helpers + `FeedbackPills`/`SourceLink` live in
+  `sonar-utils.jsx`. Mobile ships the desktop dot model only (layer colors); the
+  prototype's mock-only `sonic`/`clusters`/`axes` variations were not ported.
 
 ## Click-to-probe: nearest across the whole corpus
 Today the ✕ probe (click empty map space) selects the nearest track **already
