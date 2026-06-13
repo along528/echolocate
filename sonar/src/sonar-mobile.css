@@ -64,13 +64,6 @@
   border-radius: 50%; background: rgba(255,255,255,0.85);
 }
 
-.ldm-caption {
-  position: absolute; right: 12px; top: calc(var(--ldm-top-h, 64px) + 6px); z-index: 6;
-  display: inline-flex; align-items: center; gap: 5px;
-  padding: 4px 8px; font-size: 0.66rem; text-transform: uppercase; letter-spacing: 0.5px;
-  color: var(--el-fg-secondary); background: rgba(18,18,26,0.7);
-  border: 1px solid var(--el-border); border-radius: var(--el-radius-sm); backdrop-filter: blur(6px);
-}
 /* Interpolation focus-mode banner — pinned above the dock/peek, one tap clears. */
 .ldm-interp-clear {
   position: absolute; left: 50%; transform: translateX(-50%); z-index: 6;
@@ -128,7 +121,10 @@
 /* ===== Bottom dock: now strip + tab bar ===== */
 .ldm-dock { position: fixed; left: 0; right: 0; bottom: 0; z-index: 20; display: flex; flex-direction: column; }
 .ldm-tabbar {
-  display: flex; align-items: stretch; height: 54px;
+  /* height includes the safe-area inset (box-sizing: border-box), so the tab
+     content keeps its full 54px even in a standalone Home Screen app where the
+     home-indicator inset would otherwise eat into it and clip the tabs. */
+  display: flex; align-items: stretch; height: calc(54px + env(safe-area-inset-bottom, 0px));
   padding-bottom: env(safe-area-inset-bottom);
   background: rgba(12,12,18,0.97); border-top: 1px solid var(--el-border-strong);
   backdrop-filter: blur(14px);

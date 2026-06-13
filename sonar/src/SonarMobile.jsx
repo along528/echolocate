@@ -629,7 +629,6 @@ export default function SonarMobile({ s }) {
           {/* Fixed center reticle — pan the map to "tune" the nearest dot to it. */}
           <div className="ldm-reticle" aria-hidden="true" />
 
-          <div className="ldm-caption">MERT embeddings</div>
           {/* Interpolation focus mode banner — one tap dismisses the candidates
               and un-hides the rest of the map. */}
           {candidates && (
