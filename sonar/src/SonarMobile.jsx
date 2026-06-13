@@ -397,10 +397,17 @@ export default function SonarMobile({ s }) {
     animateZoomTo({ k, r, x: cvx - k * cx, y: cvy - k * cy }, 520);
   };
 
-  // Recenter when a search finishes loading (dots just popped in)…
+  // Recenter when a search finishes loading (dots just popped in) — frame the
+  // new pill's tracks together with everything else currently highlighted
+  // (other results + playlist dots).
   const wasLoadingRef = React.useRef(anyLoading);
   React.useEffect(() => {
-    if (wasLoadingRef.current && !anyLoading) recenterOn(visibleTracks.map((e) => e.track));
+    if (wasLoadingRef.current && !anyLoading) {
+      const m = new Map();
+      visibleTracks.forEach((e) => m.set(e.track.id, e.track));
+      playlistTracks.forEach((t) => m.set(t.id, t));
+      recenterOn([...m.values()]);
+    }
     wasLoadingRef.current = anyLoading;
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [anyLoading]);
@@ -645,7 +652,7 @@ export default function SonarMobile({ s }) {
       <div className="ldm-top" ref={topRef}>
         <div className="ldm-chips">
           {displayLayers.map((l) => (
-            <span key={l.id} className={'ldm-chip ' + (l.visible ? '' : 'is-hidden ') + (soloLayerId === l.id ? 'is-solo' : '')} style={{ borderColor: l.color, background: `color-mix(in srgb, ${l.color} 12%, transparent)` }} onClick={() => toggleSolo(l.id)}>
+            <span key={l.id} className={'ldm-chip ' + (l.visible ? '' : 'is-hidden ') + (soloLayerId === l.id ? 'is-solo' : '')} style={{ borderColor: l.color, background: `color-mix(in srgb, ${l.color} 12%, transparent)` }} onClick={() => { clearCandidates(); toggleSolo(l.id); }}>
               <span className="ldm-chip-swatch" style={{ background: l.color }} />{layerTag(l)}
               <button className="ldm-chip-x" onClick={(e) => { e.stopPropagation(); removeLayer(l.id); }}>×</button>
             </span>
@@ -743,7 +750,7 @@ export default function SonarMobile({ s }) {
       {aboutOpen && <AboutModal onClose={() => setAboutOpen(false)} />}
 
       {/* ===== MODAL SHEETS ===== */}
-      {sheet && <div className="ldm-scrim" onClick={() => setSheet(null)} />}
+      {sheet && <div className={'ldm-scrim ' + (sheet === 'search' ? 'is-clear' : '')} onClick={() => setSheet(null)} />}
 
       {sheet === 'search' && (
         <Sheet onClose={() => setSheet(null)} style={{ maxHeight: kbInset ? `${Math.max(240, window.innerHeight - kbInset - 56)}px` : '70%', bottom: kbInset }}>

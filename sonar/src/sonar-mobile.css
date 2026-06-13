@@ -225,6 +225,9 @@
 
 /* ===== Bottom sheets (modal) ===== */
 .ldm-scrim { position: fixed; inset: 0; z-index: 30; background: rgba(0,0,0,0.5); backdrop-filter: blur(2px); animation: ldm-fade .18s ease; }
+/* Search sheet: keep the background sharp + light so the pills you're adding
+   stay clearly visible at the top of the map. */
+.ldm-scrim.is-clear { background: rgba(0,0,0,0.22); backdrop-filter: none; }
 @keyframes ldm-fade { from { opacity: 0; } to { opacity: 1; } }
 .ldm-sheet {
   position: fixed; left: 0; right: 0; bottom: 0; z-index: 31;
