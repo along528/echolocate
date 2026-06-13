@@ -8,7 +8,7 @@ import React from 'react';
 import { API } from './api.js';
 import { Labels } from './labels.js';
 import { Cache, FALLBACK_SUGGESTIONS } from './cache.js';
-import { LAYER_COLORS, CANDIDATE_COLOR, FALLBACK_COLOR, distBetween } from './sonar-utils.jsx';
+import { LAYER_COLORS, CANDIDATE_COLOR, FALLBACK_COLOR, distBetween, layerTag } from './sonar-utils.jsx';
 
 const STORE_KEY = 'sonar-state-v1';
 
@@ -508,6 +508,18 @@ export function useSonar({ initialView = 'map' } = {}) {
   const playingTotal = duration || 0;
   const isCandidate = (id) => !!candidates && candidates.tracks.some((t) => t.id === id);
 
+  // The search a track is being validated against (for the "Match" feedback) —
+  // its first visible source layer, else its playlist origin, else interpolation.
+  // Returns { label, color } or null.
+  const sourceTagFor = React.useCallback((track) => {
+    if (!track) return null;
+    if (candidates && candidates.tracks.some((t) => t.id === track.id)) {
+      return { label: 'interpolation', color: CANDIDATE_COLOR };
+    }
+    const src = entryByTrackId.get(track.id)?.sources?.[0] || playlistById.get(track.id)?.origin;
+    return src ? { label: layerTag(src), color: src.color } : null;
+  }, [candidates, entryByTrackId, playlistById]);
+
   // The track shown in the detail card above the map: hover wins for preview,
   // otherwise the pinned selection.
   const detail = hover || selected;
@@ -544,7 +556,7 @@ export function useSonar({ initialView = 'map' } = {}) {
     anyLoading, allVisible, visibleTracks,
     entryByTrackId, playlistById, tracksById, playing, hover, selected,
     flatResults, vibeSuggestions, playlistTracks, navList, navSource,
-    detail, detailPinned, isCandidate, playingTotal,
+    detail, detailPinned, isCandidate, playingTotal, sourceTagFor,
     // playlist ops
     addToPlaylist, insertCandidate, removeFromPlaylist, movePlaylist, clearPlaylist,
     dragId, dropIdx, onDragStartSlot, onDragOverCard, onDragEndSlot, onDropSlot,

@@ -73,15 +73,19 @@ export const prettyUrl = (url) => {
 
 // 3-way training-signal feedback (relevant / borderline / wrong). Styled to
 // match the legacy frontend's "Match" pill exactly. Fires Labels.recordLabel.
-export function FeedbackPills({ track, value, onLabel }) {
+// `source` ({ label, color }) names the search the track is being rated against,
+// so it's clear what "Match" is validating.
+export function FeedbackPills({ track, value, onLabel, source }) {
   const opts = [
     ['relevant', <IconCheck size={15} />, 'mp-yes', 'Relevant'],
     ['borderline', <IconTilde size={15} />, 'mp-mid', 'Borderline'],
     ['wrong', <IconX size={15} />, 'mp-no', 'Wrong'],
   ];
   return (
-    <div className="match-pill label-group" role="group" aria-label="Rate match" onClick={(e) => e.stopPropagation()}>
-      <span className="mp-label">Match</span>
+    <div className="match-pill label-group" role="group"
+      aria-label={source ? `Rate match for ${source.label}` : 'Rate match'} onClick={(e) => e.stopPropagation()}>
+      <span className="mp-label">Match{source ? ':' : ''}</span>
+      {source && <span className="mp-tag" style={{ color: source.color }} title={source.label}>{source.label}</span>}
       {opts.map(([sig, glyph, tone, title]) => (
         <button
           key={sig}

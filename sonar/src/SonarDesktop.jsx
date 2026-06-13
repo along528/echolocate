@@ -38,7 +38,7 @@ export default function SonarDesktop({ s }) {
     visibleLayers, displayLayers, displayVisibleLayers,
     anyLoading, allVisible, visibleTracks, entryByTrackId,
     playlistById, playing, selected, flatResults, vibeSuggestions, playlistTracks,
-    navSource, detail, detailPinned, isCandidate, playingTotal,
+    navSource, detail, detailPinned, isCandidate, playingTotal, sourceTagFor,
     addToPlaylist, insertCandidate, removeFromPlaylist, movePlaylist, clearPlaylist,
     dragId, dropIdx, onDragStartSlot, onDragOverCard, onDragEndSlot, onDropSlot,
     interpolateEdge, clearCandidates,
@@ -186,7 +186,7 @@ export default function SonarDesktop({ s }) {
           </button>
           <button className="lo-btn-ghost" onClick={() => addSeedLayer('similar', t)} title="Find similar"><IconSimilar size={15} /></button>
           <button className="lo-btn-ghost" onClick={() => addSeedLayer('dissimilar', t)} title="Find dissimilar"><IconDissimilar size={15} /></button>
-          <FeedbackPills track={t} value={label} onLabel={labelTrack} />
+          <FeedbackPills track={t} value={label} onLabel={labelTrack} source={sourceTagFor(t)} />
         </div>
       </div>
     );
@@ -596,7 +596,7 @@ export default function SonarDesktop({ s }) {
                         ))}
                       </div>
                     </div>
-                    <FeedbackPills track={t} value={labelsByTrackId[t.id]} onLabel={labelTrack} />
+                    <FeedbackPills track={t} value={labelsByTrackId[t.id]} onLabel={labelTrack} source={sourceTagFor(t)} />
                     <DistanceChip value={distChipValue(t)} />
                     <div className="lo-track-actions">
                       <button className="lo-act-btn" title="Find similar" onClick={(e) => { e.stopPropagation(); addSeedLayer('similar', t); }}><IconSimilar size={15} /></button>
@@ -655,7 +655,7 @@ export default function SonarDesktop({ s }) {
           {playing && (
             <div className="la-now-actions">
               <div className="lo-now-fb">
-                <FeedbackPills track={playing} value={labelsByTrackId[playing.id]} onLabel={labelTrack} />
+                <FeedbackPills track={playing} value={labelsByTrackId[playing.id]} onLabel={labelTrack} source={sourceTagFor(playing)} />
               </div>
               <button className="lo-btn-ghost" onClick={() => addSeedLayer('similar', playing)}>
                 <IconSimilar size={15} /> <span style={{ marginLeft: 6 }}>Similar to this</span>

@@ -149,7 +149,7 @@ export default function SonarMobile({ s }) {
     addVibeLayer, addSeedLayer, removeLayer, toggleLayerVisible, toggleSolo,
     visibleTracks, displayLayers,
     entryByTrackId, playlistById, playlist, tracksById,
-    playing, selected, playlistTracks, playingTotal, vibeSuggestions, isCandidate,
+    playing, selected, playlistTracks, playingTotal, vibeSuggestions, isCandidate, sourceTagFor,
     addToPlaylist, insertCandidate, removeFromPlaylist, movePlaylist, clearPlaylist,
     interpolateEdge, clearCandidates, playTrack, togglePlay, step, labelTrack, seekTo,
   } = s;
@@ -570,19 +570,18 @@ export default function SonarMobile({ s }) {
         </div>
       )}
 
-      {/* ===== TOP CHROME — just the pills, overlaid on the full-bleed map ===== */}
+      {/* ===== TOP CHROME — just the pills, overlaid on the full-bleed map. The
+          "+ add" chip is always present so a search is one tap away. ===== */}
       <div className="ldm-top" ref={topRef}>
-        {layers.length > 0 && (
-          <div className="ldm-chips">
-            {displayLayers.map((l) => (
-              <span key={l.id} className={'ldm-chip ' + (l.visible ? '' : 'is-hidden ') + (soloLayerId === l.id ? 'is-solo' : '')} style={{ borderColor: l.color, background: `color-mix(in srgb, ${l.color} 12%, transparent)` }} onClick={() => toggleSolo(l.id)}>
-                <span className="ldm-chip-swatch" style={{ background: l.color }} />{layerTag(l)}
-                <button className="ldm-chip-x" onClick={(e) => { e.stopPropagation(); removeLayer(l.id); }}>×</button>
-              </span>
-            ))}
-            <button className="ldm-chip ldm-chip-add" onClick={() => setSheet('search')}><IconPlus size={13} /> add</button>
-          </div>
-        )}
+        <div className="ldm-chips">
+          {displayLayers.map((l) => (
+            <span key={l.id} className={'ldm-chip ' + (l.visible ? '' : 'is-hidden ') + (soloLayerId === l.id ? 'is-solo' : '')} style={{ borderColor: l.color, background: `color-mix(in srgb, ${l.color} 12%, transparent)` }} onClick={() => toggleSolo(l.id)}>
+              <span className="ldm-chip-swatch" style={{ background: l.color }} />{layerTag(l)}
+              <button className="ldm-chip-x" onClick={(e) => { e.stopPropagation(); removeLayer(l.id); }}>×</button>
+            </span>
+          ))}
+          <button className="ldm-chip ldm-chip-add" onClick={() => setSheet('search')}><IconPlus size={13} /> add</button>
+        </div>
       </div>
 
       {/* ===== PEEK DETAIL (non-modal, above the dock) ===== */}
@@ -619,7 +618,7 @@ export default function SonarMobile({ s }) {
             <div className="ldm-detail-title">{t.title}</div>
             <div className="ldm-detail-sub">{t.artist} — {t.album}</div>
             {t.track_url && (<a className="ld-detail-url" href={t.track_url} target="_blank" rel="noopener noreferrer" style={{ marginTop: 6 }}><IconExternal size={12} />{prettyUrl(t.track_url)}</a>)}
-            <div className="ldm-detail-fb"><FeedbackPills track={t} value={labelsByTrackId[t.id]} onLabel={labelTrack} /></div>
+            <div className="ldm-detail-fb"><FeedbackPills track={t} value={labelsByTrackId[t.id]} onLabel={labelTrack} source={sourceTagFor(t)} /></div>
             {/* No Add button here — the peek header's add button covers it. */}
             <div className="ldm-detail-actions">
               <button className="ldm-act is-primary" onClick={() => playTrack(t)}><svg viewBox="0 0 24 24" fill="currentColor" width="18" height="18"><path d="M8 5v14l11-7z" /></svg> Play</button>
@@ -716,7 +715,7 @@ export default function SonarMobile({ s }) {
               <button className="ldm-now-tbtn is-play" onClick={togglePlay}>{isPlaying ? <svg viewBox="0 0 24 24" fill="white" width="22" height="22"><path d="M6 5h4v14H6zm8 0h4v14h-4z" /></svg> : <svg viewBox="0 0 24 24" fill="white" width="22" height="22"><path d="M8 5v14l11-7z" /></svg>}</button>
               <button className="ldm-now-tbtn" onClick={() => step(1)}><svg viewBox="0 0 24 24" fill="currentColor" width="18" height="18"><path d="M6 18l8.5-6L6 6v12zM16 6v12h2V6h-2z" /></svg></button>
             </div>
-            <div className="ldm-detail-fb"><FeedbackPills track={playing} value={labelsByTrackId[playing.id]} onLabel={labelTrack} /></div>
+            <div className="ldm-detail-fb"><FeedbackPills track={playing} value={labelsByTrackId[playing.id]} onLabel={labelTrack} source={sourceTagFor(playing)} /></div>
           </div>
           <div className="ldm-now-quick">
             <button className="ldm-act" onClick={() => { addSeedLayer('similar', playing); setSheet(null); }}><IconSimilar size={18} /> Similar</button>
