@@ -240,6 +240,27 @@
 .ldm-lm-text { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 1px; }
 .ldm-lm-label { font-size: 0.9rem; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .ldm-lm-enh { color: var(--el-purple-400); font-size: 0.72rem; line-height: 1.3; margin-top: 2px; }
+.ldm-lm-seed { text-align: left; background: none; border: none; padding: 2px 0 0; color: var(--el-fg-primary); font-size: 0.78rem; line-height: 1.3; }
+.ldm-lm-seed:active { opacity: 0.6; }
+.ldm-lm-seed-artist { color: var(--el-fg-secondary); }
+
+/* Expanded-pill detail drop-down (under the top pill row when one is soloed). */
+.ldm-pill-detail {
+  display: flex; flex-direction: column; gap: 3px;
+  padding: 8px 11px;
+  background: var(--el-bg-secondary);
+  border: 1px solid var(--el-border-strong);
+  border-left: 3px solid var(--el-border-strong);
+  border-radius: var(--el-radius-md);
+  animation: ldm-pd-in 150ms ease;
+}
+@keyframes ldm-pd-in { from { opacity: 0; transform: translateY(-4px); } to { opacity: 1; transform: none; } }
+.ldm-pill-detail-kind { font-size: 0.62rem; letter-spacing: 0.06em; text-transform: uppercase; font-weight: var(--el-fw-bold); }
+.ldm-pill-detail-enh { font-size: 0.8rem; line-height: 1.35; color: var(--el-purple-400); }
+.ldm-pill-detail-seed { text-align: left; background: none; border: none; padding: 0; color: var(--el-fg-primary); font-size: 0.85rem; font-weight: var(--el-fw-medium); }
+.ldm-pill-detail-seed:active { opacity: 0.6; }
+.ldm-pill-detail-artist { color: var(--el-fg-secondary); font-weight: var(--el-fw-regular); }
+.ldm-pill-detail-dim { font-size: 0.78rem; color: var(--el-fg-secondary); font-style: italic; }
 .ldm-lm-btn { width: 34px; height: 34px; border-radius: var(--el-radius-md); background: transparent; border: 1px solid var(--el-border); color: var(--el-fg-secondary); display: inline-flex; align-items: center; justify-content: center; flex: 0 0 auto; }
 
 /* Detail content (shared by the expanded peek body) */
