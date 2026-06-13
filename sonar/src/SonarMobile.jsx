@@ -383,42 +383,45 @@ export default function SonarMobile({ s }) {
     if (!rect.width) return;
     const { S, offX, offY } = rectMetrics(rect);
     const z = zoomRef.current, r = z.r || 0;
-    // Reserve ALL bottom chrome so framed dots aren't hidden behind it: the dock
-    // (now-playing strip + tab bar, = dockH) plus the peek detail panel when it's
-    // up (--ldm-peek-h, 0 when hidden). Read the live CSS var so it stays in sync.
     const peekH = appRef.current
       ? parseFloat(getComputedStyle(appRef.current).getPropertyValue('--ldm-peek-h')) || 0
       : 0;
-    const bottomH = dockH + peekH;
-    const cvx = (rect.width / 2 - offX) / S;            // band center (viewBox units)
-    const cvy = ((rect.height - bottomH) / 2 - offY) / S;
-    const halfW = (rect.width / S) / 2;                 // visible half-extents (pre-scale)
-    const halfH = ((rect.height - bottomH) / S) / 2;
     const PAD = 0.78;                                   // leave a margin around the dots
+    const halfW = (rect.width / S) / 2;
+    const cvx = (rect.width / 2 - offX) / S;
+    // The reticle center MUST match the .ldm-reticle element (and snapToCenter),
+    // which offsets only by the dock — NOT the peek — so an anchored fit keeps the
+    // tuned/reticle point exactly under the visible reticle. The peek is handled by
+    // shrinking the usable half-height *below* the reticle, not by moving the center.
+    const cvyR = ((rect.height - dockH) / 2 - offY) / S;
+    const halfHkeep = Math.max(0.06 * (rect.height / S), ((rect.height - dockH) / 2 - peekH) / S);
     // Work in the screen-aligned frame (rotate dots by the current map rotation).
     const qs = tracks.map((t) => rot(dotPosM(t), r));
     // The fixed point (rotated-frame) to fit around: keepReticle → whatever's
     // under the reticle right now; default → the tuned track; fill → none (bbox).
     let qa = null;
-    if (opts.keepReticle) qa = { x: (cvx - z.x) / z.k, y: (cvy - z.y) / z.k };
+    if (opts.keepReticle) qa = { x: (cvx - z.x) / z.k, y: (cvyR - z.y) / z.k };
     else if (!opts.fill) { const at = tracksById.get(selectedId) || playing; if (at) qa = rot(dotPosM(at), r); }
-    let k, cx, cy;
+    let k, cx, cy, tx, ty;
     if (qa) {
-      // Keep the fixed point under the reticle; fit everything around it.
+      // Keep the fixed point under the reticle; fit everything around it (no pan).
       let mdx = 1e-3, mdy = 1e-3;
       qs.forEach((q) => { mdx = Math.max(mdx, Math.abs(q.x - qa.x)); mdy = Math.max(mdy, Math.abs(q.y - qa.y)); });
-      k = Math.min((halfW * PAD) / mdx, (halfH * PAD) / mdy);
-      cx = qa.x; cy = qa.y;
+      k = Math.min((halfW * PAD) / mdx, (halfHkeep * PAD) / mdy);
+      cx = qa.x; cy = qa.y; tx = cvx; ty = cvyR;
     } else {
-      // Center on the bounding box of the dots.
+      // Center on the bounding box of the dots, framed in the band above ALL the
+      // bottom chrome (dock + peek). Panning is allowed in this mode.
+      const cvyFit = ((rect.height - dockH - peekH) / 2 - offY) / S;
+      const halfHfit = ((rect.height - dockH - peekH) / S) / 2;
       let minx = Infinity, maxx = -Infinity, miny = Infinity, maxy = -Infinity;
       qs.forEach((q) => { minx = Math.min(minx, q.x); maxx = Math.max(maxx, q.x); miny = Math.min(miny, q.y); maxy = Math.max(maxy, q.y); });
       const bw = Math.max(1e-3, maxx - minx), bh = Math.max(1e-3, maxy - miny);
-      k = Math.min((halfW * 2 * PAD) / bw, (halfH * 2 * PAD) / bh);
-      cx = (minx + maxx) / 2; cy = (miny + maxy) / 2;
+      k = Math.min((halfW * 2 * PAD) / bw, (halfHfit * 2 * PAD) / bh);
+      cx = (minx + maxx) / 2; cy = (miny + maxy) / 2; tx = cvx; ty = cvyFit;
     }
     k = Math.max(ZK_MIN, Math.min(FIT_MAX, k));
-    animateZoomTo({ k, r, x: cvx - k * cx, y: cvy - k * cy }, 520);
+    animateZoomTo({ k, r, x: tx - k * cx, y: ty - k * cy }, 520);
   };
 
   // Recenter when a search finishes loading (dots just popped in) — frame the
