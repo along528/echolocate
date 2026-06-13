@@ -359,10 +359,12 @@ export default function SonarMobile({ s }) {
   // to frame them. Used when a search resolves, a pill is soloed, or
   // interpolation runs. If a track is already tuned (playing or selected with
   // the reticle), keep IT under the reticle and only adjust the zoom; otherwise
-  // center on the bounding box. Rotation is preserved.
+  // center on the bounding box. Pass `{ fill: true }` to ignore the tuned track
+  // and always center on the bounding box, so the dots truly fill the screen
+  // (used when clicking/deleting a pill). Rotation is preserved.
   const FIT_MAX = 3.5;
   const mapRef = React.useRef(null);
-  const recenterOn = (tracks) => {
+  const recenterOn = (tracks, opts = {}) => {
     const el = mapRef.current;
     if (!el || !tracks || !tracks.length) return;
     const rect = el.getBoundingClientRect();
@@ -376,7 +378,7 @@ export default function SonarMobile({ s }) {
     const PAD = 0.78;                                   // leave a margin around the dots
     // Work in the screen-aligned frame (rotate dots by the current map rotation).
     const qs = tracks.map((t) => rot(dotPosM(t), r));
-    const anchor = tracksById.get(selectedId) || playing;
+    const anchor = opts.fill ? null : (tracksById.get(selectedId) || playing);
     let k, cx, cy;
     if (anchor) {
       // Keep the tuned track fixed under the reticle; fit everything around it.
@@ -411,15 +413,30 @@ export default function SonarMobile({ s }) {
     wasLoadingRef.current = anyLoading;
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [anyLoading]);
-  // …when a pill is soloed / un-soloed (the visible set changes)…
+  // …when a pill is soloed / un-soloed (the visible set changes). Fill the
+  // screen with the now-visible dots, even if they were clustered small.
   const prevSoloRef = React.useRef(soloLayerId);
   React.useEffect(() => {
     if (prevSoloRef.current !== soloLayerId) {
       prevSoloRef.current = soloLayerId;
-      recenterOn(visibleTracks.map((e) => e.track));
+      const vis = visibleTracks.map((e) => e.track);
+      if (vis.length) recenterOn(vis, { fill: true });
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [soloLayerId]);
+  // …and when a pill is deleted (the visible set shrinks) — re-fit the dots
+  // that remain so they fill the screen again. Adds are handled by the loading
+  // effect above; only fire on a removal, and never mid-search.
+  const prevLayerCountRef = React.useRef(layers.length);
+  React.useEffect(() => {
+    const removed = layers.length < prevLayerCountRef.current;
+    prevLayerCountRef.current = layers.length;
+    if (!removed || anyLoading) return;
+    const vis = visibleTracks.map((e) => e.track);
+    if (vis.length) recenterOn(vis, { fill: true });
+    else if (playlistTracks.length) recenterOn(playlistTracks, { fill: true });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [layers]);
   // …and when interpolation candidates arrive (frame endpoints + candidates).
   React.useEffect(() => {
     if (!candidates) return;
@@ -750,7 +767,7 @@ export default function SonarMobile({ s }) {
       {aboutOpen && <AboutModal onClose={() => setAboutOpen(false)} />}
 
       {/* ===== MODAL SHEETS ===== */}
-      {sheet && <div className={'ldm-scrim ' + (sheet === 'search' ? 'is-clear' : '')} onClick={() => setSheet(null)} />}
+      {sheet && <div className={'ldm-scrim ' + (sheet === 'search' || sheet === 'playlist' ? 'is-clear' : '')} onClick={() => setSheet(null)} />}
 
       {sheet === 'search' && (
         <Sheet onClose={() => setSheet(null)} style={{ maxHeight: kbInset ? `${Math.max(240, window.innerHeight - kbInset - 56)}px` : '70%', bottom: kbInset }}>
