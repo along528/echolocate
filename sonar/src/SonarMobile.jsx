@@ -769,8 +769,10 @@ export default function SonarMobile({ s }) {
           <div className="ldm-strip-prog"><span style={{ width: `${(playing ? progress : 0) * 100}%` }} /></div>
           <div className="ldm-player-art"><img src={`${ASSET}assets/artwork.svg`} alt="" /></div>
           <div className="ldm-player-info">
+            {/* Title only — artist/album live in the detail bar above, so the
+                player bar stays distinct from it. */}
             {playing
-              ? <><div className="ldm-player-title">{playing.title}</div><div className="ldm-player-sub">{playing.artist}</div></>
+              ? <div className="ldm-player-title">{playing.title}</div>
               : <><div className="ldm-player-title">Nothing playing</div><div className="ldm-player-sub">Tune a track on the map</div></>}
           </div>
           <div className="ldm-strip-ctl">
