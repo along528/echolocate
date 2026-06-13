@@ -9,7 +9,7 @@ import { MascotSmall, Waveform } from './svg-bits.jsx';
 import {
   IconSearch, IconListPlus, IconCheck, IconPlus, IconSimilar, IconDissimilar,
   IconEye, IconEyeOff, IconClose, IconExternal, IconUp, IconDown,
-  IconZoomIn, IconZoomOut,
+  IconZoomIn, IconZoomOut, IconTilde,
 } from './icons.jsx';
 import {
   CANDIDATE_COLOR, FALLBACK_COLOR, fmtTime, coordsOf, distBetween,
@@ -739,10 +739,18 @@ export default function SonarMobile({ s }) {
                     {cand && <span className="ldm-peek-tag" style={{ color: CANDIDATE_COLOR }}>interpolation</span>}
                     {!cand && sources[0] && <span className="ldm-peek-tag" style={{ color: sources[0].color }}>{layerTag(sources[0])}</span>}
                     {!cand && !sources.length && slotOrigin && <span className="ldm-peek-tag" style={{ color: slotOrigin.color }}>{layerKindWord(slotOrigin)} {slotOrigin.label}</span>}
+                    {!cand && !sources.length && !slotOrigin && playOrigin && <span className="ldm-peek-tag" style={{ color: playOrigin.color }}>{layerTag(playOrigin)}</span>}
                     {t.album && <span className="ldm-peek-album">{t.album}</span>}
                     {playing && playing.id !== t.id && <span className="ldm-peek-dist">{distBetween(playing, t).toFixed(2)} away</span>}
                   </div>
                 </div>
+                {playing && playing.id !== t.id && (
+                  <button className="ldm-peek-add" title="Sonic interpolation from the playing track"
+                    aria-label="Sonic interpolation from the playing track"
+                    onClick={(e) => { e.stopPropagation(); onInterpolate(playing, t); setDetailMode('hidden'); }}>
+                    <IconTilde size={18} />
+                  </button>
+                )}
                 <button className={'ldm-peek-add ' + (inPl ? 'is-active' : '')}
                   title={inPl ? 'Remove from playlist' : 'Add to playlist'} aria-label={inPl ? 'Remove from playlist' : 'Add to playlist'}
                   onClick={(e) => { e.stopPropagation(); if (inPl) { const slot = playlistById.get(t.id); if (slot) removeFromPlaylist(slot.id); } else (cand ? insertCandidate(t) : addToPlaylist(t)); }}>
