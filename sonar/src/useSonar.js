@@ -161,22 +161,27 @@ export function useSonar({ initialView = 'map' } = {}) {
   }, [layers, runLayerSearch]);
 
   // ---- layer ops ----
-  const addVibeLayer = (text) => {
+  // `solo` (default true) auto-selects the new pill so the map filters to it;
+  // the fresh-session seeding passes false so it can plant two pills at once.
+  // The id is fixed up front so we can solo the right pill, while the functional
+  // updater stays authoritative for dedup + color (it sees fresh state).
+  const addVibeLayer = (text, { solo = true } = {}) => {
     const t = (text || '').trim();
     if (!t) return;
+    const existing = layers.find((l) => l.kind === 'vibe' && l.query.toLowerCase() === t.toLowerCase());
+    const id = existing ? existing.id : `L_${Date.now()}_${Math.random().toString(36).slice(2, 7)}`;
     setLayers((ls) => (ls.some((l) => l.kind === 'vibe' && l.query.toLowerCase() === t.toLowerCase())
-      ? ls : [...ls, makeLayer('vibe', { label: t, query: t }, ls)]));
+      ? ls : [...ls, makeLayer('vibe', { id, label: t, query: t }, ls)]));
+    if (solo) setSoloLayerId(id);
   };
+  // Creating a similar/dissimilar search auto-selects (solos) its pill too.
   const addSeedLayer = (kind, track) => {
     if (!track) return;
-    // Creating a similar/dissimilar search auto-selects (solos) its pill, so the
-    // map immediately filters to the new layer's tracks. If the same search is
-    // already present, just solo the existing pill rather than duplicating it.
     const existing = layers.find((l) => l.kind === kind && l.seedTrackId === track.id);
-    if (existing) { setSoloLayerId(existing.id); return; }
-    const layer = makeLayer(kind, { label: track.title, seedTrackId: track.id, seedTrack: track }, layers);
-    setLayers((ls) => [...ls, layer]);
-    setSoloLayerId(layer.id);
+    const id = existing ? existing.id : `L_${Date.now()}_${Math.random().toString(36).slice(2, 7)}`;
+    setLayers((ls) => (ls.some((l) => l.kind === kind && l.seedTrackId === track.id)
+      ? ls : [...ls, makeLayer(kind, { id, label: track.title, seedTrackId: track.id, seedTrack: track }, ls)]));
+    setSoloLayerId(id);
   };
 
   // Fresh session (nothing restored from localStorage): seed two random vibe
@@ -188,7 +193,7 @@ export function useSonar({ initialView = 'map' } = {}) {
     if ((boot?.layers || []).length || layers.length) return;
     const pool = [...(suggestions.length ? suggestions : FALLBACK_SUGGESTIONS)];
     for (let n = 0; n < 2 && pool.length; n++) {
-      addVibeLayer(pool.splice(Math.floor(Math.random() * pool.length), 1)[0]);
+      addVibeLayer(pool.splice(Math.floor(Math.random() * pool.length), 1)[0], { solo: false });
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
