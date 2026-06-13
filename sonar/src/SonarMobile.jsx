@@ -470,7 +470,7 @@ export default function SonarMobile({ s }) {
       const pts = [...candidates.tracks];
       const a = tracksById.get(candidates.aId), b = tracksById.get(candidates.bId);
       if (a) pts.push(a); if (b) pts.push(b);
-      recenterOn(pts);
+      recenterOn(pts, { keepReticle: true }); // zoom to fit the endpoints+candidates without moving the reticle
     } else if (had) {
       const vis = visibleTracks.map((e) => e.track);
       if (vis.length) recenterOn(vis, { keepReticle: true });
