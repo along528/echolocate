@@ -8,7 +8,7 @@ import React from 'react';
 import { API } from './api.js';
 import { Labels } from './labels.js';
 import { Cache, FALLBACK_SUGGESTIONS } from './cache.js';
-import { LAYER_COLORS, CANDIDATE_COLOR, FALLBACK_COLOR, distBetween } from './sonar-utils.jsx';
+import { LAYER_COLORS, CANDIDATE_COLOR, FALLBACK_COLOR, distBetween, layerTag } from './sonar-utils.jsx';
 
 const STORE_KEY = 'sonar-state-v1';
 
@@ -45,14 +45,22 @@ export function useSonar({ initialView = 'map' } = {}) {
 
   // ---- search layers ----
   const colorIdxRef = React.useRef(boot?.colorIdx || 0);
-  const makeLayer = React.useCallback((kind, extra) => ({
+  // A new layer takes the first palette color no current layer is using, so
+  // colors never collide while ≤8 searches are active (the persisted round
+  // robin index is only a fallback once every hue is taken).
+  const pickColor = (existing = []) => {
+    const used = new Set(existing.map((l) => l.color));
+    return LAYER_COLORS.find((c) => !used.has(c))
+      || LAYER_COLORS[colorIdxRef.current++ % LAYER_COLORS.length];
+  };
+  const makeLayer = React.useCallback((kind, extra, existing = []) => ({
     id: `L_${Date.now()}_${Math.random().toString(36).slice(2, 7)}`,
     kind,
     label: '',
     query: '',
     seedTrackId: null,
     seedTrack: null,
-    color: LAYER_COLORS[colorIdxRef.current++ % LAYER_COLORS.length],
+    color: pickColor(existing),
     visible: true,
     loading: false,
     fetched: false,
@@ -81,7 +89,10 @@ export function useSonar({ initialView = 'map' } = {}) {
   // When set, only this layer's tracks are shown (click a pill to filter to its
   // members). null = show every layer that isn't explicitly hidden.
   const [soloLayerId, setSoloLayerId] = React.useState(null);
-  const [zoom, setZoom] = React.useState({ k: 1, x: 0, y: 0 });
+  // Zoom/pan/rotation of the map: screen = translate(x,y) ∘ scale(k) ∘ rotate(r).
+  // Rotation (radians) is only driven by the mobile two-finger gesture; the
+  // desktop view ignores it.
+  const [zoom, setZoom] = React.useState({ k: 1, x: 0, y: 0, r: 0 });
   const audioRef = React.useRef(null);
 
   React.useEffect(() => { Labels.init(); }, []);
@@ -144,12 +155,12 @@ export function useSonar({ initialView = 'map' } = {}) {
     const t = (text || '').trim();
     if (!t) return;
     setLayers((ls) => (ls.some((l) => l.kind === 'vibe' && l.query.toLowerCase() === t.toLowerCase())
-      ? ls : [...ls, makeLayer('vibe', { label: t, query: t })]));
+      ? ls : [...ls, makeLayer('vibe', { label: t, query: t }, ls)]));
   };
   const addSeedLayer = (kind, track) => {
     if (!track) return;
     setLayers((ls) => (ls.some((l) => l.kind === kind && l.seedTrackId === track.id)
-      ? ls : [...ls, makeLayer(kind, { label: track.title, seedTrackId: track.id, seedTrack: track })]));
+      ? ls : [...ls, makeLayer(kind, { label: track.title, seedTrackId: track.id, seedTrack: track }, ls)]));
   };
 
   // Fresh session (nothing restored from localStorage): seed two random vibe
@@ -179,7 +190,7 @@ export function useSonar({ initialView = 'map' } = {}) {
       return [...ls, makeLayer(origin.kind, {
         label: origin.label, query: origin.query || '',
         seedTrackId: origin.seedTrackId || null, seedTrack: origin.seedTrack || null,
-      })];
+      }, ls)];
     });
   };
   const removeLayer = (id) => {
@@ -200,6 +211,13 @@ export function useSonar({ initialView = 'map' } = {}) {
   const visibleLayers = React.useMemo(() => layers.filter(isLayerShown), [layers, isLayerShown]);
   const anyLoading = layers.some((l) => l.loading);
   const allVisible = !soloLayerId && layers.length > 0 && layers.every((l) => l.visible);
+
+  // Newest-first views for display only (pills, chips, legends). The underlying
+  // `layers` array stays append-ordered — color assignment, dedupe, originFor,
+  // and Backspace-removes-last all depend on that order — so never reverse it
+  // in place.
+  const displayLayers = React.useMemo(() => [...layers].reverse(), [layers]);
+  const displayVisibleLayers = React.useMemo(() => [...visibleLayers].reverse(), [visibleLayers]);
 
   // De-duped union of visible layers' results. Overlap takes the first (oldest)
   // visible layer's color; sources lists every visible layer the track is in.
@@ -283,7 +301,9 @@ export function useSonar({ initialView = 'map' } = {}) {
       return recomputeDist([...t, slot]);
     });
   };
-  // Insert a candidate between its edge's two endpoints (does not clear candidates).
+  // Insert a candidate between its edge's two endpoints, then clear the
+  // remaining candidates — once you've picked one, the rest go away (re-click
+  // the edge to interpolate again).
   const insertCandidate = (track) => {
     if (!candidates) { addToPlaylist(track); return; }
     const origin = { kind: 'interp', label: 'interpolation', color: CANDIDATE_COLOR };
@@ -296,6 +316,7 @@ export function useSonar({ initialView = 'map' } = {}) {
       const at = Math.max(ai, bi);
       return recomputeDist([...t.slice(0, at), slot, ...t.slice(at)]);
     });
+    setCandidates(null);
   };
   const removeFromPlaylist = (id) => setPlaylist((t) => recomputeDist(t.filter((s) => s.id !== id)));
   const movePlaylist = (id, dir) => setPlaylist((t) => {
@@ -487,13 +508,25 @@ export function useSonar({ initialView = 'map' } = {}) {
   const playingTotal = duration || 0;
   const isCandidate = (id) => !!candidates && candidates.tracks.some((t) => t.id === id);
 
+  // The search a track is being validated against (for the "Match" feedback) —
+  // its first visible source layer, else its playlist origin, else interpolation.
+  // Returns { label, color } or null.
+  const sourceTagFor = React.useCallback((track) => {
+    if (!track) return null;
+    if (candidates && candidates.tracks.some((t) => t.id === track.id)) {
+      return { label: 'interpolation', color: CANDIDATE_COLOR };
+    }
+    const src = entryByTrackId.get(track.id)?.sources?.[0] || playlistById.get(track.id)?.origin;
+    return src ? { label: layerTag(src), color: src.color } : null;
+  }, [candidates, entryByTrackId, playlistById]);
+
   // The track shown in the detail card above the map: hover wins for preview,
   // otherwise the pinned selection.
   const detail = hover || selected;
   const detailPinned = !hover && !!selected;
 
   // ---- shared zoom (reset is geometry-agnostic; zoomBy is per-view) ----
-  const resetZoom = () => setZoom({ k: 1, x: 0, y: 0 });
+  const resetZoom = () => setZoom({ k: 1, x: 0, y: 0, r: 0 });
 
   // ---- audio element event handlers (the <audio> lives in the shell) ----
   const onAudioTimeUpdate = (e) => {
@@ -519,10 +552,11 @@ export function useSonar({ initialView = 'map' } = {}) {
     addVibeLayer, addSeedLayer, restoreLayer, removeLayer, clearLayers,
     toggleLayerVisible, toggleSolo, showAllLayers,
     // derived
-    isLayerShown, visibleLayers, anyLoading, allVisible, visibleTracks,
+    isLayerShown, visibleLayers, displayLayers, displayVisibleLayers,
+    anyLoading, allVisible, visibleTracks,
     entryByTrackId, playlistById, tracksById, playing, hover, selected,
     flatResults, vibeSuggestions, playlistTracks, navList, navSource,
-    detail, detailPinned, isCandidate, playingTotal,
+    detail, detailPinned, isCandidate, playingTotal, sourceTagFor,
     // playlist ops
     addToPlaylist, insertCandidate, removeFromPlaylist, movePlaylist, clearPlaylist,
     dragId, dropIdx, onDragStartSlot, onDragOverCard, onDragEndSlot, onDropSlot,

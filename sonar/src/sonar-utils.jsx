@@ -9,12 +9,19 @@ import React from 'react';
 import { IconCheck, IconTilde, IconX, IconExternal } from './icons.jsx';
 
 // Per-search layer colors. A search's color is its identity everywhere (pill,
-// dots, list rows). White is reserved for interpolation candidates.
+// dots, list rows). White is reserved for interpolation candidates. Eight
+// hues of similar luminance on the dark bg, ordered so CONSECUTIVE picks are
+// far apart in hue (new layers grab the first unused entry), with a deliberate
+// gap around brand indigo (#6366f1) so no layer reads as the playlist color.
 export const LAYER_COLORS = [
-  '#22d3ee', '#f472b6', '#fbbf24', '#a78bfa', '#34d399',
-  '#60a5fa', '#fb7185', '#c084fc', '#facc15', '#4ade80',
-  '#2dd4bf', '#f59e0b', '#e879f9', '#38bdf8', '#a3e635',
-  '#fca5a5', '#fdba74', '#5eead4', '#93c5fd', '#d8b4fe',
+  '#22d3ee', // cyan
+  '#f87171', // coral
+  '#a3e635', // lime
+  '#c084fc', // violet
+  '#fbbf24', // amber
+  '#34d399', // emerald
+  '#f472b6', // pink
+  '#fb923c', // orange
 ];
 export const CANDIDATE_COLOR = '#ffffff';
 export const FALLBACK_COLOR = '#94a3b8';
@@ -66,15 +73,19 @@ export const prettyUrl = (url) => {
 
 // 3-way training-signal feedback (relevant / borderline / wrong). Styled to
 // match the legacy frontend's "Match" pill exactly. Fires Labels.recordLabel.
-export function FeedbackPills({ track, value, onLabel }) {
+// `source` ({ label, color }) names the search the track is being rated against,
+// so it's clear what "Match" is validating.
+export function FeedbackPills({ track, value, onLabel, source }) {
   const opts = [
     ['relevant', <IconCheck size={15} />, 'mp-yes', 'Relevant'],
     ['borderline', <IconTilde size={15} />, 'mp-mid', 'Borderline'],
     ['wrong', <IconX size={15} />, 'mp-no', 'Wrong'],
   ];
   return (
-    <div className="match-pill label-group" role="group" aria-label="Rate match" onClick={(e) => e.stopPropagation()}>
-      <span className="mp-label">Match</span>
+    <div className="match-pill label-group" role="group"
+      aria-label={source ? `Rate match for ${source.label}` : 'Rate match'} onClick={(e) => e.stopPropagation()}>
+      <span className="mp-label">Match{source ? ':' : ''}</span>
+      {source && <span className="mp-tag" style={{ color: source.color }} title={source.label}>{source.label}</span>}
       {opts.map(([sig, glyph, tone, title]) => (
         <button
           key={sig}
@@ -95,5 +106,28 @@ export function SourceLink({ track, className = '' }) {
       onClick={(e) => e.stopPropagation()} title="Open source (Free Music Archive)">
       <IconExternal size={13} />
     </a>
+  );
+}
+
+// About modal — shared by the desktop header button and the mobile About tab.
+export function AboutModal({ onClose }) {
+  return (
+    <div className="ld-about-overlay" role="dialog" aria-modal="true" aria-label="About EchoLocate"
+      onClick={(e) => { if (e.target === e.currentTarget) onClose(); }}>
+      <div className="ld-about-card">
+        <button className="ld-about-close" aria-label="Close" onClick={onClose}>✕</button>
+        <h2 className="el-h2" style={{ fontSize: '1.4rem', marginBottom: 8 }}>About EchoLocate</h2>
+        <p className="el-body-muted">
+          EchoLocate is an AI-powered music discovery system that uses audio embeddings for
+          sonic similarity search. The sonar map plots tracks by a 2D PCA projection of their
+          MERT <code>v_mid</code> embedding — the same vector used for interpolation. Search
+          layers, build a playlist, and click the lines between tracks to interpolate.
+        </p>
+        <p className="el-body-muted" style={{ marginTop: 10 }}>
+          <a className="ld-about-link" href="https://github.com/along528/echolocate" target="_blank" rel="noopener noreferrer">View on GitHub ↗</a>
+        </p>
+        <p className="el-italic-muted" style={{ marginTop: 12 }}>Built with MERT + CLAP embeddings, DuckDB VSS, and HNSW indexing.</p>
+      </div>
+    </div>
   );
 }

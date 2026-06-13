@@ -1,13 +1,14 @@
-/* Sonar — mobile (map-first). Dark, full-bleed sonar map with floating glass
-   chrome and bottom sheets. Carried verbatim from the design handoff
-   (styles/layout-d-mobile.css). Classes it leans on (.match-pill, .lc-source-tag,
-   .ld-detail-url, .ld-layer-swatch, .el-chip, .lo-btn-icon, .lo-btn-ghost,
-   .lo-eyebrow*) are already defined in style.css / sonar.css. */
+/* Sonar — mobile (map-first). Dark, full-bleed sonar map with a Radio
+   Garden-style layered bottom stack: a peeking track-detail panel above a
+   docked now-playing strip above a bottom tab bar. Classes it leans on
+   (.match-pill, .lc-source-tag, .ld-detail-url, .ld-layer-swatch, .el-chip,
+   .lo-btn-icon, .lo-btn-ghost, .lo-eyebrow*) live in style.css / sonar.css. */
 
 .ldm-app {
   /* Fixed (not absolute) so the map frame stays pinned to the viewport and the
      on-screen keyboard can't scroll the whole app out of view. */
   position: fixed; inset: 0;
+  --ldm-peek-h: 0px;
   background: var(--el-bg-primary);
   color: var(--el-fg-primary);
   font-family: var(--el-font-sans);
@@ -15,30 +16,17 @@
   overflow: hidden;
   overscroll-behavior: none;
 }
+.ldm-app.is-peek { --ldm-peek-h: 92px; }
 
-/* ===== Top floating chrome (over the map) ===== */
+/* ===== Top floating chrome — pills only, the map runs to the very top ===== */
 .ldm-top {
   position: absolute; top: 0; left: 0; right: 0; z-index: 12;
-  padding: 54px 12px 8px;
-  display: flex; flex-direction: column; gap: 8px;
-  background: linear-gradient(180deg, rgba(10,10,15,0.92) 40%, rgba(10,10,15,0));
+  padding: calc(env(safe-area-inset-top, 0px) + 12px) 12px 8px;
+  display: flex; flex-direction: column; gap: 10px;
+  background: linear-gradient(180deg, rgba(10,10,15,0.75), rgba(10,10,15,0));
   pointer-events: none;
 }
 .ldm-top > * { pointer-events: auto; }
-/* Brand row — the EchoLocate wordmark, floating over the map at the very top. */
-.ldm-brand { display: flex; align-items: center; }
-.ldm-top-row { display: flex; align-items: center; gap: 8px; }
-.ldm-search {
-  flex: 1; display: flex; align-items: center; gap: 8px;
-  height: 40px; padding: 0 14px;
-  background: var(--el-bg-input); border: 1px solid var(--el-border);
-  border-radius: var(--el-radius-pill); color: var(--el-fg-secondary);
-  font-size: 0.92rem; text-align: left;
-}
-.ldm-search:active { border-color: var(--el-indigo-500); }
-.ldm-seg { display: inline-flex; background: var(--el-bg-tertiary); border: 1px solid var(--el-border); border-radius: var(--el-radius-md); padding: 3px; gap: 2px; flex: 0 0 auto; }
-.ldm-seg-btn { width: 40px; height: 34px; display: inline-flex; align-items: center; justify-content: center; border: none; background: transparent; color: var(--el-fg-secondary); border-radius: 6px; }
-.ldm-seg-btn.is-active { background: var(--el-bg-secondary); color: var(--el-fg-primary); box-shadow: 0 1px 0 var(--el-border-strong); }
 
 .ldm-chips { display: flex; gap: 6px; overflow-x: auto; padding: 2px 0 4px; scrollbar-width: none; }
 .ldm-chips::-webkit-scrollbar { display: none; }
@@ -51,64 +39,183 @@
 }
 .ldm-chip.is-hidden { opacity: 0.4; }
 .ldm-chip.is-solo { box-shadow: 0 0 0 1px currentColor inset; }
+.ldm-chip:active { transform: scale(0.97); }
 .ldm-chip-swatch { width: 8px; height: 8px; border-radius: 50%; flex: 0 0 auto; }
 .ldm-chip-x { background: none; border: none; color: inherit; opacity: 0.55; font-size: 0.95rem; line-height: 1; padding: 0 2px; }
-.ldm-chip-add { color: var(--el-fg-secondary); border-style: dashed; }
+.ldm-chip-add { color: var(--el-fg-secondary); border-style: dashed; background: transparent; }
 
 /* ===== Map stage ===== */
 .ldm-stage { position: absolute; inset: 0; }
 .ldm-map { position: absolute; inset: 0; width: 100%; height: 100%; touch-action: none; }
+
+/* Fixed center reticle — sits in the middle of the visible map band (above the
+   dock). Pan the map to "tune" the nearest dot under it. */
+.ldm-reticle {
+  position: absolute; left: 50%; top: calc((100% - var(--ldm-bottom-h, 0px)) / 2);
+  z-index: 5; width: 56px; height: 56px; margin: -28px 0 0 -28px;
+  border-radius: 50%; border: 1.5px solid rgba(255,255,255,0.55);
+  box-shadow: 0 0 0 1px rgba(10,10,15,0.4), 0 0 18px rgba(99,102,241,0.25);
+  pointer-events: none;
+}
+.ldm-reticle::after {
+  content: ''; position: absolute; left: 50%; top: 50%;
+  width: 4px; height: 4px; margin: -2px 0 0 -2px;
+  border-radius: 50%; background: rgba(255,255,255,0.85);
+}
+
 .ldm-caption {
-  position: absolute; right: 12px; top: 150px; z-index: 6;
+  position: absolute; right: 12px; top: calc(var(--ldm-top-h, 64px) + 6px); z-index: 6;
   display: inline-flex; align-items: center; gap: 5px;
   padding: 4px 8px; font-size: 0.66rem; text-transform: uppercase; letter-spacing: 0.5px;
   color: var(--el-fg-secondary); background: rgba(18,18,26,0.7);
   border: 1px solid var(--el-border); border-radius: var(--el-radius-sm); backdrop-filter: blur(6px);
 }
-.ldm-legend {
-  position: absolute; left: 12px; bottom: 150px; z-index: 6;
-  display: flex; flex-direction: column; gap: 5px; max-width: 60%;
-  padding: 8px 10px; font-size: 0.7rem; color: var(--el-fg-secondary);
-  background: rgba(18,18,26,0.82); border: 1px solid var(--el-border);
-  border-radius: var(--el-radius-md); backdrop-filter: blur(6px);
-}
-.ldm-legend-row { display: flex; align-items: center; gap: 7px; }
-.ldm-legend-dot { width: 9px; height: 9px; border-radius: 50%; flex: 0 0 auto; }
-
-/* ===== Bottom chrome ===== */
-.ldm-bottom { position: absolute; left: 0; right: 0; bottom: 0; z-index: 12; padding: 0 12px 26px; display: flex; flex-direction: column; gap: 8px; pointer-events: none; }
-.ldm-bottom > * { pointer-events: auto; }
-.ldm-fab-row { display: flex; justify-content: flex-end; gap: 8px; }
-.ldm-fab {
-  display: inline-flex; align-items: center; gap: 7px; height: 38px; padding: 0 14px;
+/* Interpolation focus-mode banner — pinned above the dock/peek, one tap clears. */
+.ldm-interp-clear {
+  position: absolute; left: 50%; transform: translateX(-50%); z-index: 6;
+  bottom: calc(var(--ldm-bottom-h, 0px) + var(--ldm-peek-h, 0px) + 14px);
+  display: inline-flex; align-items: center; gap: 7px;
+  height: 32px; padding: 0 14px; white-space: nowrap;
   background: rgba(18,18,26,0.9); border: 1px solid var(--el-border-strong);
   border-radius: var(--el-radius-pill); color: var(--el-fg-primary);
-  font-size: 0.8rem; font-weight: var(--el-fw-medium); backdrop-filter: blur(8px);
+  font-size: 0.76rem; font-weight: var(--el-fw-medium); backdrop-filter: blur(8px);
 }
-.ldm-fab .ldm-fab-badge { min-width: 18px; height: 18px; padding: 0 5px; border-radius: 9px; background: var(--el-gradient); color: white; font-size: 0.7rem; display: inline-flex; align-items: center; justify-content: center; }
-.ldm-zoombtns { display: inline-flex; flex-direction: column; gap: 6px; }
-.ldm-zoombtns .lo-btn-icon { background: rgba(18,18,26,0.9); backdrop-filter: blur(8px); }
+.ldm-interp-clear:active { transform: translateX(-50%) scale(0.97); }
+.ldm-interp-dot { width: 8px; height: 8px; border-radius: 50%; background: #ffffff; flex: 0 0 auto; }
 
-/* Mini player */
-.ldm-player {
-  display: flex; align-items: center; gap: 12px; padding: 10px 12px;
-  background: rgba(18,18,26,0.94); border: 1px solid var(--el-border-strong);
-  border-radius: var(--el-radius-xl); backdrop-filter: blur(12px);
-  box-shadow: var(--el-shadow-md);
+.ldm-zoombtns {
+  position: absolute; right: 12px; z-index: 6;
+  bottom: calc(var(--ldm-bottom-h, 0px) + var(--ldm-peek-h, 0px) + 12px);
+  display: inline-flex; flex-direction: column; gap: 6px;
 }
+.ldm-zoombtns .lo-btn-icon { background: rgba(18,18,26,0.9); backdrop-filter: blur(8px); }
+/* Auto-play-on-tune toggle: indigo when on, dimmed + slashed icon when off. */
+.ldm-autoplay.is-on { color: var(--el-indigo-500); border-color: var(--el-indigo-500); }
+.ldm-autoplay:not(.is-on) { opacity: 0.75; }
+
+/* Long-press "charging" ring — converges on the held dot over the 500ms hold. */
+.ldm-press-ring {
+  fill: none; stroke: #ffffff;
+  transform-box: fill-box; transform-origin: center;
+  animation: ldm-charge 0.5s ease-in forwards;
+}
+@keyframes ldm-charge {
+  from { transform: scale(2.4); opacity: 0.1; }
+  to { transform: scale(1); opacity: 0.95; }
+}
+
+/* Candidate reveal wave — a ring expands from the charged dot, and each
+   candidate fades/pops in (per-dot animation-delay) as the ring reaches it. */
+.ldm-wave-ring {
+  fill: none; stroke: #ffffff;
+  transform-box: fill-box; transform-origin: center;
+  animation: ldm-wave ease-out forwards; /* duration set inline */
+}
+@keyframes ldm-wave {
+  from { transform: scale(0.04); opacity: 0.6; }
+  to { transform: scale(1); opacity: 0; }
+}
+.ldm-cand-in {
+  transform-box: fill-box; transform-origin: center;
+  animation: ldm-cand-in 0.3s ease-out both; /* delay set inline per dot */
+}
+@keyframes ldm-cand-in {
+  from { opacity: 0; transform: scale(0.4); }
+  to { opacity: 1; transform: scale(1); }
+}
+
+/* ===== Bottom dock: now strip + tab bar ===== */
+.ldm-dock { position: fixed; left: 0; right: 0; bottom: 0; z-index: 20; display: flex; flex-direction: column; }
+.ldm-tabbar {
+  display: flex; align-items: stretch; height: 54px;
+  padding-bottom: env(safe-area-inset-bottom);
+  background: rgba(12,12,18,0.97); border-top: 1px solid var(--el-border-strong);
+  backdrop-filter: blur(14px);
+}
+.ldm-tab {
+  flex: 1; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 3px;
+  background: none; border: none; color: var(--el-fg-secondary);
+  font-size: 0.62rem; font-weight: var(--el-fw-medium); letter-spacing: 0.02em;
+}
+.ldm-tab.is-active { color: var(--el-fg-primary); }
+.ldm-tab:active { transform: scale(0.95); }
+.ldm-tab-iconwrap { position: relative; display: inline-flex; }
+.ldm-tab-logo { display: inline-flex; height: 20px; align-items: center; }
+.ldm-tab-badge {
+  position: absolute; top: -5px; right: -10px; min-width: 15px; height: 15px; padding: 0 4px;
+  border-radius: 8px; background: var(--el-gradient); color: white; font-size: 0.6rem;
+  display: inline-flex; align-items: center; justify-content: center;
+}
+
+/* Now-playing strip — full-width, flat, progress hairline on the top edge. */
+.ldm-strip {
+  position: relative; display: flex; align-items: center; gap: 12px; height: 58px; padding: 0 12px;
+  background: rgba(18,18,26,0.97); border-top: 1px solid var(--el-border-strong); backdrop-filter: blur(12px);
+}
+.ldm-strip.is-empty { color: var(--el-fg-secondary); }
+.ldm-strip.is-empty .ldm-player-art { opacity: 0.5; }
+.ldm-strip.is-empty .ldm-player-title { color: var(--el-fg-secondary); font-weight: var(--el-fw-medium); }
+.ldm-player-play:disabled { opacity: 0.4; }
+.ldm-strip-ctl { display: flex; align-items: center; gap: 6px; flex: 0 0 auto; }
+.ldm-strip-nav {
+  width: 32px; height: 32px; border-radius: 50%; flex: 0 0 auto;
+  background: transparent; border: none; color: var(--el-fg-secondary);
+  display: inline-flex; align-items: center; justify-content: center;
+}
+.ldm-strip-nav:active { transform: scale(0.92); color: var(--el-fg-primary); }
+.ldm-strip-prog { position: absolute; top: -1px; left: 0; right: 0; height: 3px; background: rgba(255,255,255,0.12); }
+.ldm-strip-prog > span { display: block; height: 100%; background: var(--el-indigo-500); }
+.ldm-strip .ldm-player-art { width: 40px; height: 40px; }
+
+/* Shared player bits (used by the strip and the peek header). */
 .ldm-player-art { width: 44px; height: 44px; border-radius: var(--el-radius-md); background: radial-gradient(120% 80% at 30% 20%, rgba(139,92,246,0.45), transparent 60%), var(--el-bg-tertiary); display: flex; align-items: center; justify-content: center; flex: 0 0 auto; }
-.ldm-player-art img { width: 26px; }
+.ldm-player-art img { width: 24px; }
 .ldm-player-info { flex: 1; min-width: 0; }
 .ldm-player-title { font-weight: var(--el-fw-semibold); font-size: 0.9rem; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .ldm-player-sub { color: var(--el-fg-secondary); font-size: 0.75rem; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .ldm-player-play { width: 40px; height: 40px; border-radius: 50%; flex: 0 0 auto; background: var(--el-gradient); border: none; color: white; display: inline-flex; align-items: center; justify-content: center; }
-.ldm-player-prog { position: absolute; left: 12px; right: 12px; bottom: 4px; height: 2px; background: rgba(255,255,255,0.12); border-radius: 2px; overflow: hidden; }
-.ldm-player-prog > span { display: block; height: 100%; background: var(--el-indigo-500); }
+
+/* ===== Peek detail panel (non-modal, above the dock) ===== */
+.ldm-detail-scrim { position: fixed; inset: 0; z-index: 16; background: rgba(0,0,0,0.45); animation: ldm-fade .18s ease; }
+.ldm-peek {
+  position: fixed; left: 0; right: 0; bottom: var(--ldm-bottom-h, 0px); z-index: 18;
+  height: min(68dvh, 540px); display: flex; flex-direction: column;
+  /* Translucent in peek so the map reads through it; opaque when expanded. */
+  background: rgba(18,18,26,0.78); backdrop-filter: blur(14px);
+  border: 1px solid var(--el-border-strong); border-bottom: none;
+  border-radius: 18px 18px 0 0; box-shadow: 0 -8px 30px rgba(0,0,0,0.45);
+  transform: translateY(calc(100% - 92px));
+  transition: transform 0.22s cubic-bezier(.2,.8,.2,1);
+}
+.ldm-peek.is-full { transform: translateY(0); background: var(--el-bg-secondary); }
+.ldm-peek-head { flex: 0 0 92px; display: flex; flex-direction: column; align-items: center; gap: 6px; padding: 7px 16px 0; touch-action: none; cursor: grab; }
+.ldm-peek-head .ldm-handle { width: 38px; height: 4px; border-radius: 2px; background: var(--el-border-strong); }
+.ldm-peek-row { display: flex; align-items: center; gap: 10px; width: 100%; }
+.ldm-peek-swatch { width: 11px; height: 11px; border-radius: 50%; flex: 0 0 auto; }
+.ldm-peek-info { flex: 1; min-width: 0; }
+.ldm-peek-title { font-weight: var(--el-fw-semibold); font-size: 0.95rem; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.ldm-peek-sub { color: var(--el-fg-secondary); font-size: 0.74rem; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.ldm-peek-meta {
+  display: flex; align-items: center; gap: 8px; margin-top: 2px;
+  font-size: 0.68rem; color: var(--el-fg-secondary);
+  white-space: nowrap; overflow: hidden;
+}
+.ldm-peek-tag { font-weight: var(--el-fw-medium); flex: 0 0 auto; }
+.ldm-peek-album { overflow: hidden; text-overflow: ellipsis; min-width: 0; }
+.ldm-peek-dist { flex: 0 0 auto; font-variant-numeric: tabular-nums; }
+.ldm-peek-add {
+  width: 38px; height: 38px; border-radius: var(--el-radius-md); flex: 0 0 auto;
+  background: var(--el-bg-tertiary); border: 1px solid var(--el-border);
+  color: var(--el-fg-primary); display: inline-flex; align-items: center; justify-content: center;
+}
+.ldm-peek-add.is-active { background: var(--el-indigo-500); border-color: transparent; color: white; }
+.ldm-peek-body { flex: 1 1 auto; min-height: 0; overflow-y: auto; overscroll-behavior: contain; padding: 4px 16px calc(16px + env(safe-area-inset-bottom)); }
 
 /* ===== Mobile list view ===== */
-.ldm-listview { position: absolute; inset: 0; padding: 150px 12px 150px; overflow-y: auto; }
+.ldm-listview { position: absolute; inset: 0; overflow-y: auto; padding: calc(var(--ldm-top-h, 142px) + 8px) 12px calc(var(--ldm-bottom-h, 64px) + 16px); }
 .ldm-row { display: flex; align-items: center; gap: 10px; padding: 10px 10px; background: var(--el-glass); border: 1px solid var(--el-border); border-radius: var(--el-radius-lg); margin-bottom: 8px; }
 .ldm-row.is-playing { background: var(--el-indigo-tint-2); border-color: var(--el-indigo-500); }
+.ldm-row:active { transform: scale(0.985); }
 .ldm-row-dot { width: 10px; height: 10px; border-radius: 50%; flex: 0 0 auto; }
 .ldm-row-info { flex: 1; min-width: 0; }
 .ldm-row-title { font-weight: var(--el-fw-medium); font-size: 0.9rem; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
@@ -116,8 +223,11 @@
 .ldm-row-add { width: 34px; height: 34px; border-radius: var(--el-radius-md); background: transparent; border: 1px solid var(--el-border); color: var(--el-fg-secondary); display: inline-flex; align-items: center; justify-content: center; flex: 0 0 auto; }
 .ldm-row-add.is-active { background: var(--el-indigo-500); color: white; border-color: transparent; }
 
-/* ===== Bottom sheets ===== */
+/* ===== Bottom sheets (modal) ===== */
 .ldm-scrim { position: fixed; inset: 0; z-index: 30; background: rgba(0,0,0,0.5); backdrop-filter: blur(2px); animation: ldm-fade .18s ease; }
+/* Search sheet: keep the background sharp + light so the pills you're adding
+   stay clearly visible at the top of the map. */
+.ldm-scrim.is-clear { background: rgba(0,0,0,0.22); backdrop-filter: none; }
 @keyframes ldm-fade { from { opacity: 0; } to { opacity: 1; } }
 .ldm-sheet {
   position: fixed; left: 0; right: 0; bottom: 0; z-index: 31;
@@ -128,28 +238,29 @@
   animation: ldm-rise .22s cubic-bezier(.2,.8,.2,1);
 }
 @keyframes ldm-rise { from { transform: translateY(100%); } to { transform: translateY(0); } }
-/* Enlarged touch target around the grab handle — drag it down to dismiss. */
+/* Visual grab handle. The whole sheet is draggable (handlers on the root). */
 .ldm-grip { display: flex; justify-content: center; align-items: center; padding: 6px 0 10px; margin: -6px 0 0; flex: 0 0 auto; touch-action: none; cursor: grab; }
 .ldm-handle { width: 38px; height: 4px; border-radius: 2px; background: var(--el-border-strong); }
 .ldm-sheet-head { display: flex; align-items: center; justify-content: space-between; margin-bottom: 12px; }
-/* Flex so the scroll area takes the remaining height and any pinned footer
-   (e.g. the now-playing quick actions) always stays on-screen. */
-.ldm-sheet-scroll { overflow-y: auto; flex: 1 1 auto; min-height: 0; }
+.ldm-sheet-scroll { overflow-y: auto; overscroll-behavior: contain; flex: 1 1 auto; min-height: 0; }
 .ldm-sheet-input { width: 100%; height: 44px; padding: 0 14px; background: var(--el-bg-input); border: 1px solid var(--el-indigo-500); border-radius: var(--el-radius-md); color: var(--el-fg-primary); font-size: 1rem; margin-bottom: 12px; }
 .ldm-sheet-input::placeholder { color: var(--el-fg-secondary); }
 .ldm-chipwrap { display: flex; flex-wrap: wrap; gap: 8px; }
 .ldm-layer-manage { display: flex; flex-direction: column; gap: 8px; margin-top: 4px; }
 .ldm-layer-manage-row { display: flex; align-items: center; gap: 10px; padding: 10px 12px; background: var(--el-glass); border: 1px solid var(--el-border); border-radius: var(--el-radius-md); }
-.ldm-layer-manage-row .ldm-lm-label { flex: 1; min-width: 0; font-size: 0.9rem; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.ldm-lm-text { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 1px; }
+.ldm-lm-label { font-size: 0.9rem; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.ldm-lm-enh { color: var(--el-purple-400); font-size: 0.72rem; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .ldm-lm-btn { width: 34px; height: 34px; border-radius: var(--el-radius-md); background: transparent; border: 1px solid var(--el-border); color: var(--el-fg-secondary); display: inline-flex; align-items: center; justify-content: center; flex: 0 0 auto; }
 
-/* Detail sheet */
-.ldm-detail-sources { display: flex; gap: 6px; flex-wrap: wrap; margin-bottom: 8px; }
+/* Detail content (shared by the expanded peek body) */
+.ldm-detail-sources { display: flex; gap: 6px; flex-wrap: wrap; margin-bottom: 8px; align-items: center; }
 .ldm-detail-title { font-size: 1.25rem; font-weight: var(--el-fw-bold); letter-spacing: -0.01em; }
 .ldm-detail-sub { color: var(--el-fg-secondary); margin-top: 2px; }
 .ldm-detail-actions { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin-top: 16px; }
 .ldm-detail-actions .ldm-act { display: inline-flex; align-items: center; justify-content: center; gap: 7px; height: 46px; border-radius: var(--el-radius-md); border: 1px solid var(--el-border); background: var(--el-bg-tertiary); color: var(--el-fg-primary); font-size: 0.9rem; font-weight: var(--el-fw-medium); }
 .ldm-detail-actions .ldm-act.is-primary { grid-column: span 2; background: var(--el-gradient); border-color: transparent; color: white; }
+.ldm-act:active { transform: scale(0.97); }
 .ldm-detail-fb { display: flex; justify-content: center; margin-top: 14px; }
 
 /* Now-playing full sheet */
@@ -175,7 +286,6 @@
 .ldm-pl-ctl { display: flex; gap: 4px; }
 .ldm-pl-link { align-self: stretch; margin: 4px 0 4px 18px; display: inline-flex; align-items: center; gap: 6px; padding: 4px 12px; background: var(--el-bg-tertiary); border: 1px dashed var(--el-border-strong); border-radius: var(--el-radius-pill); color: var(--el-fg-secondary); font-size: 0.74rem; width: fit-content; }
 .ldm-pl-link.is-active { border-style: solid; border-color: var(--el-indigo-500); color: var(--el-fg-primary); }
-.ldm-sheet-cta { margin-top: 14px; width: 100%; height: 48px; border-radius: var(--el-radius-md); background: var(--el-gradient); border: none; color: white; font-weight: var(--el-fw-semibold); font-size: 0.95rem; }
 
 .ldm-iconbtn { width: 34px; height: 34px; border-radius: var(--el-radius-md); background: var(--el-bg-tertiary); border: 1px solid var(--el-border); color: var(--el-fg-secondary); display: inline-flex; align-items: center; justify-content: center; }
 .ldm-onboard-eyebrow { color: var(--el-fg-secondary); font-size: 0.85rem; margin-bottom: 14px; line-height: 1.5; }
