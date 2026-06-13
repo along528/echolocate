@@ -169,8 +169,14 @@ export function useSonar({ initialView = 'map' } = {}) {
   };
   const addSeedLayer = (kind, track) => {
     if (!track) return;
-    setLayers((ls) => (ls.some((l) => l.kind === kind && l.seedTrackId === track.id)
-      ? ls : [...ls, makeLayer(kind, { label: track.title, seedTrackId: track.id, seedTrack: track }, ls)]));
+    // Creating a similar/dissimilar search auto-selects (solos) its pill, so the
+    // map immediately filters to the new layer's tracks. If the same search is
+    // already present, just solo the existing pill rather than duplicating it.
+    const existing = layers.find((l) => l.kind === kind && l.seedTrackId === track.id);
+    if (existing) { setSoloLayerId(existing.id); return; }
+    const layer = makeLayer(kind, { label: track.title, seedTrackId: track.id, seedTrack: track }, layers);
+    setLayers((ls) => [...ls, layer]);
+    setSoloLayerId(layer.id);
   };
 
   // Fresh session (nothing restored from localStorage): seed two random vibe
