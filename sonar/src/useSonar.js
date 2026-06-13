@@ -263,14 +263,17 @@ export function useSonar({ initialView = 'map' } = {}) {
     return m;
   }, [playlist]);
 
-  // Index of every track we have full metadata for.
+  // Index of every track we have full metadata for. The currently-playing track
+  // is kept in here even after it's removed from every layer/playlist, so it
+  // stays resolvable (selectable / peekable) while it's still playing.
   const tracksById = React.useMemo(() => {
     const m = new Map();
     layers.forEach((l) => { l.results.forEach((t) => m.set(t.id, t)); if (l.seedTrack) m.set(l.seedTrack.id, l.seedTrack); });
     if (candidates) candidates.tracks.forEach((t) => m.set(t.id, t));
     playlist.forEach((s) => { if (s.track) m.set(s.track.id, s.track); });
+    if (playingTrack && !m.has(playingTrack.id)) m.set(playingTrack.id, playingTrack);
     return m;
-  }, [layers, candidates, playlist]);
+  }, [layers, candidates, playlist, playingTrack]);
 
   const playing = playingId ? (tracksById.get(playingId) || (playingTrack?.id === playingId ? playingTrack : null)) : null;
   const hover = hoverId ? tracksById.get(hoverId) : null;
