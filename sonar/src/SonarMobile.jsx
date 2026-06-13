@@ -226,11 +226,13 @@ export default function SonarMobile({ s }) {
   const pressTimerRef = React.useRef(null);
   const longPressFiredRef = React.useRef(false);
   const [pressing, setPressing] = React.useState(null); // { x, y } plot coords
+  const [pressingEdge, setPressingEdge] = React.useState(null); // { aId, bId } — the glowing line
   const clearPress = () => {
     if (pressTimerRef.current) hapticCancel(); // released early — stop the buzz
     clearTimeout(pressTimerRef.current);
     pressTimerRef.current = null;
     setPressing(null);
+    setPressingEdge(null);
   };
   const pressStart = (t) => {
     longPressFiredRef.current = false;
@@ -256,6 +258,31 @@ export default function SonarMobile({ s }) {
     onTouchStart: () => pressStart(t),
     onTouchEnd: clearPress,
     onTouchCancel: clearPress,
+  });
+  // ---- long-press a playlist link → interpolate between its two endpoints ----
+  // Same charging mechanism as a dot: a 500ms hold (a pan cancels) charges a ring
+  // at the link's midpoint while the line glows, then fires the interpolation.
+  const edgePressStart = (a, b, mid) => {
+    longPressFiredRef.current = false;
+    setPressing({ x: mid.x, y: mid.y });
+    setPressingEdge({ aId: a.id, bId: b.id });
+    haptic([8, 90, 10, 80, 12, 70, 14, 60, 16]);
+    clearTimeout(pressTimerRef.current);
+    pressTimerRef.current = setTimeout(() => {
+      pressTimerRef.current = null;
+      setPressing(null);
+      setPressingEdge(null);
+      if (movedRef.current) { hapticCancel(); return; }
+      longPressFiredRef.current = true;
+      haptic(35);
+      onInterpolate(a, b); // sets the reveal wave + requests candidates
+    }, 500);
+  };
+  const edgePress = (a, b, mid) => ({
+    onTouchStart: () => edgePressStart(a, b, mid),
+    onTouchEnd: clearPress,
+    onTouchCancel: clearPress,
+    onClick: (e) => e.stopPropagation(), // absorb taps — interpolation is long-press only
   });
 
   // When the selection clears, the peek panel has nothing to show.
@@ -621,8 +648,8 @@ export default function SonarMobile({ s }) {
                 })()
               ) : (
                 <>
-                  {playlistTracks.length > 1 && playlistTracks.slice(1).map((b, i) => { const a = playlistTracks[i], pa = dotPosM(a), pb = dotPosM(b); const mx = (pa.x + pb.x) / 2, my = (pa.y + pb.y) / 2;
-                    return (<g key={`s${a.id}${b.id}`} onClick={onTap(() => onInterpolate(a, b))}><line x1={pa.x} y1={pa.y} x2={pb.x} y2={pb.y} stroke="transparent" strokeWidth={20 * iz} /><line x1={pa.x} y1={pa.y} x2={pb.x} y2={pb.y} stroke="var(--el-indigo-500)" strokeOpacity={0.55} strokeWidth={2 * iz} strokeDasharray={`${4 * iz} ${4 * iz}`} /><circle cx={mx} cy={my} r={11 * iz} fill="var(--el-bg-secondary)" stroke="var(--el-indigo-500)" strokeWidth={1.5 * iz} /><path d={`M${mx - 5 * iz} ${my} h${10 * iz} M${mx} ${my - 5 * iz} v${10 * iz}`} stroke="var(--el-indigo-500)" strokeWidth={1.5 * iz} strokeLinecap="round" /></g>); })}
+                  {playlistTracks.length > 1 && playlistTracks.slice(1).map((b, i) => { const a = playlistTracks[i], pa = dotPosM(a), pb = dotPosM(b); const mx = (pa.x + pb.x) / 2, my = (pa.y + pb.y) / 2; const charging = pressingEdge && pressingEdge.aId === a.id && pressingEdge.bId === b.id;
+                    return (<g key={`s${a.id}${b.id}`} {...edgePress(a, b, { x: mx, y: my })}><line x1={pa.x} y1={pa.y} x2={pb.x} y2={pb.y} stroke="transparent" strokeWidth={20 * iz} /><line x1={pa.x} y1={pa.y} x2={pb.x} y2={pb.y} stroke="var(--el-indigo-500)" strokeOpacity={charging ? 0.95 : 0.55} strokeWidth={(charging ? 3.5 : 2) * iz} strokeDasharray={`${4 * iz} ${4 * iz}`} style={{ filter: charging ? 'drop-shadow(0 0 6px var(--el-indigo-500))' : 'none' }} /></g>); })}
                   {playlistTracks.map((t) => { const p = dotPosM(t); return <circle key={'r' + t.id} cx={p.x} cy={p.y} r={13 * iz} fill="none" stroke="var(--el-indigo-500)" strokeWidth={2 * iz} strokeOpacity="0.6" style={{ pointerEvents: 'none' }} />; })}
                   {visibleTracks.map(({ track: t, color }, i) => { const p = dotPosM(t), isPlay = t.id === playingId, isSel = t.id === selectedId, inPl = playlistById.has(t.id); const r = (isPlay ? 9.5 : isSel ? 8 : 5.5) * iz;
                     return (<g key={t.id} className="el-dot-pop" style={{ animationDelay: `${Math.min(i * 14, 320)}ms` }} onClick={onTap(() => openDetail(t.id))} {...dotPress(t)}>
@@ -737,7 +764,8 @@ export default function SonarMobile({ s }) {
                   </div>
                 </div>
                 <button className={'ldm-peek-add ' + (inPl ? 'is-active' : '')}
-                  onClick={(e) => { e.stopPropagation(); if (!inPl) (cand ? insertCandidate(t) : addToPlaylist(t)); }}>
+                  title={inPl ? 'Remove from playlist' : 'Add to playlist'} aria-label={inPl ? 'Remove from playlist' : 'Add to playlist'}
+                  onClick={(e) => { e.stopPropagation(); if (inPl) { const slot = playlistById.get(t.id); if (slot) removeFromPlaylist(slot.id); } else (cand ? insertCandidate(t) : addToPlaylist(t)); }}>
                   {inPl ? <IconCheck size={18} /> : <IconListPlus size={18} />}
                 </button>
               </div>
