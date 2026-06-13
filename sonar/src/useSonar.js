@@ -12,9 +12,12 @@ import { LAYER_COLORS, CANDIDATE_COLOR, FALLBACK_COLOR, distBetween, layerTag } 
 
 const STORE_KEY = 'sonar-state-v1';
 
-// Responsive breakpoint helper — true on phone-width viewports. Shared by the
+// Responsive breakpoint helper — true on phone-sized viewports. Shared by the
 // Sonar shell to pick the mobile vs desktop view.
-export function useIsMobile(query = '(max-width: 640px)') {
+// Either dimension ≤640 counts as mobile, but the short-side clause is gated on a
+// coarse pointer so a *rotated phone* (landscape: wide but short, touch) stays on
+// the mobile view, while a merely short desktop window (mouse) does not.
+export function useIsMobile(query = '(max-width: 640px), (max-height: 640px) and (pointer: coarse)') {
   const get = () => (typeof window !== 'undefined' && window.matchMedia
     ? window.matchMedia(query).matches : false);
   const [isMobile, setIsMobile] = React.useState(get);
