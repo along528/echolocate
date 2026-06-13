@@ -185,6 +185,14 @@ export default function SonarMobile({ s }) {
   // Composition wrappers over shared handlers. A dot tap opens the peek panel
   // (non-modal) rather than a modal sheet.
   const openDetail = (id) => { setSelectedId(id); setDetailMode('peek'); };
+
+  // The currently-soloed layer ("expanded pill") and, for similar/dissimilar
+  // pills, the track it's compared against. The seed track is only surfaced on
+  // the map / in the drop-down detail while its pill is expanded.
+  const soloLayer = soloLayerId ? layers.find((l) => l.id === soloLayerId) : null;
+  const soloSeed = soloLayer
+    && (soloLayer.kind === 'similar' || soloLayer.kind === 'dissimilar')
+    ? soloLayer.seedTrack : null;
   // Origin (plot coords) of the candidate reveal wave — the charged dot for a
   // long-press, the link midpoint for a playlist-sheet interpolation. The wave
   // plays when the candidates mount (i.e., when the API responds).
@@ -446,6 +454,10 @@ export default function SonarMobile({ s }) {
     if (prevSoloRef.current !== soloLayerId) {
       prevSoloRef.current = soloLayerId;
       const vis = visibleTracks.map((e) => e.track);
+      // Frame the seed track too when expanding a similar/dissimilar pill, so
+      // "zooming into the pill" includes the track being compared against.
+      const solo = soloLayerId ? layers.find((l) => l.id === soloLayerId) : null;
+      if (solo?.seedTrack) vis.push(solo.seedTrack);
       if (vis.length) recenterOn(vis, { keepReticle: true });
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -649,6 +661,17 @@ export default function SonarMobile({ s }) {
                       <circle cx={p.x} cy={p.y} r={r} fill={color} opacity={inPl ? 1 : 0.88} style={{ filter: isPlay ? `drop-shadow(0 0 8px ${color})` : 'none' }} />
                       {inPl && <circle cx={p.x} cy={p.y} r={r + 3 * iz} fill="none" stroke="white" strokeWidth={iz} />}
                     </g>); })}
+                  {/* Seed track of the expanded (soloed) similar/dissimilar pill:
+                      a distinct dashed-ring marker, clickable to peek/play. Only
+                      shown while that pill is soloed. */}
+                  {soloSeed && (() => { const p = dotPosM(soloSeed); const isPlay = soloSeed.id === playingId, isSel = soloSeed.id === selectedId; const color = soloLayer.color; const core = (isPlay ? 9 : 7) * iz;
+                    return (<g key={'seed' + soloSeed.id} onClick={onTap(() => handleDotTap(soloSeed))}>
+                      <circle cx={p.x} cy={p.y} r={16 * iz} fill="transparent" />
+                      <circle cx={p.x} cy={p.y} r={13 * iz} fill="none" stroke={color} strokeWidth={1.5 * iz} strokeDasharray={`${3 * iz} ${2 * iz}`} />
+                      {isSel && <circle cx={p.x} cy={p.y} r={16 * iz} fill="none" stroke={color} strokeWidth={1.5 * iz} />}
+                      <circle cx={p.x} cy={p.y} r={core} fill={color} style={{ filter: `drop-shadow(0 0 6px ${color})` }} />
+                      <circle cx={p.x} cy={p.y} r={core + 2.5 * iz} fill="none" stroke="white" strokeWidth={iz} strokeOpacity="0.85" />
+                    </g>); })()}
                   {/* playlist tracks whose source layer is no longer visible still
                       get a dot (colored by their saved origin), so the trail stays
                       on the map after the searches are cleared. */}
@@ -721,6 +744,25 @@ export default function SonarMobile({ s }) {
                 <button className="ldm-chip-x" onClick={(e) => { e.stopPropagation(); removeLayer(l.id); }}>×</button>
               </span>
             ))}
+          </div>
+        )}
+        {/* Expanded-pill detail: drops down under the pills when one is soloed.
+            Vibe → the AI-enhanced caption; similar/dissimilar → the seed track
+            it's compared against (tap to peek it; it's also marked on the map). */}
+        {soloLayer && (
+          <div className="ldm-pill-detail" style={{ borderLeftColor: soloLayer.color }}>
+            <span className="ldm-pill-detail-kind" style={{ color: soloLayer.color }}>{layerKindWord(soloLayer)}</span>
+            {soloLayer.kind === 'vibe' ? (
+              soloLayer.enhancedQuery
+                ? <span className="ldm-pill-detail-enh">✨ {soloLayer.enhancedQuery}</span>
+                : <span className="ldm-pill-detail-dim">{soloLayer.loading ? 'enhancing…' : 'no enhanced caption'}</span>
+            ) : (
+              soloSeed
+                ? <button className="ldm-pill-detail-seed" onClick={() => openDetail(soloSeed.id)}>
+                    {soloSeed.title} <span className="ldm-pill-detail-artist">— {soloSeed.artist}</span>
+                  </button>
+                : <span className="ldm-pill-detail-dim">seed track unavailable</span>
+            )}
           </div>
         )}
         <div className="ldm-chips-ctl">
@@ -861,6 +903,11 @@ export default function SonarMobile({ s }) {
                     <div className="ldm-lm-text">
                       <span className="ldm-lm-label">{layerKindWord(l)} · {l.label}</span>
                       {l.enhancedQuery && <span className="ldm-lm-enh">✨ {l.enhancedQuery}</span>}
+                      {l.seedTrack && (
+                        <button className="ldm-lm-seed" onClick={() => { openDetail(l.seedTrack.id); setSheet(null); }}>
+                          {layerTag(l)} {l.seedTrack.title} <span className="ldm-lm-seed-artist">— {l.seedTrack.artist}</span>
+                        </button>
+                      )}
                     </div>
                     <button className="ldm-lm-btn" onClick={() => toggleLayerVisible(l.id)} style={l.visible ? null : { opacity: 0.5 }}>{l.visible ? <IconEye size={15} /> : <IconEyeOff size={15} />}</button>
                     <button className="ldm-lm-btn" onClick={() => removeLayer(l.id)}><IconClose size={13} /></button>

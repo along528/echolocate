@@ -7,6 +7,7 @@ pub struct Config {
     pub port: u16,
     pub gcp_project_id: Option<String>,
     pub gcp_location: String,
+    pub gemini_model: String,
     pub clap_onnx_dir: String,
     pub cors_allow_origins: Option<String>,
     pub gcs_bucket_name: String,
@@ -30,6 +31,7 @@ impl Config {
                 .or_else(|_| env::var("GOOGLE_CLOUD_PROJECT"))
                 .ok(),
             gcp_location: env::var("GCP_LOCATION").unwrap_or_else(|_| "us-central1".into()),
+            gemini_model: env::var("GEMINI_MODEL").unwrap_or_else(|_| "gemini-2.5-flash".into()),
             clap_onnx_dir: env::var("CLAP_ONNX_DIR")
                 .unwrap_or_else(|_| "/app/clap_text_onnx".into()),
             cors_allow_origins: env::var("CORS_ALLOW_ORIGINS").ok(),
