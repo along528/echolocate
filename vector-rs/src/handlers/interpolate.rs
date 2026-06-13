@@ -16,6 +16,9 @@ pub async fn interpolate_tracks(
     let pool = state.db_pool.clone();
     let limit = request.limit.unwrap_or(10);
     let method = request.method.unwrap_or_else(|| "greedy_walk".into());
+    // Constrain candidates to the requested source (e.g. "fma") so interpolation
+    // doesn't surface tracks from other catalogs. "all" (or unset) = no filter.
+    let source = request.source.unwrap_or_else(|| "all".into());
 
     tokio::task::spawn_blocking(move || {
         let conn = pool.get()?;
@@ -46,23 +49,34 @@ pub async fn interpolate_tracks(
         let midpoint = get_midpoint(vec1, vec2, &method);
 
         // 3. Search for nearest neighbors to the midpoint
-        //    Use the view (no source filter) — HNSW won't kick in but interpolate
-        //    is a low-frequency endpoint; correctness over speed here.
+        //    Use the view (HNSW won't kick in) but filter by source so candidates
+        //    stay within the requested catalog. interpolate is low-frequency, so
+        //    a brute-force scan is fine here.
         let vec_literal = vec_f32_to_sql_literal(&midpoint, 768);
+        let source_filter = if source != "all" { " AND source = ?" } else { "" };
         let query = format!(
             "SELECT id, source, title, artist, album, relative_path, track_url, album_url, artist_url, \
              array_cosine_distance(v_mid, {}) as distance \
-             FROM tracks WHERE id NOT IN (?, ?) \
+             FROM tracks WHERE id NOT IN (?, ?){} \
              ORDER BY distance ASC LIMIT ?",
-            vec_literal
+            vec_literal, source_filter
         );
 
         let mut stmt = conn.prepare(&query)?;
-        let mut rows = stmt.query(duckdb::params![
-            request.track_id_1,
-            request.track_id_2,
-            limit
-        ])?;
+        let mut rows = if source != "all" {
+            stmt.query(duckdb::params![
+                request.track_id_1,
+                request.track_id_2,
+                source,
+                limit
+            ])?
+        } else {
+            stmt.query(duckdb::params![
+                request.track_id_1,
+                request.track_id_2,
+                limit
+            ])?
+        };
 
         let mut results = Vec::new();
         while let Some(row) = rows.next()? {

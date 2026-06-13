@@ -19,7 +19,10 @@ GIT_SHA=$(git rev-parse --short HEAD 2>/dev/null || echo "unknown")
 # index baked without those columns makes ALL queries error at runtime. Fail loudly
 # here rather than shipping a broken image. Regenerate the index with:
 #   cd embeddings && python generate_projection.py && python generate_index_db.py
-INDEX_DB="data/index.duckdb"
+# Path is relative to vector-rs/ (this script's dir). The Docker build context is the
+# repo root, so the index lives at <repo-root>/data/index.duckdb == ../data/index.duckdb
+# here. The Dockerfile's `COPY data/index.duckdb` resolves against that same root.
+INDEX_DB="../data/index.duckdb"
 if [ ! -f "$INDEX_DB" ]; then
     echo "❌ $INDEX_DB not found — it gets baked into the image (INDEX_DB_PATH=/app/index.duckdb)." >&2
     echo "   Build it: cd embeddings && python generate_projection.py && python generate_index_db.py" >&2
@@ -47,7 +50,8 @@ if not tables:
     sys.exit(f"❌ {db_path} has no tracks tables.")
 missing = []
 for t in tables:
-    cols = {r[0] for r in con.execute(f"PRAGMA table_info('{t}')").fetchall()}
+    # PRAGMA table_info rows are (cid, name, type, ...); the column name is r[1].
+    cols = {r[1] for r in con.execute(f"PRAGMA table_info('{t}')").fetchall()}
     missing += [f"{t}.{c}" for c in ("x", "y") if c not in cols]
 if missing:
     sys.exit(

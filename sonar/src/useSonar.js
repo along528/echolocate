@@ -12,9 +12,12 @@ import { LAYER_COLORS, CANDIDATE_COLOR, FALLBACK_COLOR, distBetween, layerTag } 
 
 const STORE_KEY = 'sonar-state-v1';
 
-// Responsive breakpoint helper — true on phone-width viewports. Shared by the
+// Responsive breakpoint helper — true on phone-sized viewports. Shared by the
 // Sonar shell to pick the mobile vs desktop view.
-export function useIsMobile(query = '(max-width: 640px)') {
+// Either dimension ≤640 counts as mobile, but the short-side clause is gated on a
+// coarse pointer so a *rotated phone* (landscape: wide but short, touch) stays on
+// the mobile view, while a merely short desktop window (mouse) does not.
+export function useIsMobile(query = '(max-width: 640px), (max-height: 640px) and (pointer: coarse)') {
   const get = () => (typeof window !== 'undefined' && window.matchMedia
     ? window.matchMedia(query).matches : false);
   const [isMobile, setIsMobile] = React.useState(get);
@@ -77,6 +80,13 @@ export function useSonar({ initialView = 'map' } = {}) {
     (boot?.layers || []).map((l) => ({ ...l, loading: false, fetched: true })));
 
   const [playingId, setPlayingId] = React.useState(null);
+  // Hold the playing track object too, so the player keeps showing it even after
+  // it's removed from every layer/playlist (tracksById would otherwise drop it).
+  const [playingTrack, setPlayingTrack] = React.useState(null);
+  // …and a snapshot of its origin (layer/playlist color + tag), so the now-playing
+  // track keeps its color and source tag (and stays peekable) after its layer is
+  // removed.
+  const [playingOrigin, setPlayingOrigin] = React.useState(null);
   const [hoverId, setHoverId] = React.useState(null);
   const [selectedId, setSelectedId] = React.useState(null);
   const [isPlaying, setIsPlaying] = React.useState(false);
@@ -203,6 +213,9 @@ export function useSonar({ initialView = 'map' } = {}) {
   // Click a pill to filter to just its members; click it again to show all.
   const toggleSolo = (id) => setSoloLayerId((s) => (s === id ? null : id));
   const showAllLayers = () => { setSoloLayerId(null); setLayers((ls) => ls.map((l) => ({ ...l, visible: true }))); };
+  // Hide every search layer at once — the map falls back to just the playlist
+  // dots. Clears any solo (which would otherwise keep one layer shown).
+  const hideAllLayers = () => { setSoloLayerId(null); setLayers((ls) => ls.map((l) => ({ ...l, visible: false }))); };
 
   // ---- derived ----
   // A layer is shown if it's soloed, or (when nothing is soloed) not hidden.
@@ -250,18 +263,25 @@ export function useSonar({ initialView = 'map' } = {}) {
     return m;
   }, [playlist]);
 
-  // Index of every track we have full metadata for.
+  // Index of every track we have full metadata for. The currently-playing track
+  // is kept in here even after it's removed from every layer/playlist, so it
+  // stays resolvable (selectable / peekable) while it's still playing.
   const tracksById = React.useMemo(() => {
     const m = new Map();
     layers.forEach((l) => { l.results.forEach((t) => m.set(t.id, t)); if (l.seedTrack) m.set(l.seedTrack.id, l.seedTrack); });
     if (candidates) candidates.tracks.forEach((t) => m.set(t.id, t));
     playlist.forEach((s) => { if (s.track) m.set(s.track.id, s.track); });
+    if (playingTrack && !m.has(playingTrack.id)) m.set(playingTrack.id, playingTrack);
     return m;
-  }, [layers, candidates, playlist]);
+  }, [layers, candidates, playlist, playingTrack]);
 
-  const playing = playingId ? tracksById.get(playingId) : null;
+  const playing = playingId ? (tracksById.get(playingId) || (playingTrack?.id === playingId ? playingTrack : null)) : null;
   const hover = hoverId ? tracksById.get(hoverId) : null;
-  const selected = selectedId ? tracksById.get(selectedId) : null;
+  // Fall back to the retained playing track so the now-playing track stays
+  // selectable/peekable even after it's removed from every layer/playlist.
+  const selected = selectedId
+    ? (tracksById.get(selectedId) || (playingTrack?.id === selectedId ? playingTrack : null))
+    : null;
 
   const flatResults = React.useMemo(() => visibleTracks.map((e) => e.track), [visibleTracks]);
 
@@ -391,6 +411,8 @@ export function useSonar({ initialView = 'map' } = {}) {
   const playTrack = (track) => {
     if (!track) return;
     setPlayingId(track.id);
+    setPlayingTrack(track);
+    setPlayingOrigin(originFor(track) || playlistById.get(track.id)?.origin || null);
     setSelectedId(track.id);
     const audio = audioRef.current;
     if (audio) {
@@ -413,6 +435,8 @@ export function useSonar({ initialView = 'map' } = {}) {
   const cueTrack = (track) => {
     if (!track) return;
     setPlayingId(track.id);
+    setPlayingTrack(track);
+    setPlayingOrigin(originFor(track) || playlistById.get(track.id)?.origin || null);
     setSelectedId(track.id);
     setIsPlaying(false);
     const audio = audioRef.current;
@@ -517,8 +541,11 @@ export function useSonar({ initialView = 'map' } = {}) {
       return { label: 'interpolation', color: CANDIDATE_COLOR };
     }
     const src = entryByTrackId.get(track.id)?.sources?.[0] || playlistById.get(track.id)?.origin;
-    return src ? { label: layerTag(src), color: src.color } : null;
-  }, [candidates, entryByTrackId, playlistById]);
+    if (src) return { label: layerTag(src), color: src.color };
+    // Removed-layer now-playing track keeps its captured origin tag.
+    if (track.id === playingId && playingOrigin) return { label: layerTag(playingOrigin), color: playingOrigin.color };
+    return null;
+  }, [candidates, entryByTrackId, playlistById, playingId, playingOrigin]);
 
   // The track shown in the detail card above the map: hover wins for preview,
   // otherwise the pinned selection.
@@ -550,11 +577,11 @@ export function useSonar({ initialView = 'map' } = {}) {
     onAudioTimeUpdate, onAudioLoadedMetadata, onAudioEnded, onAudioPause, onAudioPlay,
     // layer ops
     addVibeLayer, addSeedLayer, restoreLayer, removeLayer, clearLayers,
-    toggleLayerVisible, toggleSolo, showAllLayers,
+    toggleLayerVisible, toggleSolo, showAllLayers, hideAllLayers,
     // derived
     isLayerShown, visibleLayers, displayLayers, displayVisibleLayers,
     anyLoading, allVisible, visibleTracks,
-    entryByTrackId, playlistById, tracksById, playing, hover, selected,
+    entryByTrackId, playlistById, tracksById, playing, playingOrigin, hover, selected,
     flatResults, vibeSuggestions, playlistTracks, navList, navSource,
     detail, detailPinned, isCandidate, playingTotal, sourceTagFor,
     // playlist ops

@@ -58,6 +58,7 @@ pub struct InterpolationRequest {
     pub track_id_2: String,
     pub limit: Option<i64>,
     pub method: Option<String>,
+    pub source: Option<String>,
 }
 
 #[derive(Debug, Deserialize)]

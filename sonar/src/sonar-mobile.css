@@ -30,6 +30,8 @@
 
 .ldm-chips { display: flex; gap: 6px; overflow-x: auto; padding: 2px 0 4px; scrollbar-width: none; }
 .ldm-chips::-webkit-scrollbar { display: none; }
+/* Fixed control row below the (scrolling) pills — never scrolls away. */
+.ldm-chips-ctl { display: flex; gap: 6px; padding: 2px 0; }
 .ldm-chip {
   flex: 0 0 auto; display: inline-flex; align-items: center; gap: 6px;
   height: 30px; padding: 0 6px 0 10px;
@@ -43,6 +45,7 @@
 .ldm-chip-swatch { width: 8px; height: 8px; border-radius: 50%; flex: 0 0 auto; }
 .ldm-chip-x { background: none; border: none; color: inherit; opacity: 0.55; font-size: 0.95rem; line-height: 1; padding: 0 2px; }
 .ldm-chip-add { color: var(--el-fg-secondary); border-style: dashed; background: transparent; }
+.ldm-chip-eye { padding: 0 9px; color: var(--el-fg-secondary); justify-content: center; }
 
 /* ===== Map stage ===== */
 .ldm-stage { position: absolute; inset: 0; }
@@ -63,13 +66,6 @@
   border-radius: 50%; background: rgba(255,255,255,0.85);
 }
 
-.ldm-caption {
-  position: absolute; right: 12px; top: calc(var(--ldm-top-h, 64px) + 6px); z-index: 6;
-  display: inline-flex; align-items: center; gap: 5px;
-  padding: 4px 8px; font-size: 0.66rem; text-transform: uppercase; letter-spacing: 0.5px;
-  color: var(--el-fg-secondary); background: rgba(18,18,26,0.7);
-  border: 1px solid var(--el-border); border-radius: var(--el-radius-sm); backdrop-filter: blur(6px);
-}
 /* Interpolation focus-mode banner — pinned above the dock/peek, one tap clears. */
 .ldm-interp-clear {
   position: absolute; left: 50%; transform: translateX(-50%); z-index: 6;
@@ -92,17 +88,6 @@
 /* Auto-play-on-tune toggle: indigo when on, dimmed + slashed icon when off. */
 .ldm-autoplay.is-on { color: var(--el-indigo-500); border-color: var(--el-indigo-500); }
 .ldm-autoplay:not(.is-on) { opacity: 0.75; }
-
-/* Long-press "charging" ring — converges on the held dot over the 500ms hold. */
-.ldm-press-ring {
-  fill: none; stroke: #ffffff;
-  transform-box: fill-box; transform-origin: center;
-  animation: ldm-charge 0.5s ease-in forwards;
-}
-@keyframes ldm-charge {
-  from { transform: scale(2.4); opacity: 0.1; }
-  to { transform: scale(1); opacity: 0.95; }
-}
 
 /* Candidate reveal wave — a ring expands from the charged dot, and each
    candidate fades/pops in (per-dot animation-delay) as the ring reaches it. */
@@ -127,7 +112,10 @@
 /* ===== Bottom dock: now strip + tab bar ===== */
 .ldm-dock { position: fixed; left: 0; right: 0; bottom: 0; z-index: 20; display: flex; flex-direction: column; }
 .ldm-tabbar {
-  display: flex; align-items: stretch; height: 54px;
+  /* height includes the safe-area inset (box-sizing: border-box), so the tab
+     content keeps its full 54px even in a standalone Home Screen app where the
+     home-indicator inset would otherwise eat into it and clip the tabs. */
+  display: flex; align-items: stretch; height: calc(54px + env(safe-area-inset-bottom, 0px));
   padding-bottom: env(safe-area-inset-bottom);
   background: rgba(12,12,18,0.97); border-top: 1px solid var(--el-border-strong);
   backdrop-filter: blur(14px);
@@ -158,11 +146,12 @@
 .ldm-player-play:disabled { opacity: 0.4; }
 .ldm-strip-ctl { display: flex; align-items: center; gap: 6px; flex: 0 0 auto; }
 .ldm-strip-nav {
-  width: 32px; height: 32px; border-radius: 50%; flex: 0 0 auto;
+  width: 38px; height: 38px; border-radius: 50%; flex: 0 0 auto;
   background: transparent; border: none; color: var(--el-fg-secondary);
   display: inline-flex; align-items: center; justify-content: center;
 }
-.ldm-strip-nav:active { transform: scale(0.92); color: var(--el-fg-primary); }
+.ldm-strip-nav:active:not(:disabled) { transform: scale(0.92); color: var(--el-fg-primary); }
+.ldm-strip-nav:disabled { opacity: 0.3; }
 .ldm-strip-prog { position: absolute; top: -1px; left: 0; right: 0; height: 3px; background: rgba(255,255,255,0.12); }
 .ldm-strip-prog > span { display: block; height: 100%; background: var(--el-indigo-500); }
 .ldm-strip .ldm-player-art { width: 40px; height: 40px; }
