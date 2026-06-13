@@ -371,10 +371,17 @@ export default function SonarMobile({ s }) {
     if (!rect.width) return;
     const { S, offX, offY } = rectMetrics(rect);
     const z = zoomRef.current, r = z.r || 0;
-    const cvx = (rect.width / 2 - offX) / S;            // reticle center (viewBox units)
-    const cvy = ((rect.height - dockH) / 2 - offY) / S;
+    // Reserve ALL bottom chrome so framed dots aren't hidden behind it: the dock
+    // (now-playing strip + tab bar, = dockH) plus the peek detail panel when it's
+    // up (--ldm-peek-h, 0 when hidden). Read the live CSS var so it stays in sync.
+    const peekH = appRef.current
+      ? parseFloat(getComputedStyle(appRef.current).getPropertyValue('--ldm-peek-h')) || 0
+      : 0;
+    const bottomH = dockH + peekH;
+    const cvx = (rect.width / 2 - offX) / S;            // band center (viewBox units)
+    const cvy = ((rect.height - bottomH) / 2 - offY) / S;
     const halfW = (rect.width / S) / 2;                 // visible half-extents (pre-scale)
-    const halfH = ((rect.height - dockH) / S) / 2;
+    const halfH = ((rect.height - bottomH) / S) / 2;
     const PAD = 0.78;                                   // leave a margin around the dots
     // Work in the screen-aligned frame (rotate dots by the current map rotation).
     const qs = tracks.map((t) => rot(dotPosM(t), r));
