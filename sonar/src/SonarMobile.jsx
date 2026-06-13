@@ -608,6 +608,18 @@ export default function SonarMobile({ s }) {
               {/* Effectively-infinite grid (stays in plot space — scales with zoom). */}
               <rect x={-6000} y={-6000} width={12000} height={12000} fill="url(#ldm-grid)" style={{ pointerEvents: 'none' }} />
               {playing && [44, 90, 150, 220].map((r, i) => { const p = dotPosM(playing); return <circle key={i} cx={p.x} cy={p.y} r={r * iz} fill="none" stroke="var(--el-yellow-500)" strokeOpacity={[0.55, 0.35, 0.22, 0.12][i]} strokeWidth={iz} style={{ pointerEvents: 'none' }} />; })}
+              {/* The now-playing rings must always sit on a dot. If the playing
+                  track isn't otherwise drawn (its layer was hidden/deleted and
+                  it's not in the playlist, or it's off-stage in focus mode), draw
+                  a standalone marker so the rings never float over nothing. */}
+              {playing && !(candidates
+                ? (candidates.aId === playing.id || candidates.bId === playing.id || candidates.tracks.some((t) => t.id === playing.id))
+                : (entryByTrackId.has(playing.id) || playlistById.has(playing.id))
+              ) && (() => { const p = dotPosM(playing); return (
+                <g style={{ pointerEvents: 'none' }}>
+                  <circle cx={p.x} cy={p.y} r={9.5 * iz} fill="var(--el-yellow-500)" style={{ filter: 'drop-shadow(0 0 8px var(--el-yellow-500))' }} />
+                  <circle cx={p.x} cy={p.y} r={10 * iz} fill="none" stroke="white" strokeWidth={iz} strokeOpacity="0.7" />
+                </g>); })()}
               {candidates ? (
                 /* ===== INTERPOLATION FOCUS MODE — only the two endpoints and
                    the candidates between them; everything else hides (like
