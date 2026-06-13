@@ -144,7 +144,8 @@ function PeekSheet({ mode, onFull, onPeek, onHide, header, children }) {
 export default function SonarMobile({ s }) {
   const {
     view, setView, vibeQuery, setVibeQuery, aboutOpen, setAboutOpen,
-    layers, playingId, isPlaying, progress, selectedId, setSelectedId,
+    layers, playingId, isPlaying, progress, peaks, selectedId, setSelectedId,
+    backdrop,
     candidates, labelsByTrackId, soloLayerId, zoom, setZoom,
     addVibeLayer, addSeedLayer, removeLayer, toggleLayerVisible, toggleSolo,
     showAllLayers, hideAllLayers,
@@ -596,6 +597,12 @@ export default function SonarMobile({ s }) {
             <g transform={`translate(${zoom.x} ${zoom.y}) scale(${zoom.k}) rotate(${((zoom.r || 0) * 180) / Math.PI})`}>
               {/* Effectively-infinite grid (stays in plot space — scales with zoom). */}
               <rect x={-6000} y={-6000} width={12000} height={12000} fill="url(#ldm-grid)" style={{ pointerEvents: 'none' }} />
+              {/* Dimmed backdrop field — spatial context for the whole corpus. */}
+              {backdrop.length > 0 && (
+                <g style={{ pointerEvents: 'none' }}>
+                  {backdrop.map((pt) => { const p = dotPosM(pt); return <circle key={'bd' + pt.id} cx={p.x} cy={p.y} r={1.6 * iz} fill="white" opacity={0.1} />; })}
+                </g>
+              )}
               {playing && [44, 90, 150, 220].map((r, i) => { const p = dotPosM(playing); return <circle key={i} cx={p.x} cy={p.y} r={r * iz} fill="none" stroke="var(--el-yellow-500)" strokeOpacity={[0.55, 0.35, 0.22, 0.12][i]} strokeWidth={iz} style={{ pointerEvents: 'none' }} />; })}
               {/* The now-playing rings must always sit on a dot. If the playing
                   track isn't otherwise drawn (its layer was hidden/deleted and
@@ -714,7 +721,7 @@ export default function SonarMobile({ s }) {
           {visibleTracks.map(({ track: t, color, sources }) => { const inPl = playlistById.has(t.id), isPlay = playingId === t.id;
             return (<div key={t.id} className={'ldm-row ' + (isPlay ? 'is-playing' : '')} onClick={() => playTrack(t)}>
               <span className="ldm-row-dot" style={{ background: color }} />
-              <div className="ldm-row-info"><div className="ldm-row-title">{t.title}</div><div className="ldm-row-sub">{t.artist} · {sources.map(layerTag).join(', ')}</div></div>
+              <div className="ldm-row-info"><div className="ldm-row-title">{t.title}</div><div className="ldm-row-sub">{t.artist}{t.duration ? ` · ${fmtTime(t.duration)}` : ''} · {sources.map(layerTag).join(', ')}</div></div>
               <button className={'ldm-row-add ' + (inPl ? 'is-active' : '')} onClick={(e) => { e.stopPropagation(); addToPlaylist(t); }}>{inPl ? <IconCheck size={16} /> : <IconListPlus size={16} />}</button>
             </div>); })}
           {/* When there are no search results but a playlist exists, show it here
@@ -817,7 +824,7 @@ export default function SonarMobile({ s }) {
               {playing && playing.id !== t.id && <span className="ld-detail-dist" style={{ marginLeft: 'auto' }}>{distBetween(playing, t).toFixed(2)} away</span>}
             </div>
             <div className="ldm-detail-title">{t.title}</div>
-            <div className="ldm-detail-sub">{t.artist} — {t.album}</div>
+            <div className="ldm-detail-sub">{t.artist} — {t.album}{t.duration ? ` · ${fmtTime(t.duration)}` : ''}</div>
             {t.track_url && (<a className="ld-detail-url" href={t.track_url} target="_blank" rel="noopener noreferrer" style={{ marginTop: 6 }}><IconExternal size={12} />{prettyUrl(t.track_url)}</a>)}
             <div className="ldm-detail-fb"><FeedbackPills track={t} value={labelsByTrackId[t.id]} onLabel={labelTrack} source={sourceTagFor(t)} /></div>
             {/* No Add button here — the peek header's add button covers it. */}
@@ -926,7 +933,7 @@ export default function SonarMobile({ s }) {
             <div className="lo-eyebrow-strong">Now playing</div>
             <div className="ldm-now-title">{playing.title}</div>
             <div className="ldm-now-sub">{playing.artist} — {playing.album}</div>
-            <div style={{ marginTop: 14 }}><Waveform width={350} height={40} progress={progress} bars={56} seed={(playingId || 'x').charCodeAt(0) + 3} onSeek={seekTo} /></div>
+            <div style={{ marginTop: 14 }}><Waveform width={350} height={40} progress={progress} bars={56} seed={(playingId || 'x').charCodeAt(0) + 3} peaks={peaks} onSeek={seekTo} /></div>
             <div className="ldm-now-times"><span>{fmtTime(playingTotal * progress)}</span><span>{fmtTime(playingTotal)}</span></div>
             <div className="ldm-now-transport">
               <button className="ldm-now-tbtn" onClick={() => step(-1)}><svg viewBox="0 0 24 24" fill="currentColor" width="18" height="18"><path d="M6 6h2v12H6zm3.5 6l8.5 6V6z" /></svg></button>

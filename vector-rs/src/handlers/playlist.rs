@@ -40,6 +40,7 @@ impl TrackRow {
             artist_url: self.artist_url.clone(),
             x: None,
             y: None,
+            duration: None,
         }
     }
 }

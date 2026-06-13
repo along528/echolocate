@@ -205,6 +205,7 @@ async fn main() {
         .route("/interpolate", post(handlers::interpolate::interpolate_tracks))
         .route("/interpolate/playlist", post(handlers::playlist::interpolate_playlist))
         .route("/map/backdrop", get(handlers::map::backdrop))
+        .route("/map/nearest", get(handlers::map::nearest))
         .route("/stream/{track_id}", get(handlers::stream::stream_audio))
         .route("/version", get(handlers::version::get_version))
         .route(

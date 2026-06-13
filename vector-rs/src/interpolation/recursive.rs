@@ -58,6 +58,7 @@ pub fn recursive_interpolation(
                 similarity: 1.0 - dist,
                 x: None,
                 y: None,
+                duration: None,
             };
 
             exclude_ids.insert(id);

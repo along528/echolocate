@@ -95,6 +95,7 @@ pub fn greedy_walk_interpolation(
                 similarity: sim_to_target,
                 x: None,
                 y: None,
+                duration: None,
             };
 
             best_next = Some((result, v_mid, sim_to_target));

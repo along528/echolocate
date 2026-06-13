@@ -35,6 +35,8 @@ COLUMNS = [
     "artist_url",
     "v_mid",
     "v_clap",
+    # Track length in seconds (surfaced in the list / now-playing UI).
+    "duration",
     # 2D sonar-map coordinates (see generate_projection.py). Run that against the
     # full DB before building the index so these columns are populated.
     "x",

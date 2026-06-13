@@ -24,12 +24,13 @@ export function Wordmark({ size = 'lg' }) {
   );
 }
 
-// Waveform — still a deterministic pseudo-envelope (real peaks tracked in TODO.md);
-// `progress` is driven by the real <audio> element. When `onSeek` is supplied
-// the bar becomes a scrubber: clicking (or dragging) navigates to that fraction
-// of the track.
-export function Waveform({ width = 320, height = 36, progress = 0.32, accent = 'var(--el-indigo-500)', muted = 'rgba(255,255,255,0.12)', bars = 64, seed = 7, onSeek = null }) {
-  const heights = React.useMemo(() => {
+// Waveform — renders real amplitude `peaks` (an array of 0..1 values from the
+// decoded audio) when supplied; otherwise falls back to a deterministic
+// pseudo-envelope. `progress` is driven by the real <audio> element. When
+// `onSeek` is supplied the bar becomes a scrubber: clicking (or dragging)
+// navigates to that fraction of the track.
+export function Waveform({ width = 320, height = 36, progress = 0.32, accent = 'var(--el-indigo-500)', muted = 'rgba(255,255,255,0.12)', bars = 64, seed = 7, peaks = null, onSeek = null }) {
+  const pseudo = React.useMemo(() => {
     const arr = [];
     let s = seed;
     for (let i = 0; i < bars; i++) {
@@ -41,9 +42,13 @@ export function Waveform({ width = 320, height = 36, progress = 0.32, accent = '
     return arr;
   }, [bars, seed]);
 
+  // Real peaks win when present; their length sets the bar count.
+  const heights = peaks && peaks.length ? peaks : pseudo;
+  const n = heights.length;
+
   const gap = 2;
-  const barW = (width - gap * (bars - 1)) / bars;
-  const playedIdx = Math.round(progress * bars);
+  const barW = (width - gap * (n - 1)) / n;
+  const playedIdx = Math.round(progress * n);
 
   const seekFromEvent = (e) => {
     if (!onSeek) return;

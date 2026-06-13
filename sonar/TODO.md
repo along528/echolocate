@@ -8,20 +8,23 @@ The prototype showed 2–3 "vibe" tag chips per track (tooltip, list rows, now-p
 There is **no backend source** for discrete tags today — "vibes" are only query terms.
 v1 omits per-track chips; the vibe tagger still drives search by joining vibes into the
 semantic query.
-- **Future:** classify each track against a fixed vibe vocabulary via CLAP similarity
+- **In progress:** classify each track against a fixed vibe vocabulary via CLAP similarity
   (text-anchor each vibe, take top-k per track), store as a column, return in responses.
+  Tracked on its own branch/PR (`generate_vibes.py` + `vibes` column + `VibeChips`).
 
-## Track duration (M:SS) in the list
-The list mockup shows a per-row duration. Duration is computed in
-`embeddings/embedding_lib.py` but **dropped at DB-build time** (not a column).
-v1 omits the list duration column; the now-playing total/elapsed time comes from the
-real `<audio>` element instead.
-- **Future:** add a `duration` column in a DB rebuild and surface it in track responses.
+## Track duration (M:SS) in the list — **DONE** (needs DB rebuild to populate)
+`generate_db.py` now carries `duration` through to a `duration` column (it was already in
+the embedding JSONL), `generate_index_db.py` copies it into the baked index, and the
+vector service returns it. The list rows / detail / mobile rows show `M:SS` when present.
+Needs a DB rebuild + redeploy to populate (the now-playing total still comes from the
+real `<audio>` element either way).
 
-## Real waveform / peaks
-`Waveform` still renders a deterministic pseudo-random envelope; only `progress` is real
-(from the audio element).
-- **Future:** precompute peaks (or analyze in-browser) and feed real amplitude data.
+## Real waveform / peaks — **DONE**
+`Waveform` (`svg-bits.jsx`) renders real amplitude `peaks` when supplied. `useSonar`
+fetches the playing track's audio, decodes it via the Web Audio API, downsamples to
+`WAVE_BUCKETS` peak amplitudes (cached per track id), and feeds them to the players in
+both views. Falls back to the deterministic pseudo-envelope on any failure
+(unsupported browser, CORS, decode error).
 
 ## Projection method
 Coordinates currently come from a **PCA layout on the MERT `v_mid` vector**
@@ -47,16 +50,16 @@ The handoff suggests consolidating the A/C class families into the component's o
   `sonar-utils.jsx`. Mobile ships the desktop dot model only (layer colors); the
   prototype's mock-only `sonic`/`clusters`/`axes` variations were not ported.
 
-## Click-to-probe: nearest across the whole corpus
-Today the ✕ probe (click empty map space) selects the nearest track **already
-loaded in the UI** — visible search-layer results, interpolation candidates, and
-playlist tracks (`nearestTrack` in `Sonar.jsx`). It does not discover new tracks
-at the clicked location.
-- **Future:** support finding the true nearest track at any x,y. Either
-  (a) client-side via a large `/map/backdrop` sample + `/tracks/by-ids` lookup
-  (approximate; nearest within the sampled field, and would add a dimmed backdrop
-  layer), or (b) a new `/map/nearest?x=&y=` endpoint in vector-rs for the exact
-  globally-nearest track (Rust change + redeploy).
+## Click-to-probe: nearest across the whole corpus — **DONE** (desktop)
+Implemented option (b): a `GET /map/nearest?x=&y=&source=` endpoint in vector-rs
+returns the exact globally-nearest track to a clicked coordinate. On the desktop view,
+clicking empty map space selects the nearest already-loaded track for instant feedback,
+then probes the corpus via `/map/nearest` and selects/draws the true nearest (added to a
+`probes` set in `useSonar`). A dimmed `/map/backdrop` field is rendered behind the
+results in both views for spatial context.
+- **Mobile:** the gesture model is reticle-tuning (pan to center the nearest dot), not
+  tap-to-select, so click-to-probe is desktop-only for now. The backdrop field still
+  renders on mobile for parity.
 
 ## Done (sonar feedback pass)
 The following review suggestions are now implemented:
