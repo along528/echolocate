@@ -77,6 +77,9 @@ export function useSonar({ initialView = 'map' } = {}) {
     (boot?.layers || []).map((l) => ({ ...l, loading: false, fetched: true })));
 
   const [playingId, setPlayingId] = React.useState(null);
+  // Hold the playing track object too, so the player keeps showing it even after
+  // it's removed from every layer/playlist (tracksById would otherwise drop it).
+  const [playingTrack, setPlayingTrack] = React.useState(null);
   const [hoverId, setHoverId] = React.useState(null);
   const [selectedId, setSelectedId] = React.useState(null);
   const [isPlaying, setIsPlaying] = React.useState(false);
@@ -262,7 +265,7 @@ export function useSonar({ initialView = 'map' } = {}) {
     return m;
   }, [layers, candidates, playlist]);
 
-  const playing = playingId ? tracksById.get(playingId) : null;
+  const playing = playingId ? (tracksById.get(playingId) || (playingTrack?.id === playingId ? playingTrack : null)) : null;
   const hover = hoverId ? tracksById.get(hoverId) : null;
   const selected = selectedId ? tracksById.get(selectedId) : null;
 
@@ -394,6 +397,7 @@ export function useSonar({ initialView = 'map' } = {}) {
   const playTrack = (track) => {
     if (!track) return;
     setPlayingId(track.id);
+    setPlayingTrack(track);
     setSelectedId(track.id);
     const audio = audioRef.current;
     if (audio) {
@@ -416,6 +420,7 @@ export function useSonar({ initialView = 'map' } = {}) {
   const cueTrack = (track) => {
     if (!track) return;
     setPlayingId(track.id);
+    setPlayingTrack(track);
     setSelectedId(track.id);
     setIsPlaying(false);
     const audio = audioRef.current;
