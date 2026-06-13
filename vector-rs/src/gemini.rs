@@ -36,7 +36,12 @@ impl GeminiClient {
             },
             "generationConfig": {
                 "temperature": 0.3,
-                "maxOutputTokens": 60,
+                // gemini-2.5-flash is a thinking model; without this it spends the
+                // whole output budget on reasoning tokens and returns an empty
+                // caption (finishReason MAX_TOKENS). Disable thinking for this
+                // short rewrite and leave headroom for the full sentence.
+                "thinkingConfig": { "thinkingBudget": 0 },
+                "maxOutputTokens": 100,
                 "candidateCount": 1
             }
         });

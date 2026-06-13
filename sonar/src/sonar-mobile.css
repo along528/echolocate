@@ -239,7 +239,7 @@
 .ldm-layer-manage-row { display: flex; align-items: center; gap: 10px; padding: 10px 12px; background: var(--el-glass); border: 1px solid var(--el-border); border-radius: var(--el-radius-md); }
 .ldm-lm-text { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 1px; }
 .ldm-lm-label { font-size: 0.9rem; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-.ldm-lm-enh { color: var(--el-purple-400); font-size: 0.72rem; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.ldm-lm-enh { color: var(--el-purple-400); font-size: 0.72rem; line-height: 1.3; margin-top: 2px; }
 .ldm-lm-btn { width: 34px; height: 34px; border-radius: var(--el-radius-md); background: transparent; border: 1px solid var(--el-border); color: var(--el-fg-secondary); display: inline-flex; align-items: center; justify-content: center; flex: 0 0 auto; }
 
 /* Detail content (shared by the expanded peek body) */
