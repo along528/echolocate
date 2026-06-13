@@ -462,7 +462,7 @@ export default function SonarDesktop({ s }) {
                   })}
 
                   {/* result dots, colored by their search layer */}
-                  {visibleTracks.map(({ track: t, color }) => {
+                  {visibleTracks.map(({ track: t, color }, i) => {
                     const p = dotPos(t);
                     const isPlay = t.id === playingId;
                     const isSel = t.id === selectedId;
@@ -470,12 +470,11 @@ export default function SonarDesktop({ s }) {
                     const inPlaylist = playlistById.has(t.id);
                     const r = (isPlay ? 9 : isSel ? 7 : 5) * iz;
                     return (
-                      <g key={t.id}
+                      <g key={t.id} className="el-dot-pop" style={{ cursor: 'pointer', animationDelay: `${Math.min(i * 12, 280)}ms` }}
                         onMouseEnter={() => setHoverId(t.id)}
                         onMouseLeave={() => setHoverId((prev) => (prev === t.id ? null : prev))}
                         onClick={(e) => { e.stopPropagation(); setSelectedId(t.id); }}
-                        onDoubleClick={(e) => { e.stopPropagation(); addToPlaylist(t); }}
-                        style={{ cursor: 'pointer' }}>
+                        onDoubleClick={(e) => { e.stopPropagation(); addToPlaylist(t); }}>
                         {(isHov || isSel) && (
                           <circle cx={p.x} cy={p.y} r={r + 6 * iz} fill="none" stroke={isSel ? color : 'rgba(255,255,255,0.3)'} strokeWidth={1.5 * iz} />
                         )}

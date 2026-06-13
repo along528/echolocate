@@ -902,6 +902,13 @@
 /* Tighten center padding so the graph claims more of the viewport. */
 .ld-center { padding: 14px 18px; gap: 10px; }
 
+/* Result dots pop in (with a slight overshoot) as a search resolves. Runs once
+   on mount — keyed by track id, so panning/zoom never re-triggers it. Shared by
+   both the desktop and mobile maps. */
+@keyframes el-dot-pop { from { opacity: 0; transform: scale(0); } 70% { transform: scale(1.25); } to { opacity: 1; transform: scale(1); } }
+.el-dot-pop { transform-box: fill-box; transform-origin: center; animation: el-dot-pop 0.34s ease-out both; }
+@media (prefers-reduced-motion: reduce) { .el-dot-pop { animation: none; } }
+
 /* Keyboard-focus visibility (mouse users never see this — :focus-visible only). */
 .ld-shell button:focus-visible,
 .ld-tagger-input:focus-visible {

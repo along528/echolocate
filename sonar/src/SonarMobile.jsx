@@ -147,7 +147,7 @@ export default function SonarMobile({ s }) {
     layers, playingId, isPlaying, progress, selectedId, setSelectedId,
     candidates, labelsByTrackId, soloLayerId, zoom, setZoom,
     addVibeLayer, addSeedLayer, removeLayer, toggleLayerVisible, toggleSolo,
-    visibleTracks, displayLayers,
+    visibleTracks, displayLayers, anyLoading,
     entryByTrackId, playlistById, playlist, tracksById,
     playing, selected, playlistTracks, playingTotal, vibeSuggestions, isCandidate, sourceTagFor,
     addToPlaylist, insertCandidate, removeFromPlaylist, movePlaylist, clearPlaylist,
@@ -355,6 +355,74 @@ export default function SonarMobile({ s }) {
     setDetailMode((m) => (m === 'hidden' ? 'peek' : m));
   };
 
+  // Glide the map so `tracks` fill the screen — zoom to fit their bounds and pan
+  // to frame them. Used when a search resolves, a pill is soloed, or
+  // interpolation runs. If a track is already tuned (playing or selected with
+  // the reticle), keep IT under the reticle and only adjust the zoom; otherwise
+  // center on the bounding box. Rotation is preserved.
+  const FIT_MAX = 3.5;
+  const mapRef = React.useRef(null);
+  const recenterOn = (tracks) => {
+    const el = mapRef.current;
+    if (!el || !tracks || !tracks.length) return;
+    const rect = el.getBoundingClientRect();
+    if (!rect.width) return;
+    const { S, offX, offY } = rectMetrics(rect);
+    const z = zoomRef.current, r = z.r || 0;
+    const cvx = (rect.width / 2 - offX) / S;            // reticle center (viewBox units)
+    const cvy = ((rect.height - dockH) / 2 - offY) / S;
+    const halfW = (rect.width / S) / 2;                 // visible half-extents (pre-scale)
+    const halfH = ((rect.height - dockH) / S) / 2;
+    const PAD = 0.78;                                   // leave a margin around the dots
+    // Work in the screen-aligned frame (rotate dots by the current map rotation).
+    const qs = tracks.map((t) => rot(dotPosM(t), r));
+    const anchor = tracksById.get(selectedId) || playing;
+    let k, cx, cy;
+    if (anchor) {
+      // Keep the tuned track fixed under the reticle; fit everything around it.
+      const qa = rot(dotPosM(anchor), r);
+      let mdx = 1e-3, mdy = 1e-3;
+      qs.forEach((q) => { mdx = Math.max(mdx, Math.abs(q.x - qa.x)); mdy = Math.max(mdy, Math.abs(q.y - qa.y)); });
+      k = Math.min((halfW * PAD) / mdx, (halfH * PAD) / mdy);
+      cx = qa.x; cy = qa.y;
+    } else {
+      // Center on the bounding box of the dots.
+      let minx = Infinity, maxx = -Infinity, miny = Infinity, maxy = -Infinity;
+      qs.forEach((q) => { minx = Math.min(minx, q.x); maxx = Math.max(maxx, q.x); miny = Math.min(miny, q.y); maxy = Math.max(maxy, q.y); });
+      const bw = Math.max(1e-3, maxx - minx), bh = Math.max(1e-3, maxy - miny);
+      k = Math.min((halfW * 2 * PAD) / bw, (halfH * 2 * PAD) / bh);
+      cx = (minx + maxx) / 2; cy = (miny + maxy) / 2;
+    }
+    k = Math.max(ZK_MIN, Math.min(FIT_MAX, k));
+    animateZoomTo({ k, r, x: cvx - k * cx, y: cvy - k * cy }, 520);
+  };
+
+  // Recenter when a search finishes loading (dots just popped in)…
+  const wasLoadingRef = React.useRef(anyLoading);
+  React.useEffect(() => {
+    if (wasLoadingRef.current && !anyLoading) recenterOn(visibleTracks.map((e) => e.track));
+    wasLoadingRef.current = anyLoading;
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [anyLoading]);
+  // …when a pill is soloed / un-soloed (the visible set changes)…
+  const prevSoloRef = React.useRef(soloLayerId);
+  React.useEffect(() => {
+    if (prevSoloRef.current !== soloLayerId) {
+      prevSoloRef.current = soloLayerId;
+      recenterOn(visibleTracks.map((e) => e.track));
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [soloLayerId]);
+  // …and when interpolation candidates arrive (frame endpoints + candidates).
+  React.useEffect(() => {
+    if (!candidates) return;
+    const pts = [...candidates.tracks];
+    const a = tracksById.get(candidates.aId), b = tracksById.get(candidates.bId);
+    if (a) pts.push(a); if (b) pts.push(b);
+    recenterOn(pts);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [candidates]);
+
   const onTouchStart = (e) => {
     cancelAnimationFrame(animRef.current); // grab the map mid-tween
     const t = e.touches;
@@ -431,7 +499,9 @@ export default function SonarMobile({ s }) {
     return () => clearTimeout(id);
   }, [sheet]);
 
-  const showStrip = !!playing;
+  // Prev/next on the strip only make sense when the current track is actually
+  // in the playlist (step() walks the playlist then) and there's somewhere to go.
+  const stripNav = playlistTracks.length > 1 && playlistById.has(playingId);
   const playSvg = <svg viewBox="0 0 24 24" fill="white" width="16" height="16"><path d="M8 5v14l11-7z" /></svg>;
   const pauseSvg = <svg viewBox="0 0 24 24" fill="white" width="16" height="16"><path d="M6 5h4v14H6zm8 0h4v14h-4z" /></svg>;
 
@@ -444,7 +514,7 @@ export default function SonarMobile({ s }) {
       {/* ===== MAP / LIST STAGE ===== */}
       {view === 'map' ? (
         <div className="ldm-stage">
-          <svg className="ldm-map" viewBox={`0 0 ${MVW} ${MVH}`} preserveAspectRatio="xMidYMid slice"
+          <svg ref={mapRef} className="ldm-map" viewBox={`0 0 ${MVW} ${MVH}`} preserveAspectRatio="xMidYMid slice"
             onClick={() => { if (!movedRef.current) { if (sheet) setSheet(null); else if (detailMode !== 'hidden') setDetailMode('hidden'); } }}
             onTouchStart={onTouchStart} onTouchMove={onTouchMove} onTouchEnd={onTouchEnd} onTouchCancel={onTouchEnd}>
             <rect x={0} y={0} width={MVW} height={MVH} fill="transparent" />
@@ -500,8 +570,8 @@ export default function SonarMobile({ s }) {
                   {playlistTracks.length > 1 && playlistTracks.slice(1).map((b, i) => { const a = playlistTracks[i], pa = dotPosM(a), pb = dotPosM(b); const mx = (pa.x + pb.x) / 2, my = (pa.y + pb.y) / 2;
                     return (<g key={`s${a.id}${b.id}`} onClick={onTap(() => onInterpolate(a, b))}><line x1={pa.x} y1={pa.y} x2={pb.x} y2={pb.y} stroke="transparent" strokeWidth={20 * iz} /><line x1={pa.x} y1={pa.y} x2={pb.x} y2={pb.y} stroke="var(--el-indigo-500)" strokeOpacity={0.55} strokeWidth={2 * iz} strokeDasharray={`${4 * iz} ${4 * iz}`} /><circle cx={mx} cy={my} r={11 * iz} fill="var(--el-bg-secondary)" stroke="var(--el-indigo-500)" strokeWidth={1.5 * iz} /><path d={`M${mx - 5 * iz} ${my} h${10 * iz} M${mx} ${my - 5 * iz} v${10 * iz}`} stroke="var(--el-indigo-500)" strokeWidth={1.5 * iz} strokeLinecap="round" /></g>); })}
                   {playlistTracks.map((t) => { const p = dotPosM(t); return <circle key={'r' + t.id} cx={p.x} cy={p.y} r={13 * iz} fill="none" stroke="var(--el-indigo-500)" strokeWidth={2 * iz} strokeOpacity="0.6" style={{ pointerEvents: 'none' }} />; })}
-                  {visibleTracks.map(({ track: t, color }) => { const p = dotPosM(t), isPlay = t.id === playingId, isSel = t.id === selectedId, inPl = playlistById.has(t.id); const r = (isPlay ? 9.5 : isSel ? 8 : 5.5) * iz;
-                    return (<g key={t.id} onClick={onTap(() => openDetail(t.id))} {...dotPress(t)}>
+                  {visibleTracks.map(({ track: t, color }, i) => { const p = dotPosM(t), isPlay = t.id === playingId, isSel = t.id === selectedId, inPl = playlistById.has(t.id); const r = (isPlay ? 9.5 : isSel ? 8 : 5.5) * iz;
+                    return (<g key={t.id} className="el-dot-pop" style={{ animationDelay: `${Math.min(i * 14, 320)}ms` }} onClick={onTap(() => openDetail(t.id))} {...dotPress(t)}>
                       <circle cx={p.x} cy={p.y} r={14 * iz} fill="transparent" />
                       {isSel && <circle cx={p.x} cy={p.y} r={r + 6 * iz} fill="none" stroke={color} strokeWidth={1.5 * iz} />}
                       <circle cx={p.x} cy={p.y} r={r} fill={color} opacity={inPl ? 1 : 0.88} style={{ filter: isPlay ? `drop-shadow(0 0 8px ${color})` : 'none' }} />
@@ -630,14 +700,22 @@ export default function SonarMobile({ s }) {
 
       {/* ===== DOCK — now-playing strip + tab bar ===== */}
       <div className="ldm-dock" ref={dockRef}>
-        {showStrip && (
-          <div className="ldm-strip" onClick={() => setSheet('now')}>
-            <div className="ldm-strip-prog"><span style={{ width: `${progress * 100}%` }} /></div>
-            <div className="ldm-player-art"><img src={`${ASSET}assets/artwork.svg`} alt="" /></div>
-            <div className="ldm-player-info"><div className="ldm-player-title">{playing.title}</div><div className="ldm-player-sub">{playing.artist}</div></div>
-            <button className="ldm-player-play" onClick={(e) => { e.stopPropagation(); togglePlay(); }}>{isPlaying ? pauseSvg : playSvg}</button>
+        {/* The player bar is always present — it shows a muted placeholder when
+            nothing is cued, so the dock never collapses to just the tabs. */}
+        <div className={'ldm-strip ' + (playing ? '' : 'is-empty')} onClick={() => { if (playing) setSheet('now'); }}>
+          <div className="ldm-strip-prog"><span style={{ width: `${(playing ? progress : 0) * 100}%` }} /></div>
+          <div className="ldm-player-art"><img src={`${ASSET}assets/artwork.svg`} alt="" /></div>
+          <div className="ldm-player-info">
+            {playing
+              ? <><div className="ldm-player-title">{playing.title}</div><div className="ldm-player-sub">{playing.artist}</div></>
+              : <><div className="ldm-player-title">Nothing playing</div><div className="ldm-player-sub">Tune a track on the map</div></>}
           </div>
-        )}
+          <div className="ldm-strip-ctl">
+            {stripNav && <button className="ldm-strip-nav" aria-label="Previous" onClick={(e) => { e.stopPropagation(); step(-1); }}><svg viewBox="0 0 24 24" fill="currentColor" width="18" height="18"><path d="M6 6h2v12H6zm3.5 6l8.5 6V6z" /></svg></button>}
+            <button className="ldm-player-play" disabled={!playing} onClick={(e) => { e.stopPropagation(); togglePlay(); }}>{isPlaying ? pauseSvg : playSvg}</button>
+            {stripNav && <button className="ldm-strip-nav" aria-label="Next" onClick={(e) => { e.stopPropagation(); step(1); }}><svg viewBox="0 0 24 24" fill="currentColor" width="18" height="18"><path d="M6 18l8.5-6L6 6v12zM16 6v12h2V6h-2z" /></svg></button>}
+          </div>
+        </div>
         <nav className="ldm-tabbar">
           <button className={'ldm-tab ' + (view === 'map' ? 'is-active' : '')} onClick={() => { setView('map'); setSheet(null); }}>
             <svg viewBox="0 0 24 24" width="22" height="22" fill="currentColor"><circle cx="12" cy="12" r="2.5" /><circle cx="12" cy="12" r="6" fill="none" stroke="currentColor" strokeWidth="1.4" /><circle cx="12" cy="12" r="10" fill="none" stroke="currentColor" strokeWidth="1.4" opacity="0.5" /></svg>
