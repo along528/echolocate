@@ -130,7 +130,7 @@ async fn main() {
         }),
         async {
             if let Some(ref project_id) = config.gcp_project_id {
-                match GeminiClient::new(project_id, &config.gcp_location).await {
+                match GeminiClient::new(project_id, &config.gcp_location, &config.gemini_model).await {
                     Ok(client) => {
                         tracing::info!("Vertex AI Agent initialized: {project_id}");
                         Some(client)

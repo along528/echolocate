@@ -7,12 +7,12 @@ pub struct GeminiClient {
 }
 
 impl GeminiClient {
-    pub async fn new(project_id: &str, location: &str) -> Result<Self, Box<dyn std::error::Error + Send + Sync>> {
+    pub async fn new(project_id: &str, location: &str, model: &str) -> Result<Self, Box<dyn std::error::Error + Send + Sync>> {
         let credential = credentials::create_access_token_credential().await
             .map_err(|e| format!("Failed to create GCP credential: {e}"))?;
 
         let endpoint = format!(
-            "https://{location}-aiplatform.googleapis.com/v1/projects/{project_id}/locations/{location}/publishers/google/models/gemini-2.0-flash-001:generateContent"
+            "https://{location}-aiplatform.googleapis.com/v1/projects/{project_id}/locations/{location}/publishers/google/models/{model}:generateContent"
         );
 
         Ok(Self {
