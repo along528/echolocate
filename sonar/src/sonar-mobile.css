@@ -89,17 +89,6 @@
 .ldm-autoplay.is-on { color: var(--el-indigo-500); border-color: var(--el-indigo-500); }
 .ldm-autoplay:not(.is-on) { opacity: 0.75; }
 
-/* Long-press "charging" ring — converges on the held dot over the 500ms hold. */
-.ldm-press-ring {
-  fill: none; stroke: #ffffff;
-  transform-box: fill-box; transform-origin: center;
-  animation: ldm-charge 0.5s ease-in forwards;
-}
-@keyframes ldm-charge {
-  from { transform: scale(2.4); opacity: 0.1; }
-  to { transform: scale(1); opacity: 0.95; }
-}
-
 /* Candidate reveal wave — a ring expands from the charged dot, and each
    candidate fades/pops in (per-dot animation-delay) as the ring reaches it. */
 .ldm-wave-ring {
