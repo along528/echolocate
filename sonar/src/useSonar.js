@@ -203,6 +203,9 @@ export function useSonar({ initialView = 'map' } = {}) {
   // Click a pill to filter to just its members; click it again to show all.
   const toggleSolo = (id) => setSoloLayerId((s) => (s === id ? null : id));
   const showAllLayers = () => { setSoloLayerId(null); setLayers((ls) => ls.map((l) => ({ ...l, visible: true }))); };
+  // Hide every search layer at once — the map falls back to just the playlist
+  // dots. Clears any solo (which would otherwise keep one layer shown).
+  const hideAllLayers = () => { setSoloLayerId(null); setLayers((ls) => ls.map((l) => ({ ...l, visible: false }))); };
 
   // ---- derived ----
   // A layer is shown if it's soloed, or (when nothing is soloed) not hidden.
@@ -550,7 +553,7 @@ export function useSonar({ initialView = 'map' } = {}) {
     onAudioTimeUpdate, onAudioLoadedMetadata, onAudioEnded, onAudioPause, onAudioPlay,
     // layer ops
     addVibeLayer, addSeedLayer, restoreLayer, removeLayer, clearLayers,
-    toggleLayerVisible, toggleSolo, showAllLayers,
+    toggleLayerVisible, toggleSolo, showAllLayers, hideAllLayers,
     // derived
     isLayerShown, visibleLayers, displayLayers, displayVisibleLayers,
     anyLoading, allVisible, visibleTracks,

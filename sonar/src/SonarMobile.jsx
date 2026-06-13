@@ -147,7 +147,8 @@ export default function SonarMobile({ s }) {
     layers, playingId, isPlaying, progress, selectedId, setSelectedId,
     candidates, labelsByTrackId, soloLayerId, zoom, setZoom,
     addVibeLayer, addSeedLayer, removeLayer, toggleLayerVisible, toggleSolo,
-    visibleTracks, displayLayers, anyLoading,
+    showAllLayers, hideAllLayers,
+    visibleTracks, visibleLayers, displayLayers, anyLoading,
     entryByTrackId, playlistById, playlist, tracksById,
     playing, selected, playlistTracks, playingTotal, vibeSuggestions, isCandidate, sourceTagFor,
     addToPlaylist, insertCandidate, removeFromPlaylist, movePlaylist, clearPlaylist,
@@ -681,6 +682,11 @@ export default function SonarMobile({ s }) {
               <button className="ldm-chip-x" onClick={(e) => { e.stopPropagation(); removeLayer(l.id); }}>×</button>
             </span>
           ))}
+          {displayLayers.length > 0 && (() => { const anyShown = visibleLayers.length > 0;
+            return (<button className="ldm-chip ldm-chip-eye" onClick={() => { clearCandidates(); (anyShown ? hideAllLayers : showAllLayers)(); }}
+              title={anyShown ? 'Hide all searches' : 'Show all searches'} aria-label={anyShown ? 'Hide all searches' : 'Show all searches'}>
+              {anyShown ? <IconEye size={14} /> : <IconEyeOff size={14} />}
+            </button>); })()}
           <button className="ldm-chip ldm-chip-add" onClick={() => setSheet('search')}><IconPlus size={13} /> add</button>
         </div>
       </div>
@@ -742,9 +748,11 @@ export default function SonarMobile({ s }) {
               : <><div className="ldm-player-title">Nothing playing</div><div className="ldm-player-sub">Tune a track on the map</div></>}
           </div>
           <div className="ldm-strip-ctl">
-            {stripNav && <button className="ldm-strip-nav" aria-label="Previous" onClick={(e) => { e.stopPropagation(); step(-1); }}><svg viewBox="0 0 24 24" fill="currentColor" width="18" height="18"><path d="M6 6h2v12H6zm3.5 6l8.5 6V6z" /></svg></button>}
+            {/* Prev/next are always present; disabled (grayed) unless the current
+                track is in the playlist, where step() walks the playlist. */}
+            <button className="ldm-strip-nav" aria-label="Previous" disabled={!stripNav} onClick={(e) => { e.stopPropagation(); step(-1); }}><svg viewBox="0 0 24 24" fill="currentColor" width="22" height="22"><path d="M6 6h2v12H6zm3.5 6l8.5 6V6z" /></svg></button>
             <button className="ldm-player-play" disabled={!playing} onClick={(e) => { e.stopPropagation(); togglePlay(); }}>{isPlaying ? pauseSvg : playSvg}</button>
-            {stripNav && <button className="ldm-strip-nav" aria-label="Next" onClick={(e) => { e.stopPropagation(); step(1); }}><svg viewBox="0 0 24 24" fill="currentColor" width="18" height="18"><path d="M6 18l8.5-6L6 6v12zM16 6v12h2V6h-2z" /></svg></button>}
+            <button className="ldm-strip-nav" aria-label="Next" disabled={!stripNav} onClick={(e) => { e.stopPropagation(); step(1); }}><svg viewBox="0 0 24 24" fill="currentColor" width="22" height="22"><path d="M6 18l8.5-6L6 6v12zM16 6v12h2V6h-2z" /></svg></button>
           </div>
         </div>
         <nav className="ldm-tabbar">
@@ -848,7 +856,7 @@ export default function SonarMobile({ s }) {
                   {i > 0 && prev && <button className={'ldm-pl-link ' + (active ? 'is-active' : '')} onClick={() => onInterpolate(prev, t)}><IconPlus size={12} /> find in between</button>}
                   <div className={'ldm-pl-card ' + (playingId === t.id ? 'is-playing' : '')}>
                     <span className="ldm-pl-dot" style={{ background: slot.color || 'var(--el-indigo-500)' }} />
-                    <div className="ldm-pl-info" onClick={() => playTrack(t)}><div className="ldm-pl-title">{t.title}</div><div className="ldm-pl-sub">{t.artist}{slot.dist != null ? ` · ${slot.dist.toFixed(2)} step` : ''}</div></div>
+                    <div className="ldm-pl-info" onClick={() => { hideAllLayers(); playTrack(t); }}><div className="ldm-pl-title">{t.title}</div><div className="ldm-pl-sub">{t.artist}{slot.dist != null ? ` · ${slot.dist.toFixed(2)} step` : ''}</div></div>
                     <div className="ldm-pl-ctl">
                       <button className="ldm-lm-btn" disabled={i === 0} onClick={() => movePlaylist(slot.id, -1)} style={i === 0 ? { opacity: 0.3 } : null}><IconUp size={14} /></button>
                       <button className="ldm-lm-btn" disabled={i === playlist.length - 1} onClick={() => movePlaylist(slot.id, 1)} style={i === playlist.length - 1 ? { opacity: 0.3 } : null}><IconDown size={14} /></button>

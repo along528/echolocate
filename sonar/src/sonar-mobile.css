@@ -43,6 +43,7 @@
 .ldm-chip-swatch { width: 8px; height: 8px; border-radius: 50%; flex: 0 0 auto; }
 .ldm-chip-x { background: none; border: none; color: inherit; opacity: 0.55; font-size: 0.95rem; line-height: 1; padding: 0 2px; }
 .ldm-chip-add { color: var(--el-fg-secondary); border-style: dashed; background: transparent; }
+.ldm-chip-eye { padding: 0 9px; color: var(--el-fg-secondary); justify-content: center; }
 
 /* ===== Map stage ===== */
 .ldm-stage { position: absolute; inset: 0; }
@@ -158,11 +159,12 @@
 .ldm-player-play:disabled { opacity: 0.4; }
 .ldm-strip-ctl { display: flex; align-items: center; gap: 6px; flex: 0 0 auto; }
 .ldm-strip-nav {
-  width: 32px; height: 32px; border-radius: 50%; flex: 0 0 auto;
+  width: 38px; height: 38px; border-radius: 50%; flex: 0 0 auto;
   background: transparent; border: none; color: var(--el-fg-secondary);
   display: inline-flex; align-items: center; justify-content: center;
 }
-.ldm-strip-nav:active { transform: scale(0.92); color: var(--el-fg-primary); }
+.ldm-strip-nav:active:not(:disabled) { transform: scale(0.92); color: var(--el-fg-primary); }
+.ldm-strip-nav:disabled { opacity: 0.3; }
 .ldm-strip-prog { position: absolute; top: -1px; left: 0; right: 0; height: 3px; background: rgba(255,255,255,0.12); }
 .ldm-strip-prog > span { display: block; height: 100%; background: var(--el-indigo-500); }
 .ldm-strip .ldm-player-art { width: 40px; height: 40px; }
