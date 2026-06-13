@@ -813,6 +813,28 @@
   font-size: 11px; font-weight: var(--el-fw-medium);
 }
 
+/* Per-track "vibe" chips (CLAP-classified tags). Render inline under the
+   title/sub wherever a track is shown. */
+.ld-vibe-chips {
+  display: inline-flex; flex-wrap: wrap; gap: 4px;
+  margin-top: 4px; vertical-align: middle;
+}
+.ld-vibe-chip {
+  display: inline-flex; align-items: center;
+  padding: 1px 7px; border-radius: 999px;
+  font-size: 10.5px; font-weight: var(--el-fw-medium); line-height: 1.5;
+  color: var(--el-fg-secondary);
+  background: color-mix(in srgb, var(--el-fg-primary) 8%, transparent);
+  border: 1px solid color-mix(in srgb, var(--el-fg-primary) 14%, transparent);
+}
+button.ld-vibe-chip { cursor: default; font: inherit; }
+button.ld-vibe-chip.is-clickable { cursor: pointer; }
+button.ld-vibe-chip.is-clickable:hover {
+  color: var(--el-fg-primary);
+  border-color: var(--el-indigo-500);
+  background: color-mix(in srgb, var(--el-indigo-500) 14%, transparent);
+}
+
 /* Icon-only external source link next to titles */
 .ld-srclink {
   display: inline-flex; align-items: center;

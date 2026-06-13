@@ -41,6 +41,7 @@ impl TrackRow {
             x: None,
             y: None,
             duration: None,
+            vibes: None,
         }
     }
 }

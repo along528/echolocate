@@ -95,6 +95,7 @@ pub async fn interpolate_tracks(
                 x: None,
                 y: None,
                 duration: None,
+                vibes: None,
             });
         }
 

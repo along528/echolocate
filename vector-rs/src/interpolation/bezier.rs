@@ -60,6 +60,7 @@ pub fn bezier_interpolation(
                     x: None,
                     y: None,
                     duration: None,
+                    vibes: None,
                 });
                 break;
             }

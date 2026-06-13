@@ -69,8 +69,11 @@ python generate_projection.py  # Compute 2D sonar-map x,y columns; run before ge
                                #   --vector clap|mid  --normalize rank|minmax
                                #   sonar ships: --method pca --vector mid (projects the MERT v_mid
                                #   embedding used for interpolation; axes are not interpretable)
+python generate_vibes.py       # Classify tracks into CLAP-anchored "vibe" tags -> vibes column;
+                               #   run against the full DB before generate_index_db.py
+                               #   --top-k N  --min-sim FLOAT
 python generate_index_db.py    # Build stripped index DB from full DB (for baked-index deployment)
-                               #   inherits the duration / x,y columns from the full DB
+                               #   inherits the duration / x,y / vibes columns from the full DB
 ```
 
 ### Local Development
@@ -103,6 +106,7 @@ The `tracks` table has columns:
 - `v_clap`: FLOAT[512] (CLAP embeddings for semantic search)
 - `duration`: DOUBLE (track length in seconds; carried through from the embedding pipeline)
 - `x`, `y`: DOUBLE (2D sonar-map coordinates from `generate_projection.py`, normalized [0,1]; NULL until that step runs)
+- `vibes`: VARCHAR (JSON-array string of CLAP-classified vibe tags from `generate_vibes.py`; NULL until that step runs)
 - HNSW indexes on `v_mid` (cosine) and `v_clap` (cosine) per source table
 
 ### Map Endpoints (vector-rs)

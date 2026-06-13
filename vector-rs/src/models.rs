@@ -23,6 +23,9 @@ pub struct TrackResponse {
     /// Track length in seconds (NULL until a DB rebuild surfaces it).
     #[serde(skip_serializing_if = "Option::is_none")]
     pub duration: Option<f64>,
+    /// CLAP-classified "vibe" tags (NULL until generate_vibes.py runs).
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub vibes: Option<Vec<String>>,
 }
 
 #[derive(Debug, Serialize, Clone)]
@@ -49,6 +52,9 @@ pub struct SearchResult {
     /// Track length in seconds (NULL until a DB rebuild surfaces it).
     #[serde(skip_serializing_if = "Option::is_none")]
     pub duration: Option<f64>,
+    /// CLAP-classified "vibe" tags (NULL until generate_vibes.py runs).
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub vibes: Option<Vec<String>>,
 }
 
 #[derive(Debug, Deserialize)]

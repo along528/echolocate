@@ -75,8 +75,8 @@ pub async fn backdrop(
     .map_err(|e| AppError::Internal(e.to_string()))?
 }
 
-/// Fill in `x,y` (and `duration`) on results that were produced without them
-/// (e.g. the interpolation path), via a single lookup against the `tracks`
+/// Fill in `x,y` (and `duration`/`vibes`) on results that were produced without
+/// them (e.g. the interpolation path), via a single lookup against the `tracks`
 /// view. Results whose id has no projection stay `None`.
 pub fn backfill_coords(
     conn: &duckdb::Connection,
@@ -91,24 +91,33 @@ pub fn backfill_coords(
         .take(ids.len())
         .collect::<Vec<_>>()
         .join(",");
-    let sql = format!("SELECT id, x, y, duration FROM tracks WHERE id IN ({placeholders})");
+    let sql = format!("SELECT id, x, y, duration, vibes FROM tracks WHERE id IN ({placeholders})");
 
     let mut stmt = conn.prepare(&sql)?;
     let params: Vec<&dyn duckdb::ToSql> = ids.iter().map(|s| s as &dyn duckdb::ToSql).collect();
     let mut rows = stmt.query(params.as_slice())?;
 
-    type Meta = (Option<f64>, Option<f64>, Option<f64>);
+    type Meta = (Option<f64>, Option<f64>, Option<f64>, Option<Vec<String>>);
     let mut coords: HashMap<String, Meta> = HashMap::new();
     while let Some(row) = rows.next()? {
         let id: String = row.get(0)?;
-        coords.insert(id, (row.get(1)?, row.get(2)?, row.get(3)?));
+        coords.insert(
+            id,
+            (
+                row.get(1)?,
+                row.get(2)?,
+                row.get(3)?,
+                crate::db::parse_vibes(row.get(4)?),
+            ),
+        );
     }
 
     for r in results.iter_mut() {
-        if let Some((x, y, duration)) = coords.get(&r.id) {
+        if let Some((x, y, duration, vibes)) = coords.get(&r.id) {
             r.x = *x;
             r.y = *y;
             r.duration = *duration;
+            r.vibes = vibes.clone();
         }
     }
 

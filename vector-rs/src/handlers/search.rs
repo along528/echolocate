@@ -57,7 +57,7 @@ pub async fn search_tracks_text(
         let where_clause = conditions.join(" AND ");
 
         let sql_with_limit = format!(
-            "SELECT id, source, title, artist, album, relative_path, track_url, album_url, artist_url, x, y, duration \
+            "SELECT id, source, title, artist, album, relative_path, track_url, album_url, artist_url, x, y, duration, vibes \
              FROM tracks WHERE {} LIMIT {}",
             where_clause, limit
         );
@@ -82,6 +82,7 @@ pub async fn search_tracks_text(
                 x: row.get(9)?,
                 y: row.get(10)?,
                 duration: row.get(11)?,
+                vibes: crate::db::parse_vibes(row.get(12)?),
             });
         }
 
@@ -123,7 +124,7 @@ pub async fn vector_search(
                 let dist = dist_expr("v_mid", &vec_literal, use_hnsw);
                 let q = format!(
                     "SELECT id, title, artist, album, relative_path, track_url, album_url, artist_url, \
-                            {dist} as distance, x, y, duration \
+                            {dist} as distance, x, y, duration, vibes \
                      FROM {table} \
                      ORDER BY distance ASC \
                      LIMIT {limit}",
@@ -147,6 +148,7 @@ pub async fn vector_search(
                         x: row.get(9)?,
                         y: row.get(10)?,
                         duration: row.get(11)?,
+                        vibes: crate::db::parse_vibes(row.get(12)?),
                     });
                 }
             }
@@ -159,7 +161,7 @@ pub async fn vector_search(
             let dist = dist_expr("v_mid", &vec_literal, use_hnsw);
             let q = format!(
                 "SELECT id, title, artist, album, relative_path, track_url, album_url, artist_url, \
-                        {dist} as distance, x, y, duration \
+                        {dist} as distance, x, y, duration, vibes \
                  FROM {table} \
                  ORDER BY distance ASC \
                  LIMIT {limit}",
@@ -184,6 +186,7 @@ pub async fn vector_search(
                     x: row.get(9)?,
                     y: row.get(10)?,
                     duration: row.get(11)?,
+                    vibes: crate::db::parse_vibes(row.get(12)?),
                 });
             }
             res

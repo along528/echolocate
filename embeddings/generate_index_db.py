@@ -41,6 +41,9 @@ COLUMNS = [
     # full DB before building the index so these columns are populated.
     "x",
     "y",
+    # CLAP-classified "vibe" tags as a JSON-array string (see generate_vibes.py).
+    # Run that against the full DB before building the index too.
+    "vibes",
 ]
 
 

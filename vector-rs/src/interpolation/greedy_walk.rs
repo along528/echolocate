@@ -96,6 +96,7 @@ pub fn greedy_walk_interpolation(
                 x: None,
                 y: None,
                 duration: None,
+                vibes: None,
             };
 
             best_next = Some((result, v_mid, sim_to_target));

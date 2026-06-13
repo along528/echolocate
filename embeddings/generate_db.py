@@ -58,7 +58,10 @@ def initialize_db():
             -- 2D sonar-map coordinates, populated by generate_projection.py
             -- (NULL until that step runs).
             x DOUBLE,
-            y DOUBLE
+            y DOUBLE,
+            -- CLAP-classified "vibe" tags as a JSON-array string (e.g. ["warm","lo-fi"]),
+            -- populated by generate_vibes.py (NULL until that step runs).
+            vibes VARCHAR
         );
     """
 

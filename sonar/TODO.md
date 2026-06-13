@@ -3,14 +3,15 @@
 Things intentionally left out of the sonar map + list v1, with notes on
 how to bring them in later.
 
-## Per-track vibe chips
-The prototype showed 2–3 "vibe" tag chips per track (tooltip, list rows, now-playing).
-There is **no backend source** for discrete tags today — "vibes" are only query terms.
-v1 omits per-track chips; the vibe tagger still drives search by joining vibes into the
-semantic query.
-- **In progress:** classify each track against a fixed vibe vocabulary via CLAP similarity
-  (text-anchor each vibe, take top-k per track), store as a column, return in responses.
-  Tracked on its own branch/PR (`generate_vibes.py` + `vibes` column + `VibeChips`).
+## Per-track vibe chips — **DONE** (needs DB rebuild to populate)
+Tracks classified against a fixed vibe vocabulary via CLAP similarity:
+`embeddings/generate_vibes.py` text-anchors each vibe, takes the top-k per track, and
+writes them to a `vibes` JSON-array column (run it against the full DB before
+`generate_index_db.py`, like `generate_projection.py`). The vector service returns the
+parsed `vibes` array on track/search responses, and `VibeChips` (`sonar-utils.jsx`)
+renders them as chips on list rows, the detail card, and now-playing (click a chip to
+start that vibe search). Chips stay hidden until the `vibes` column is populated, so a
+DB rebuild + redeploy is required to see them.
 
 ## Track duration (M:SS) in the list — **DONE** (needs DB rebuild to populate)
 `generate_db.py` now carries `duration` through to a `duration` column (it was already in

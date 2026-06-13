@@ -12,7 +12,7 @@ import {
 } from './icons.jsx';
 import {
   CANDIDATE_COLOR, FALLBACK_COLOR, fmtTime, coordsOf, distBetween, distChipValue,
-  layerTag, layerKindWord, prettyUrl, FeedbackPills, SourceLink, AboutModal,
+  layerTag, layerKindWord, prettyUrl, FeedbackPills, SourceLink, VibeChips, AboutModal,
 } from './sonar-utils.jsx';
 
 const VW = 760;
@@ -177,6 +177,7 @@ export default function SonarDesktop({ s }) {
             {t.title}
           </div>
           <div className="ld-detail-sub">{t.artist} — {t.album}</div>
+          <VibeChips track={t} onPick={(v) => addVibeLayer(v)} />
           {t.track_url && (
             <a className="ld-detail-url" href={t.track_url} target="_blank" rel="noopener noreferrer"
               onClick={(e) => e.stopPropagation()} title={t.track_url}>
@@ -632,6 +633,7 @@ export default function SonarDesktop({ s }) {
                           </span>
                         ))}
                       </div>
+                      <VibeChips track={t} onPick={(v) => { addVibeLayer(v); }} />
                     </div>
                     <FeedbackPills track={t} value={labelsByTrackId[t.id]} onLabel={labelTrack} source={sourceTagFor(t)} />
                     <DistanceChip value={distChipValue(t)} />
@@ -666,6 +668,7 @@ export default function SonarDesktop({ s }) {
                   </div>
                 );
               })()}
+              {playing && <VibeChips track={playing} onPick={(v) => addVibeLayer(v)} />}
             </div>
             <div>
               <Waveform width={244} height={36} progress={progress} bars={48} seed={(playingId || 'x').charCodeAt(0) + 3} peaks={peaks} onSeek={playing ? seekTo : null} />

@@ -98,6 +98,27 @@ export function FeedbackPills({ track, value, onLabel, source }) {
   );
 }
 
+// Per-track "vibe" chips (CLAP-classified tags from the backend `vibes` field).
+// Renders nothing until the backend populates the column, so it's safe to drop
+// in everywhere. `max` caps how many chips show; `onPick` (optional) turns each
+// chip into a button that starts a vibe search for that tag.
+export function VibeChips({ track, max = 3, onPick = null, className = '' }) {
+  const vibes = track && Array.isArray(track.vibes) ? track.vibes : null;
+  if (!vibes || !vibes.length) return null;
+  const shown = vibes.slice(0, max);
+  return (
+    <span className={'ld-vibe-chips ' + className}>
+      {shown.map((v) => (
+        onPick
+          ? <button key={v} type="button" className="ld-vibe-chip is-clickable"
+              title={`Search the “${v}” vibe`}
+              onClick={(e) => { e.stopPropagation(); onPick(v); }}>{v}</button>
+          : <span key={v} className="ld-vibe-chip">{v}</span>
+      ))}
+    </span>
+  );
+}
+
 // External source link — icon only, sits next to the track title. No "FMA" text.
 export function SourceLink({ track, className = '' }) {
   if (!track || !track.track_url) return null;

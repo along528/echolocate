@@ -71,6 +71,20 @@ pub fn table_for_source(source: &str) -> &str {
     }
 }
 
+/// Parse the `vibes` column (a JSON-array string written by generate_vibes.py,
+/// e.g. `["warm","lo-fi"]`) into a Vec<String>. Returns None when the column is
+/// NULL/empty or fails to parse, so a missing/unpopulated column is harmless.
+pub fn parse_vibes(raw: Option<String>) -> Option<Vec<String>> {
+    let s = raw?;
+    if s.trim().is_empty() {
+        return None;
+    }
+    match serde_json::from_str::<Vec<String>>(&s) {
+        Ok(v) if !v.is_empty() => Some(v),
+        _ => None,
+    }
+}
+
 /// Extract a FLOAT[] column value as Vec<f32> from a DuckDB row.
 /// DuckDB returns list columns as duckdb::types::Value::List.
 pub fn value_to_vec_f32(val: &duckdb::types::Value) -> Vec<f32> {

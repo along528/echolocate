@@ -59,6 +59,7 @@ pub fn recursive_interpolation(
                 x: None,
                 y: None,
                 duration: None,
+                vibes: None,
             };
 
             exclude_ids.insert(id);
