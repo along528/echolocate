@@ -194,6 +194,9 @@ export default function SonarMobile({ s }) {
     waveRef.current = { x: (pa.x + pb.x) / 2, y: (pa.y + pb.y) / 2 };
     interpolateEdge(a, b); setSheet(null); setView('map');
   };
+  // Adding a vibe always closes the search sheet and drops you on the map to
+  // watch the new dots land.
+  const addVibe = (q) => { const v = q.trim(); if (!v) return; addVibeLayer(v); setVibeQuery(''); setSheet(null); setView('map'); };
   // Run a map tap action unless the touch was actually a drag (pan/pinch) or a
   // long press that already fired its interpolation.
   const onTap = (fn) => (e) => {
@@ -671,16 +674,21 @@ export default function SonarMobile({ s }) {
         </div>
       )}
 
-      {/* ===== TOP CHROME — just the pills, overlaid on the full-bleed map. The
-          "+ add" chip is always present so a search is one tap away. ===== */}
+      {/* ===== TOP CHROME — pills (scrolling row) over the full-bleed map, with a
+          fixed second row of controls (hide/show-all + add) that never scrolls
+          away, so a search and the visibility toggle are always one tap. ===== */}
       <div className="ldm-top" ref={topRef}>
-        <div className="ldm-chips">
-          {displayLayers.map((l) => (
-            <span key={l.id} className={'ldm-chip ' + (l.visible ? '' : 'is-hidden ') + (soloLayerId === l.id ? 'is-solo' : '')} style={{ borderColor: l.color, background: `color-mix(in srgb, ${l.color} 12%, transparent)` }} onClick={() => { clearCandidates(); toggleSolo(l.id); }}>
-              <span className="ldm-chip-swatch" style={{ background: l.color }} />{layerTag(l)}
-              <button className="ldm-chip-x" onClick={(e) => { e.stopPropagation(); removeLayer(l.id); }}>×</button>
-            </span>
-          ))}
+        {displayLayers.length > 0 && (
+          <div className="ldm-chips">
+            {displayLayers.map((l) => (
+              <span key={l.id} className={'ldm-chip ' + (l.visible ? '' : 'is-hidden ') + (soloLayerId === l.id ? 'is-solo' : '')} style={{ borderColor: l.color, background: `color-mix(in srgb, ${l.color} 12%, transparent)` }} onClick={() => { clearCandidates(); toggleSolo(l.id); }}>
+                <span className="ldm-chip-swatch" style={{ background: l.color }} />{layerTag(l)}
+                <button className="ldm-chip-x" onClick={(e) => { e.stopPropagation(); removeLayer(l.id); }}>×</button>
+              </span>
+            ))}
+          </div>
+        )}
+        <div className="ldm-chips-ctl">
           {displayLayers.length > 0 && (() => { const anyShown = visibleLayers.length > 0;
             return (<button className="ldm-chip ldm-chip-eye" onClick={() => { clearCandidates(); (anyShown ? hideAllLayers : showAllLayers)(); }}
               title={anyShown ? 'Hide all searches' : 'Show all searches'} aria-label={anyShown ? 'Hide all searches' : 'Show all searches'}>
@@ -786,15 +794,15 @@ export default function SonarMobile({ s }) {
       {sheet === 'search' && (
         <Sheet onClose={() => setSheet(null)} style={{ maxHeight: kbInset ? `${Math.max(240, window.innerHeight - kbInset - 56)}px` : '70%', bottom: kbInset }}>
           <input ref={searchInputRef} className="ldm-sheet-input" placeholder="Describe a mood…" value={vibeQuery}
-            onChange={(e) => setVibeQuery(e.target.value)} onKeyDown={(e) => { if (e.key === 'Enter' && vibeQuery.trim()) { addVibeLayer(vibeQuery.trim()); setVibeQuery(''); setSheet(null); } }} />
+            onChange={(e) => setVibeQuery(e.target.value)} onKeyDown={(e) => { if (e.key === 'Enter' && vibeQuery.trim()) addVibe(vibeQuery); }} />
           <div className="ldm-sheet-scroll">
             <div className="lo-eyebrow" style={{ marginBottom: 8 }}>{vibeQuery ? `Matching “${vibeQuery}”` : 'Suggested vibes'}</div>
             <div className="ldm-chipwrap">
               {vibeSuggestions.map((v) => (
-                <button key={v} className="el-chip" onClick={() => { addVibeLayer(v); setVibeQuery(''); }}>+ {v}</button>
+                <button key={v} className="el-chip" onClick={() => addVibe(v)}>+ {v}</button>
               ))}
               {vibeQuery && !vibeSuggestions.some((v) => v.toLowerCase() === vibeQuery.toLowerCase()) && (
-                <button className="el-chip" onClick={() => { addVibeLayer(vibeQuery.trim()); setVibeQuery(''); setSheet(null); }}>+ Add “{vibeQuery}”</button>
+                <button className="el-chip" onClick={() => addVibe(vibeQuery)}>+ Add “{vibeQuery}”</button>
               )}
             </div>
             {layers.length > 0 && (<>

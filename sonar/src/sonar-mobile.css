@@ -30,6 +30,8 @@
 
 .ldm-chips { display: flex; gap: 6px; overflow-x: auto; padding: 2px 0 4px; scrollbar-width: none; }
 .ldm-chips::-webkit-scrollbar { display: none; }
+/* Fixed control row below the (scrolling) pills — never scrolls away. */
+.ldm-chips-ctl { display: flex; gap: 6px; padding: 2px 0; }
 .ldm-chip {
   flex: 0 0 auto; display: inline-flex; align-items: center; gap: 6px;
   height: 30px; padding: 0 6px 0 10px;
