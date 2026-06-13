@@ -365,13 +365,15 @@ export default function SonarMobile({ s }) {
     setDetailMode((m) => (m === 'hidden' ? 'peek' : m));
   };
 
-  // Glide the map so `tracks` fill the screen — zoom to fit their bounds and pan
-  // to frame them. Used when a search resolves, a pill is soloed, or
-  // interpolation runs. If a track is already tuned (playing or selected with
-  // the reticle), keep IT under the reticle and only adjust the zoom; otherwise
-  // center on the bounding box. Pass `{ fill: true }` to ignore the tuned track
-  // and always center on the bounding box, so the dots truly fill the screen
-  // (used when clicking/deleting a pill). Rotation is preserved.
+  // Glide the map so `tracks` fill the screen. Modes:
+  //  • default — if a track is tuned (playing/selected), keep IT under the
+  //    reticle and only adjust zoom; otherwise center on the dots' bounding box.
+  //  • { fill: true } — ignore the tuned track and center on the bounding box,
+  //    so the dots truly fill the screen (e.g. when a search resolves).
+  //  • { keepReticle: true } — DON'T pan at all: keep whatever's under the
+  //    reticle right now planted there and only zoom to fit the dots around it
+  //    (used when clicking/deleting a pill, so the reticle never jumps).
+  // Rotation is preserved throughout.
   const FIT_MAX = 3.5;
   const mapRef = React.useRef(null);
   const recenterOn = (tracks, opts = {}) => {
@@ -395,11 +397,14 @@ export default function SonarMobile({ s }) {
     const PAD = 0.78;                                   // leave a margin around the dots
     // Work in the screen-aligned frame (rotate dots by the current map rotation).
     const qs = tracks.map((t) => rot(dotPosM(t), r));
-    const anchor = opts.fill ? null : (tracksById.get(selectedId) || playing);
+    // The fixed point (rotated-frame) to fit around: keepReticle → whatever's
+    // under the reticle right now; default → the tuned track; fill → none (bbox).
+    let qa = null;
+    if (opts.keepReticle) qa = { x: (cvx - z.x) / z.k, y: (cvy - z.y) / z.k };
+    else if (!opts.fill) { const at = tracksById.get(selectedId) || playing; if (at) qa = rot(dotPosM(at), r); }
     let k, cx, cy;
-    if (anchor) {
-      // Keep the tuned track fixed under the reticle; fit everything around it.
-      const qa = rot(dotPosM(anchor), r);
+    if (qa) {
+      // Keep the fixed point under the reticle; fit everything around it.
       let mdx = 1e-3, mdy = 1e-3;
       qs.forEach((q) => { mdx = Math.max(mdx, Math.abs(q.x - qa.x)); mdy = Math.max(mdy, Math.abs(q.y - qa.y)); });
       k = Math.min((halfW * PAD) / mdx, (halfH * PAD) / mdy);
@@ -430,28 +435,29 @@ export default function SonarMobile({ s }) {
     wasLoadingRef.current = anyLoading;
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [anyLoading]);
-  // …when a pill is soloed / un-soloed (the visible set changes). Fill the
-  // screen with the now-visible dots, even if they were clustered small.
+  // …when a pill is soloed / un-soloed (the visible set changes). Zoom to fit
+  // the now-visible dots WITHOUT moving the reticle (keepReticle), so clicking a
+  // pill never yanks the view around.
   const prevSoloRef = React.useRef(soloLayerId);
   React.useEffect(() => {
     if (prevSoloRef.current !== soloLayerId) {
       prevSoloRef.current = soloLayerId;
       const vis = visibleTracks.map((e) => e.track);
-      if (vis.length) recenterOn(vis, { fill: true });
+      if (vis.length) recenterOn(vis, { keepReticle: true });
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [soloLayerId]);
-  // …and when a pill is deleted (the visible set shrinks) — re-fit the dots
-  // that remain so they fill the screen again. Adds are handled by the loading
-  // effect above; only fire on a removal, and never mid-search.
+  // …and when a pill is deleted (the visible set shrinks) — re-fit the dots that
+  // remain (same keepReticle behavior). Adds are handled by the loading effect
+  // above; only fire on a removal, and never mid-search.
   const prevLayerCountRef = React.useRef(layers.length);
   React.useEffect(() => {
     const removed = layers.length < prevLayerCountRef.current;
     prevLayerCountRef.current = layers.length;
     if (!removed || anyLoading) return;
     const vis = visibleTracks.map((e) => e.track);
-    if (vis.length) recenterOn(vis, { fill: true });
-    else if (playlistTracks.length) recenterOn(playlistTracks, { fill: true });
+    if (vis.length) recenterOn(vis, { keepReticle: true });
+    else if (playlistTracks.length) recenterOn(playlistTracks, { keepReticle: true });
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [layers]);
   // …when interpolation candidates arrive (frame endpoints + candidates), and
@@ -467,8 +473,8 @@ export default function SonarMobile({ s }) {
       recenterOn(pts);
     } else if (had) {
       const vis = visibleTracks.map((e) => e.track);
-      if (vis.length) recenterOn(vis, { fill: true });
-      else if (playlistTracks.length) recenterOn(playlistTracks, { fill: true });
+      if (vis.length) recenterOn(vis, { keepReticle: true });
+      else if (playlistTracks.length) recenterOn(playlistTracks, { keepReticle: true });
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [candidates]);
