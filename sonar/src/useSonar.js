@@ -459,10 +459,12 @@ export function useSonar({ initialView = 'map' } = {}) {
     audio.currentTime = frac * audio.duration;
     setProgress(frac);
   };
-  // Forward/back walks the playlist when one exists, otherwise the visible results.
+  // Forward/back walks the playlist when one exists, EXCEPT in list view, where
+  // it walks the visible results list the user is actually looking at.
   const playlistTracks = React.useMemo(() => playlist.filter((s) => s.track).map((s) => s.track), [playlist]);
-  const navList = playlistTracks.length ? playlistTracks : flatResults;
-  const navSource = playlistTracks.length ? 'your playlist' : 'search results';
+  const usePlaylistNav = view !== 'list' && playlistTracks.length > 0;
+  const navList = usePlaylistNav ? playlistTracks : flatResults;
+  const navSource = usePlaylistNav ? 'your playlist' : 'search results';
   const step = (dir) => {
     if (!navList.length) return;
     const idx = navList.findIndex((t) => t.id === playingId);

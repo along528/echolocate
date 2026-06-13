@@ -153,6 +153,7 @@ export default function SonarMobile({ s }) {
     playing, playingOrigin, selected, playlistTracks, playingTotal, vibeSuggestions, isCandidate, sourceTagFor,
     addToPlaylist, insertCandidate, removeFromPlaylist, movePlaylist, clearPlaylist,
     interpolateEdge, clearCandidates, playTrack, togglePlay, step, labelTrack, seekTo,
+    navList,
   } = s;
 
   // Mobile-only UI state. `sheet` is the modal layer (search / now / playlist);
@@ -569,9 +570,10 @@ export default function SonarMobile({ s }) {
     return () => clearTimeout(id);
   }, [sheet]);
 
-  // Prev/next on the strip only make sense when the current track is actually
-  // in the playlist (step() walks the playlist then) and there's somewhere to go.
-  const stripNav = playlistTracks.length > 1 && playlistById.has(playingId);
+  // Prev/next on the strip only make sense when the current track is in the list
+  // step() walks (the playlist in map view, the results list in list view) and
+  // there's somewhere to go.
+  const stripNav = navList.length > 1 && navList.some((t) => t.id === playingId);
   const playSvg = <svg viewBox="0 0 24 24" fill="white" width="16" height="16"><path d="M8 5v14l11-7z" /></svg>;
   const pauseSvg = <svg viewBox="0 0 24 24" fill="white" width="16" height="16"><path d="M6 5h4v14H6zm8 0h4v14h-4z" /></svg>;
 
