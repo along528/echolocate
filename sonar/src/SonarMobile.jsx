@@ -150,7 +150,7 @@ export default function SonarMobile({ s }) {
     showAllLayers, hideAllLayers,
     visibleTracks, visibleLayers, displayLayers, anyLoading,
     entryByTrackId, playlistById, playlist, tracksById,
-    playing, selected, playlistTracks, playingTotal, vibeSuggestions, isCandidate, sourceTagFor,
+    playing, playingOrigin, selected, playlistTracks, playingTotal, vibeSuggestions, isCandidate, sourceTagFor,
     addToPlaylist, insertCandidate, removeFromPlaylist, movePlaylist, clearPlaylist,
     interpolateEdge, clearCandidates, playTrack, togglePlay, step, labelTrack, seekTo,
   } = s;
@@ -277,12 +277,13 @@ export default function SonarMobile({ s }) {
 
   // Mobile zoom — clamped k ∈ [0.3, 5].
   // (Scaling about a fixed screen point is rotation-agnostic: c−T' = (k'/k)(c−T).)
-  // When a dot is tuned, scale about the RETICLE so that dot stays pinned under
-  // it; otherwise scale about the screen center and let the reticle drift.
+  // When a track is selected (tuned under the reticle), scale about the RETICLE
+  // so it stays pinned; otherwise scale about the screen center and let the
+  // reticle drift.
   const ZK_MIN = 0.3, ZK_MAX = 5;
   const zoomBy = (f) => {
     const el = mapRef.current;
-    const tuned = selected || playing;
+    const tuned = selected;
     setZoom((z) => {
       const k = Math.max(ZK_MIN, Math.min(ZK_MAX, z.k * f));
       let cx = MVW / 2, cy = MVH / 2;
@@ -578,13 +579,15 @@ export default function SonarMobile({ s }) {
               {/* The now-playing rings must always sit on a dot. If the playing
                   track isn't otherwise drawn (its layer was hidden/deleted and
                   it's not in the playlist, or it's off-stage in focus mode), draw
-                  a standalone marker so the rings never float over nothing. */}
+                  a standalone marker — in the track's retained origin color — that
+                  stays tappable so it's still peekable. */}
               {playing && !(candidates
                 ? (candidates.aId === playing.id || candidates.bId === playing.id || candidates.tracks.some((t) => t.id === playing.id))
                 : (entryByTrackId.has(playing.id) || playlistById.has(playing.id))
-              ) && (() => { const p = dotPosM(playing); return (
-                <g style={{ pointerEvents: 'none' }}>
-                  <circle cx={p.x} cy={p.y} r={9.5 * iz} fill="var(--el-yellow-500)" style={{ filter: 'drop-shadow(0 0 8px var(--el-yellow-500))' }} />
+              ) && (() => { const p = dotPosM(playing); const color = playingOrigin?.color || FALLBACK_COLOR; return (
+                <g onClick={onTap(() => handleDotTap(playing))}>
+                  <circle cx={p.x} cy={p.y} r={14 * iz} fill="transparent" />
+                  <circle cx={p.x} cy={p.y} r={9.5 * iz} fill={color} style={{ filter: `drop-shadow(0 0 8px ${color})` }} />
                   <circle cx={p.x} cy={p.y} r={10 * iz} fill="none" stroke="white" strokeWidth={iz} strokeOpacity="0.7" />
                 </g>); })()}
               {candidates ? (
@@ -723,7 +726,7 @@ export default function SonarMobile({ s }) {
 
       {/* ===== PEEK DETAIL (non-modal, above the dock) ===== */}
       {detailMode === 'full' && <div className="ldm-detail-scrim" onClick={() => setDetailMode('peek')} />}
-      {detailMode !== 'hidden' && selected && (() => { const t = selected; const cand = isCandidate(t.id); const sources = entryByTrackId.get(t.id)?.sources || []; const inPl = playlistById.has(t.id); const slotOrigin = playlistById.get(t.id)?.origin; const swatch = entryByTrackId.get(t.id)?.color || slotOrigin?.color || (cand ? CANDIDATE_COLOR : FALLBACK_COLOR);
+      {detailMode !== 'hidden' && selected && (() => { const t = selected; const cand = isCandidate(t.id); const sources = entryByTrackId.get(t.id)?.sources || []; const inPl = playlistById.has(t.id); const slotOrigin = playlistById.get(t.id)?.origin; const playOrigin = (!sources.length && !slotOrigin && t.id === playingId) ? playingOrigin : null; const swatch = entryByTrackId.get(t.id)?.color || slotOrigin?.color || playOrigin?.color || (cand ? CANDIDATE_COLOR : FALLBACK_COLOR);
         return (
           <PeekSheet mode={detailMode} onFull={() => setDetailMode('full')} onPeek={() => setDetailMode('peek')} onHide={() => setDetailMode('hidden')}
             header={(
@@ -751,6 +754,7 @@ export default function SonarMobile({ s }) {
               {cand && <span className="lc-source-tag" style={{ borderColor: CANDIDATE_COLOR, color: CANDIDATE_COLOR }}>interpolation</span>}
               {sources.map((l) => (<span key={l.id} className="lc-source-tag" style={{ borderColor: l.color, color: l.color }}><span className="ld-layer-swatch" style={{ background: l.color }} />{layerTag(l)}</span>))}
               {!sources.length && !cand && slotOrigin && (<span className="lc-source-tag" style={{ borderColor: slotOrigin.color, color: slotOrigin.color }}>{layerKindWord(slotOrigin)} {slotOrigin.label}</span>)}
+              {!sources.length && !cand && !slotOrigin && playOrigin && (<span className="lc-source-tag" style={{ borderColor: playOrigin.color, color: playOrigin.color }}><span className="ld-layer-swatch" style={{ background: playOrigin.color }} />{layerTag(playOrigin)}</span>)}
               {playing && playing.id !== t.id && <span className="ld-detail-dist" style={{ marginLeft: 'auto' }}>{distBetween(playing, t).toFixed(2)} away</span>}
             </div>
             <div className="ldm-detail-title">{t.title}</div>

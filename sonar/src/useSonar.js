@@ -83,6 +83,10 @@ export function useSonar({ initialView = 'map' } = {}) {
   // Hold the playing track object too, so the player keeps showing it even after
   // it's removed from every layer/playlist (tracksById would otherwise drop it).
   const [playingTrack, setPlayingTrack] = React.useState(null);
+  // …and a snapshot of its origin (layer/playlist color + tag), so the now-playing
+  // track keeps its color and source tag (and stays peekable) after its layer is
+  // removed.
+  const [playingOrigin, setPlayingOrigin] = React.useState(null);
   const [hoverId, setHoverId] = React.useState(null);
   const [selectedId, setSelectedId] = React.useState(null);
   const [isPlaying, setIsPlaying] = React.useState(false);
@@ -270,7 +274,11 @@ export function useSonar({ initialView = 'map' } = {}) {
 
   const playing = playingId ? (tracksById.get(playingId) || (playingTrack?.id === playingId ? playingTrack : null)) : null;
   const hover = hoverId ? tracksById.get(hoverId) : null;
-  const selected = selectedId ? tracksById.get(selectedId) : null;
+  // Fall back to the retained playing track so the now-playing track stays
+  // selectable/peekable even after it's removed from every layer/playlist.
+  const selected = selectedId
+    ? (tracksById.get(selectedId) || (playingTrack?.id === selectedId ? playingTrack : null))
+    : null;
 
   const flatResults = React.useMemo(() => visibleTracks.map((e) => e.track), [visibleTracks]);
 
@@ -401,6 +409,7 @@ export function useSonar({ initialView = 'map' } = {}) {
     if (!track) return;
     setPlayingId(track.id);
     setPlayingTrack(track);
+    setPlayingOrigin(originFor(track) || playlistById.get(track.id)?.origin || null);
     setSelectedId(track.id);
     const audio = audioRef.current;
     if (audio) {
@@ -424,6 +433,7 @@ export function useSonar({ initialView = 'map' } = {}) {
     if (!track) return;
     setPlayingId(track.id);
     setPlayingTrack(track);
+    setPlayingOrigin(originFor(track) || playlistById.get(track.id)?.origin || null);
     setSelectedId(track.id);
     setIsPlaying(false);
     const audio = audioRef.current;
@@ -528,8 +538,11 @@ export function useSonar({ initialView = 'map' } = {}) {
       return { label: 'interpolation', color: CANDIDATE_COLOR };
     }
     const src = entryByTrackId.get(track.id)?.sources?.[0] || playlistById.get(track.id)?.origin;
-    return src ? { label: layerTag(src), color: src.color } : null;
-  }, [candidates, entryByTrackId, playlistById]);
+    if (src) return { label: layerTag(src), color: src.color };
+    // Removed-layer now-playing track keeps its captured origin tag.
+    if (track.id === playingId && playingOrigin) return { label: layerTag(playingOrigin), color: playingOrigin.color };
+    return null;
+  }, [candidates, entryByTrackId, playlistById, playingId, playingOrigin]);
 
   // The track shown in the detail card above the map: hover wins for preview,
   // otherwise the pinned selection.
@@ -565,7 +578,7 @@ export function useSonar({ initialView = 'map' } = {}) {
     // derived
     isLayerShown, visibleLayers, displayLayers, displayVisibleLayers,
     anyLoading, allVisible, visibleTracks,
-    entryByTrackId, playlistById, tracksById, playing, hover, selected,
+    entryByTrackId, playlistById, tracksById, playing, playingOrigin, hover, selected,
     flatResults, vibeSuggestions, playlistTracks, navList, navSource,
     detail, detailPinned, isCandidate, playingTotal, sourceTagFor,
     // playlist ops
