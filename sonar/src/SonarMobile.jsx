@@ -280,14 +280,24 @@ export default function SonarMobile({ s }) {
     return () => { roTop && roTop.disconnect(); roDock && roDock.disconnect(); };
   }, []);
 
-  // Mobile zoom — centered on the visible map band, clamped k ∈ [0.3, 5].
+  // Mobile zoom — clamped k ∈ [0.3, 5].
   // (Scaling about a fixed screen point is rotation-agnostic: c−T' = (k'/k)(c−T).)
+  // When a dot is tuned, scale about the RETICLE so that dot stays pinned under
+  // it; otherwise scale about the screen center and let the reticle drift.
   const ZK_MIN = 0.3, ZK_MAX = 5;
-  const zoomBy = (f) => setZoom((z) => {
-    const k = Math.max(ZK_MIN, Math.min(ZK_MAX, z.k * f));
-    const cx = MVW / 2, cy = MVH / 2;
-    return { k, r: z.r || 0, x: cx - (cx - z.x) * (k / z.k), y: cy - (cy - z.y) * (k / z.k) };
-  });
+  const zoomBy = (f) => {
+    const el = mapRef.current;
+    const tuned = selected || playing;
+    setZoom((z) => {
+      const k = Math.max(ZK_MIN, Math.min(ZK_MAX, z.k * f));
+      let cx = MVW / 2, cy = MVH / 2;
+      if (tuned && el) {
+        const rect = el.getBoundingClientRect();
+        if (rect.width) { const { S, offX, offY } = rectMetrics(rect); cx = (rect.width / 2 - offX) / S; cy = ((rect.height - dockH) / 2 - offY) / S; }
+      }
+      return { k, r: z.r || 0, x: cx - (cx - z.x) * (k / z.k), y: cy - (cy - z.y) * (k / z.k) };
+    });
+  };
 
   // ---- snap-to-center animation (rAF tween of zoom state) ----
   const animRef = React.useRef(0);
@@ -448,13 +458,22 @@ export default function SonarMobile({ s }) {
     else if (playlistTracks.length) recenterOn(playlistTracks, { fill: true });
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [layers]);
-  // …and when interpolation candidates arrive (frame endpoints + candidates).
+  // …when interpolation candidates arrive (frame endpoints + candidates), and
+  // when they're dismissed — refit the dots that come back into view.
+  const prevCandRef = React.useRef(candidates);
   React.useEffect(() => {
-    if (!candidates) return;
-    const pts = [...candidates.tracks];
-    const a = tracksById.get(candidates.aId), b = tracksById.get(candidates.bId);
-    if (a) pts.push(a); if (b) pts.push(b);
-    recenterOn(pts);
+    const had = prevCandRef.current;
+    prevCandRef.current = candidates;
+    if (candidates) {
+      const pts = [...candidates.tracks];
+      const a = tracksById.get(candidates.aId), b = tracksById.get(candidates.bId);
+      if (a) pts.push(a); if (b) pts.push(b);
+      recenterOn(pts);
+    } else if (had) {
+      const vis = visibleTracks.map((e) => e.track);
+      if (vis.length) recenterOn(vis, { fill: true });
+      else if (playlistTracks.length) recenterOn(playlistTracks, { fill: true });
+    }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [candidates]);
 
