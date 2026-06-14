@@ -928,6 +928,6 @@
   50%      { opacity: calc(var(--o, 0.4) * 2.6); }
 }
 .el-star-tw {
-  animation: el-twinkle var(--td, 3s) ease-in-out infinite;
+  animation: el-twinkle var(--td, 3s) ease-in-out infinite backwards;
   animation-delay: var(--tdl, 0s);
 }

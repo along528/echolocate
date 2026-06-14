@@ -636,7 +636,7 @@ export default function SonarMobile({ s }) {
                 <g style={{ pointerEvents: 'none' }}>
                   {backdrop.map((pt) => {
                     const p = dotPosM(pt);
-                    const ob = pt.o * (exploring ? 1.0 : 0.6); // brighter while exploring
+                    const ob = pt.o * (exploring ? 1.0 : 0.42); // brighter while exploring
                     return <circle key={'bd' + pt.id} cx={p.x} cy={p.y} r={(0.7 + pt.r) * (exploring ? 1.15 : 1) * iz} fill="#fff"
                       className={pt.tw ? 'el-star-tw' : undefined}
                       style={pt.tw
