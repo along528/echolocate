@@ -172,6 +172,11 @@ export default function SonarMobile({ s }) {
     return !v;
   });
 
+  // "Explore the corpus" mode: every search pill hidden (incl. a fresh map with
+  // no searches) and not in interpolation focus. In this mode the reticle probes
+  // the whole corpus (snapToCenter) and the backdrop field is brought forward.
+  const exploring = !candidates && visibleLayers.length === 0;
+
   // Inverse zoom so dots/rings stay a constant screen size (zoom between dots).
   const iz = 1 / zoom.k;
 
@@ -348,7 +353,7 @@ export default function SonarMobile({ s }) {
     // from the WHOLE corpus via /map/nearest instead of snapping to a loaded
     // dot. De-project the reticle to a normalized [0,1] coord, probe, then tune
     // onto whatever it resolves.
-    if (!candidates && visibleLayers.length === 0) {
+    if (exploring) {
       const nx = (cp.x - MPAD) / (MVW - 2 * MPAD);
       const ny = 1 - (cp.y - MPAD) / (MVH - 2 * MPAD);
       probeAt(nx, ny).then((t) => { if (t) tuneToTrack(t, rect); });
@@ -621,10 +626,12 @@ export default function SonarMobile({ s }) {
             <g transform={`translate(${zoom.x} ${zoom.y}) scale(${zoom.k}) rotate(${((zoom.r || 0) * 180) / Math.PI})`}>
               {/* Effectively-infinite grid (stays in plot space — scales with zoom). */}
               <rect x={-6000} y={-6000} width={12000} height={12000} fill="url(#ldm-grid)" style={{ pointerEvents: 'none' }} />
-              {/* Dimmed backdrop field — spatial context for the whole corpus. */}
+              {/* Backdrop field — spatial context for the whole corpus. Dimmed
+                  normally; brought forward as brighter, larger white dots while
+                  exploring (pills hidden), since they become the probe targets. */}
               {backdrop.length > 0 && (
                 <g style={{ pointerEvents: 'none' }}>
-                  {backdrop.map((pt) => { const p = dotPosM(pt); return <circle key={'bd' + pt.id} cx={p.x} cy={p.y} r={1.6 * iz} fill="white" opacity={0.1} />; })}
+                  {backdrop.map((pt) => { const p = dotPosM(pt); return <circle key={'bd' + pt.id} cx={p.x} cy={p.y} r={(exploring ? 2.1 : 1.6) * iz} fill="white" style={{ opacity: exploring ? 0.55 : 0.1, transition: 'opacity .3s ease' }} />; })}
                 </g>
               )}
               {playing && [44, 90, 150, 220].map((r, i) => { const p = dotPosM(playing); return <circle key={i} cx={p.x} cy={p.y} r={r * iz} fill="none" stroke="var(--el-yellow-500)" strokeOpacity={[0.55, 0.35, 0.22, 0.12][i]} strokeWidth={iz} style={{ pointerEvents: 'none' }} />; })}
