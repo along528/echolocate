@@ -20,6 +20,9 @@ pub struct TrackResponse {
     pub x: Option<f64>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub y: Option<f64>,
+    /// Track length in seconds (NULL until a DB rebuild surfaces it).
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub duration: Option<f64>,
 }
 
 #[derive(Debug, Serialize, Clone)]
@@ -43,6 +46,9 @@ pub struct SearchResult {
     pub x: Option<f64>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub y: Option<f64>,
+    /// Track length in seconds (NULL until a DB rebuild surfaces it).
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub duration: Option<f64>,
 }
 
 #[derive(Debug, Deserialize)]
@@ -118,6 +124,15 @@ pub struct SimilarQuery {
 #[derive(Debug, Deserialize)]
 pub struct MapBackdropQuery {
     pub n: Option<i64>,
+    pub source: Option<String>,
+}
+
+/// Query parameters for GET /map/nearest — the globally-nearest track to a
+/// clicked map coordinate (both normalized to [0,1]).
+#[derive(Debug, Deserialize)]
+pub struct MapNearestQuery {
+    pub x: f64,
+    pub y: f64,
     pub source: Option<String>,
 }
 

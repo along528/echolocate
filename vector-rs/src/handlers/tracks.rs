@@ -27,14 +27,14 @@ pub async fn list_tracks(
         let results = if random {
             if source == "all" {
                 let query = format!(
-                    "SELECT id, source, title, artist, album, relative_path, track_url, album_url, artist_url, x, y \
+                    "SELECT id, source, title, artist, album, relative_path, track_url, album_url, artist_url, x, y, duration \
                      FROM tracks USING SAMPLE {} ROWS",
                     limit
                 );
                 query_track_rows(&conn, &query, &[])?
             } else {
                 let query = format!(
-                    "SELECT id, source, title, artist, album, relative_path, track_url, album_url, artist_url, x, y \
+                    "SELECT id, source, title, artist, album, relative_path, track_url, album_url, artist_url, x, y, duration \
                      FROM (SELECT * FROM tracks WHERE source = ?) USING SAMPLE {} ROWS",
                     limit
                 );
@@ -42,11 +42,11 @@ pub async fn list_tracks(
             }
         } else {
             if source == "all" {
-                let query = "SELECT id, source, title, artist, album, relative_path, track_url, album_url, artist_url, x, y \
+                let query = "SELECT id, source, title, artist, album, relative_path, track_url, album_url, artist_url, x, y, duration \
                              FROM tracks ORDER BY id LIMIT ? OFFSET ?";
                 query_track_rows(&conn, query, &[&limit, &offset])?
             } else {
-                let query = "SELECT id, source, title, artist, album, relative_path, track_url, album_url, artist_url, x, y \
+                let query = "SELECT id, source, title, artist, album, relative_path, track_url, album_url, artist_url, x, y, duration \
                              FROM tracks WHERE source = ? ORDER BY id LIMIT ? OFFSET ?";
                 query_track_rows(&conn, query, &[&source as &dyn duckdb::ToSql, &limit, &offset])?
             }
@@ -112,7 +112,7 @@ async fn find_by_similarity(
                     let dist = dist_expr("v_mid", &vec_literal, use_hnsw);
                     let q = format!(
                         "SELECT id, title, artist, album, relative_path, track_url, album_url, artist_url, \
-                                {dist} as distance, x, y \
+                                {dist} as distance, x, y, duration \
                          FROM {table} \
                          ORDER BY distance ASC \
                          LIMIT {lim}",
@@ -137,6 +137,7 @@ async fn find_by_similarity(
                             similarity: 1.0 - dist,
                             x: row.get(9)?,
                             y: row.get(10)?,
+                            duration: row.get(11)?,
                         });
                     }
                 }
@@ -149,7 +150,7 @@ async fn find_by_similarity(
                 let dist = dist_expr("v_mid", &vec_literal, use_hnsw);
                 let q = format!(
                     "SELECT id, title, artist, album, relative_path, track_url, album_url, artist_url, \
-                            {dist} as distance, x, y \
+                            {dist} as distance, x, y, duration \
                      FROM {table} \
                      ORDER BY distance ASC \
                      LIMIT {lim}",
@@ -176,6 +177,7 @@ async fn find_by_similarity(
                         similarity: 1.0 - dist,
                         x: row.get(9)?,
                         y: row.get(10)?,
+                        duration: row.get(11)?,
                     });
                 }
                 res
@@ -186,7 +188,7 @@ async fn find_by_similarity(
             if source == "all" {
                 let query = format!(
                     "SELECT id, source, title, artist, album, relative_path, track_url, album_url, artist_url, \
-                            array_cosine_similarity(v_mid, {}) as similarity, x, y \
+                            array_cosine_similarity(v_mid, {}) as similarity, x, y, duration \
                      FROM tracks \
                      WHERE id != ? \
                      ORDER BY similarity ASC \
@@ -209,12 +211,13 @@ async fn find_by_similarity(
                         similarity: row.get(9)?,
                         x: row.get(10)?,
                         y: row.get(11)?,
+                        duration: row.get(12)?,
                     });
                 }
             } else {
                 let query = format!(
                     "SELECT id, source, title, artist, album, relative_path, track_url, album_url, artist_url, \
-                            array_cosine_similarity(v_mid, {}) as similarity, x, y \
+                            array_cosine_similarity(v_mid, {}) as similarity, x, y, duration \
                      FROM tracks \
                      WHERE id != ? AND source = ? \
                      ORDER BY similarity ASC \
@@ -237,6 +240,7 @@ async fn find_by_similarity(
                         similarity: row.get(9)?,
                         x: row.get(10)?,
                         y: row.get(11)?,
+                        duration: row.get(12)?,
                     });
                 }
             }
@@ -283,11 +287,11 @@ pub async fn tracks_by_ids(
             .join(",");
         let query = match &source {
             Some(s) if s != "all" => format!(
-                "SELECT id, source, title, artist, album, relative_path, track_url, album_url, artist_url, x, y \
+                "SELECT id, source, title, artist, album, relative_path, track_url, album_url, artist_url, x, y, duration \
                  FROM tracks WHERE source = ? AND id IN ({placeholders})"
             ),
             _ => format!(
-                "SELECT id, source, title, artist, album, relative_path, track_url, album_url, artist_url, x, y \
+                "SELECT id, source, title, artist, album, relative_path, track_url, album_url, artist_url, x, y, duration \
                  FROM tracks WHERE id IN ({placeholders})"
             ),
         };
@@ -308,7 +312,13 @@ pub async fn tracks_by_ids(
     .map_err(|e| AppError::Internal(e.to_string()))?
 }
 
-fn query_track_rows(
+/// Column list shared by every TrackResponse query. Must match the field order
+/// read in `query_track_rows` below. `duration` is NULL until a DB rebuild
+/// populates it.
+pub(crate) const TRACK_COLUMNS: &str =
+    "id, source, title, artist, album, relative_path, track_url, album_url, artist_url, x, y, duration";
+
+pub(crate) fn query_track_rows(
     conn: &duckdb::Connection,
     query: &str,
     params: &[&dyn duckdb::ToSql],
@@ -330,6 +340,7 @@ fn query_track_rows(
             artist_url: row.get(8)?,
             x: row.get(9)?,
             y: row.get(10)?,
+            duration: row.get(11)?,
         });
     }
 

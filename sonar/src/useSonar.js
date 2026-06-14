@@ -12,6 +12,34 @@ import { LAYER_COLORS, CANDIDATE_COLOR, FALLBACK_COLOR, distBetween, layerTag } 
 
 const STORE_KEY = 'sonar-state-v1';
 
+// Number of amplitude buckets in a real waveform (matches the bar count the
+// players render). Kept here so peak extraction and rendering agree.
+export const WAVE_BUCKETS = 56;
+
+// Downsample a decoded AudioBuffer into `buckets` peak amplitudes in [0.08,1].
+// Channel 0 is enough for a visual envelope; the floor keeps quiet sections
+// from disappearing entirely.
+function computePeaks(audioBuffer, buckets = WAVE_BUCKETS) {
+  const ch = audioBuffer.getChannelData(0);
+  const size = Math.floor(ch.length / buckets) || 1;
+  const out = new Array(buckets).fill(0);
+  let max = 0;
+  for (let b = 0; b < buckets; b++) {
+    let peak = 0;
+    const start = b * size;
+    const end = Math.min(ch.length, start + size);
+    for (let i = start; i < end; i++) {
+      const v = Math.abs(ch[i]);
+      if (v > peak) peak = v;
+    }
+    out[b] = peak;
+    if (peak > max) max = peak;
+  }
+  const norm = max > 0 ? 1 / max : 1;
+  for (let b = 0; b < buckets; b++) out[b] = Math.max(0.08, out[b] * norm);
+  return out;
+}
+
 // Responsive breakpoint helper — true on phone-sized viewports. Shared by the
 // Sonar shell to pick the mobile vs desktop view.
 // Either dimension ≤640 counts as mobile, but the short-side clause is gated on a
@@ -92,6 +120,16 @@ export function useSonar({ initialView = 'map' } = {}) {
   const [isPlaying, setIsPlaying] = React.useState(false);
   const [progress, setProgress] = React.useState(0);
   const [duration, setDuration] = React.useState(0);
+  // Real waveform peaks for the playing track (null = use the pseudo-envelope).
+  const [peaks, setPeaks] = React.useState(null);
+
+  // ---- whole-corpus map probing ----
+  // `backdrop` is a dimmed sample of {id,x,y} points giving spatial context to
+  // the corpus; `probes` are full tracks discovered by clicking empty map space
+  // (resolved via /map/nearest — the true nearest track, not just one already
+  // loaded in the UI).
+  const [backdrop, setBackdrop] = React.useState([]);
+  const [probes, setProbes] = React.useState([]);
 
   const [playlist, setPlaylist] = React.useState(boot?.playlist || []);
   const [candidates, setCandidates] = React.useState(null); // { aId, bId, tracks }
@@ -107,6 +145,64 @@ export function useSonar({ initialView = 'map' } = {}) {
 
   React.useEffect(() => { Labels.init(); }, []);
   React.useEffect(() => { Cache.getSuggestions().then(setSuggestions).catch(() => {}); }, []);
+
+  // Fetch the dimmed backdrop field once (best-effort; degrades to nothing).
+  React.useEffect(() => {
+    let alive = true;
+    API.mapBackdrop('fma', 600)
+      .then((pts) => { if (alive) setBackdrop(Array.isArray(pts) ? pts : []); })
+      .catch(() => {});
+    return () => { alive = false; };
+  }, []);
+
+  // Probe the whole corpus at a normalized (x,y): resolve the globally-nearest
+  // track via /map/nearest, remember it (so it gets a dot + is selectable), and
+  // select it. Used by both views' empty-space click handlers.
+  const probeAt = React.useCallback(async (nx, ny) => {
+    const x = Math.max(0, Math.min(1, nx));
+    const y = Math.max(0, Math.min(1, ny));
+    try {
+      const t = await API.mapNearest(x, y, 'fma');
+      if (t && t.id) {
+        setProbes((ps) => (ps.some((p) => p.id === t.id) ? ps : [...ps, t]));
+        setSelectedId(t.id);
+        return t;
+      }
+    } catch (e) {
+      console.error('probe failed', e);
+    }
+    return null;
+  }, []);
+  const clearProbes = React.useCallback(() => setProbes([]), []);
+
+  // Extract real waveform peaks for the playing track (fetch + decode + bucket),
+  // cached per track id. Falls back to the pseudo-envelope on any failure
+  // (unsupported browser, CORS, decode error).
+  const peaksCacheRef = React.useRef(new Map());
+  const audioCtxRef = React.useRef(null);
+  React.useEffect(() => {
+    if (!playingId) { setPeaks(null); return undefined; }
+    const cached = peaksCacheRef.current.get(playingId);
+    if (cached) { setPeaks(cached); return undefined; }
+    let alive = true;
+    setPeaks(null);
+    (async () => {
+      try {
+        const AC = window.AudioContext || window.webkitAudioContext;
+        if (!AC) return;
+        if (!audioCtxRef.current) audioCtxRef.current = new AC();
+        const res = await fetch(API.getStreamUrl(playingId));
+        if (!res.ok || !alive) return;
+        const raw = await res.arrayBuffer();
+        const audioBuf = await audioCtxRef.current.decodeAudioData(raw);
+        if (!alive) return;
+        const computed = computePeaks(audioBuf);
+        peaksCacheRef.current.set(playingId, computed);
+        if (alive) setPeaks(computed);
+      } catch { /* keep the pseudo-envelope */ }
+    })();
+    return () => { alive = false; };
+  }, [playingId]);
 
   // ---- persistence: save the durable slice of state on change ----
   React.useEffect(() => {
@@ -282,9 +378,10 @@ export function useSonar({ initialView = 'map' } = {}) {
     layers.forEach((l) => { l.results.forEach((t) => m.set(t.id, t)); if (l.seedTrack) m.set(l.seedTrack.id, l.seedTrack); });
     if (candidates) candidates.tracks.forEach((t) => m.set(t.id, t));
     playlist.forEach((s) => { if (s.track) m.set(s.track.id, s.track); });
+    probes.forEach((t) => m.set(t.id, t));
     if (playingTrack && !m.has(playingTrack.id)) m.set(playingTrack.id, playingTrack);
     return m;
-  }, [layers, candidates, playlist, playingTrack]);
+  }, [layers, candidates, playlist, probes, playingTrack]);
 
   const playing = playingId ? (tracksById.get(playingId) || (playingTrack?.id === playingId ? playingTrack : null)) : null;
   const hover = hoverId ? tracksById.get(hoverId) : null;
@@ -582,9 +679,11 @@ export function useSonar({ initialView = 'map' } = {}) {
     // state
     view, setView, vibeQuery, setVibeQuery, suggestions, aboutOpen, setAboutOpen,
     layers, setLayers, playingId, setPlayingId, hoverId, setHoverId,
-    selectedId, setSelectedId, isPlaying, progress, duration,
+    selectedId, setSelectedId, isPlaying, progress, duration, peaks,
     playlist, setPlaylist, candidates, setCandidates, labelsByTrackId,
     soloLayerId, zoom, setZoom,
+    // whole-corpus probing
+    backdrop, probes, probeAt, clearProbes,
     // refs / audio
     audioRef,
     onAudioTimeUpdate, onAudioLoadedMetadata, onAudioEnded, onAudioPause, onAudioPlay,

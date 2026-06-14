@@ -4,7 +4,8 @@ use std::collections::HashMap;
 use std::sync::Arc;
 
 use crate::error::AppError;
-use crate::models::{MapBackdropQuery, MapPoint, SearchResult};
+use crate::handlers::tracks::{query_track_rows, TRACK_COLUMNS};
+use crate::models::{MapBackdropQuery, MapNearestQuery, MapPoint, SearchResult, TrackResponse};
 use crate::AppState;
 
 /// Max backdrop sample size, to keep the SVG dot count sane on the client.
@@ -74,9 +75,9 @@ pub async fn backdrop(
     .map_err(|e| AppError::Internal(e.to_string()))?
 }
 
-/// Fill in `x,y` on results that were produced without coordinates (e.g. the
-/// interpolation path), via a single lookup against the `tracks` view. Results
-/// whose id has no projection stay `None`.
+/// Fill in `x,y` (and `duration`) on results that were produced without them
+/// (e.g. the interpolation path), via a single lookup against the `tracks`
+/// view. Results whose id has no projection stay `None`.
 pub fn backfill_coords(
     conn: &duckdb::Connection,
     results: &mut [SearchResult],
@@ -90,24 +91,93 @@ pub fn backfill_coords(
         .take(ids.len())
         .collect::<Vec<_>>()
         .join(",");
-    let sql = format!("SELECT id, x, y FROM tracks WHERE id IN ({placeholders})");
+    let sql = format!("SELECT id, x, y, duration FROM tracks WHERE id IN ({placeholders})");
 
     let mut stmt = conn.prepare(&sql)?;
     let params: Vec<&dyn duckdb::ToSql> = ids.iter().map(|s| s as &dyn duckdb::ToSql).collect();
     let mut rows = stmt.query(params.as_slice())?;
 
-    let mut coords: HashMap<String, (Option<f64>, Option<f64>)> = HashMap::new();
+    type Meta = (Option<f64>, Option<f64>, Option<f64>);
+    let mut coords: HashMap<String, Meta> = HashMap::new();
     while let Some(row) = rows.next()? {
         let id: String = row.get(0)?;
-        coords.insert(id, (row.get(1)?, row.get(2)?));
+        coords.insert(id, (row.get(1)?, row.get(2)?, row.get(3)?));
     }
 
     for r in results.iter_mut() {
-        if let Some((x, y)) = coords.get(&r.id) {
+        if let Some((x, y, duration)) = coords.get(&r.id) {
             r.x = *x;
             r.y = *y;
+            r.duration = *duration;
         }
     }
 
     Ok(())
+}
+
+/// GET /map/nearest?x=&y=&source=fma
+///
+/// Returns the single globally-nearest track to a clicked map coordinate
+/// (Euclidean distance in the normalized [0,1] projection space). This is the
+/// exact "click-to-probe across the whole corpus" lookup — unlike the client's
+/// approximate nearest-among-loaded-points fallback. 404 if no projected track
+/// exists for the requested source.
+pub async fn nearest(
+    State(state): State<Arc<AppState>>,
+    Query(params): Query<MapNearestQuery>,
+) -> Result<Json<TrackResponse>, AppError> {
+    let pool = state.db_pool.clone();
+    let source = params.source.unwrap_or_else(|| "fma".into());
+    let (x, y) = (params.x, params.y);
+
+    tokio::task::spawn_blocking(move || {
+        let conn = pool.get()?;
+
+        // Order by squared Euclidean distance to the clicked point; only consider
+        // projected tracks. The subquery mirrors the source-filtering pattern used
+        // by /map/backdrop and tracks::list_tracks.
+        let order_by = "((x - ?) * (x - ?) + (y - ?) * (y - ?)) ASC";
+        let (sql, has_source) = if source == "all" {
+            (
+                format!(
+                    "SELECT {cols} FROM \
+                     (SELECT * FROM tracks WHERE x IS NOT NULL AND y IS NOT NULL) \
+                     ORDER BY {order_by} LIMIT 1",
+                    cols = TRACK_COLUMNS, order_by = order_by
+                ),
+                false,
+            )
+        } else {
+            (
+                format!(
+                    "SELECT {cols} FROM \
+                     (SELECT * FROM tracks WHERE source = ? AND x IS NOT NULL AND y IS NOT NULL) \
+                     ORDER BY {order_by} LIMIT 1",
+                    cols = TRACK_COLUMNS, order_by = order_by
+                ),
+                true,
+            )
+        };
+
+        // Param order matches the `?` placeholders: [source?], x, x, y, y.
+        let mut params: Vec<&dyn duckdb::ToSql> = Vec::with_capacity(5);
+        if has_source {
+            params.push(&source);
+        }
+        params.push(&x);
+        params.push(&x);
+        params.push(&y);
+        params.push(&y);
+
+        let results = query_track_rows(&conn, &sql, &params)?;
+        pool.put(conn);
+
+        results
+            .into_iter()
+            .next()
+            .map(Json)
+            .ok_or_else(|| AppError::NotFound("No projected track found".into()))
+    })
+    .await
+    .map_err(|e| AppError::Internal(e.to_string()))?
 }

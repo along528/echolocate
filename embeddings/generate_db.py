@@ -53,6 +53,8 @@ def initialize_db():
             v_mid FLOAT[768],
             v_outro FLOAT[768],
             v_clap FLOAT[512],
+            -- Track length in seconds (carried through from the embedding pipeline).
+            duration DOUBLE,
             -- 2D sonar-map coordinates, populated by generate_projection.py
             -- (NULL until that step runs).
             x DOUBLE,
@@ -177,7 +179,7 @@ def load_library_data():
                 continue
 
             v_clap = clap_map.get(relative_path, [0.0] * 512)
-            
+
             track_data_list.append((
                 track_id,
                 title,
@@ -190,7 +192,8 @@ def load_library_data():
                 v_intro,
                 v_mid,
                 v_outro,
-                v_clap
+                v_clap,
+                info.get('duration')
             ))
     else:
         # JSONL: count lines first for progress bar
@@ -221,7 +224,7 @@ def load_library_data():
                     continue
 
                 v_clap = clap_map.get(relative_path, [0.0] * 512)
-                
+
                 track_data_list.append((
                     track_id,
                     title,
@@ -234,7 +237,8 @@ def load_library_data():
                     v_intro,
                     v_mid,
                     v_outro,
-                    v_clap
+                    v_clap,
+                    info.get('duration')
                 ))
 
     print(f"  Found {len(track_data_list)} library tracks.")
@@ -348,7 +352,8 @@ def load_fma_data():
                 v_intro,
                 v_mid,
                 v_outro,
-                v_clap
+                v_clap,
+                info.get('duration')
             ))
 
     print(f"  Found {len(track_data_list)} FMA tracks with metadata.")
@@ -372,8 +377,8 @@ def insert_tracks(con, track_data_list, source_name, chunk_size=1000):
         chunk = track_data_list[i:i + chunk_size]
         con.executemany(f"""
             INSERT OR IGNORE INTO {table}
-            (id, title, artist, album, relative_path, track_url, album_url, artist_url, v_intro, v_mid, v_outro, v_clap)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            (id, title, artist, album, relative_path, track_url, album_url, artist_url, v_intro, v_mid, v_outro, v_clap, duration)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         """, chunk)
 
 

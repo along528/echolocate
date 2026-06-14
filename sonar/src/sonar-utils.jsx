@@ -25,6 +25,9 @@ export const LAYER_COLORS = [
 ];
 export const CANDIDATE_COLOR = '#ffffff';
 export const FALLBACK_COLOR = '#94a3b8';
+// Conjured tracks (probed from the background). A warm amber/gold that stands
+// apart from the white backdrop field, indigo playlist trail, and search hues.
+export const CONJURE_COLOR = '#fbbf24';
 
 export function fmtTime(s) {
   if (s == null || isNaN(s)) return '0:00';

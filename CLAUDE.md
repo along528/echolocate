@@ -70,6 +70,7 @@ python generate_projection.py  # Compute 2D sonar-map x,y columns; run before ge
                                #   sonar ships: --method pca --vector mid (projects the MERT v_mid
                                #   embedding used for interpolation; axes are not interpretable)
 python generate_index_db.py    # Build stripped index DB from full DB (for baked-index deployment)
+                               #   inherits the duration / x,y columns from the full DB
 ```
 
 ### Local Development
@@ -100,8 +101,15 @@ The `tracks` table has columns:
 - `id`: MD5 hash of artist|album|title
 - `v_intro`, `v_mid`, `v_outro`: FLOAT[768] (MERT embeddings)
 - `v_clap`: FLOAT[512] (CLAP embeddings for semantic search)
+- `duration`: DOUBLE (track length in seconds; carried through from the embedding pipeline)
 - `x`, `y`: DOUBLE (2D sonar-map coordinates from `generate_projection.py`, normalized [0,1]; NULL until that step runs)
 - HNSW indexes on `v_mid` (cosine) and `v_clap` (cosine) per source table
+
+### Map Endpoints (vector-rs)
+- `GET /map/backdrop?source=&n=` — random `{id,x,y}` sample for the dimmed sonar-map field
+- `GET /map/nearest?x=&y=&source=` — the single globally-nearest track to a clicked
+  coordinate (Euclidean distance in the normalized [0,1] projection space); powers the
+  sonar frontend's "click empty space to probe the whole corpus" interaction
 
 ### Interpolation Methods
 - **greedy_walk**: Graph traversal finding neighbors closest to target (default)

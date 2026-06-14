@@ -74,6 +74,13 @@ export const API = {
     return request('GET', '/map/backdrop', null, { source, n });
   },
 
+  // The single globally-nearest track to a clicked map coordinate (x,y in
+  // [0,1]). Used for click-to-probe across the whole corpus — finds tracks not
+  // currently loaded in the UI. Returns a TrackResponse.
+  mapNearest(x, y, source = 'fma') {
+    return request('GET', '/map/nearest', null, { x, y, source });
+  },
+
   getStreamUrl(trackId) {
     return `${BASE_URL}/stream/${trackId}`;
   },

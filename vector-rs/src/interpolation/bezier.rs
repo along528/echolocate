@@ -59,6 +59,7 @@ pub fn bezier_interpolation(
                     similarity: 1.0 - dist,
                     x: None,
                     y: None,
+                    duration: None,
                 });
                 break;
             }

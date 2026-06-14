@@ -94,6 +94,7 @@ pub async fn interpolate_tracks(
                 similarity: 1.0 - dist,
                 x: None,
                 y: None,
+                duration: None,
             });
         }
 

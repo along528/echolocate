@@ -12,7 +12,7 @@ import {
   IconZoomIn, IconZoomOut, IconTilde,
 } from './icons.jsx';
 import {
-  CANDIDATE_COLOR, FALLBACK_COLOR, fmtTime, coordsOf, distBetween,
+  CANDIDATE_COLOR, FALLBACK_COLOR, CONJURE_COLOR, fmtTime, coordsOf, distBetween,
   layerTag, layerKindWord, prettyUrl, FeedbackPills, AboutModal,
 } from './sonar-utils.jsx';
 
@@ -144,7 +144,8 @@ function PeekSheet({ mode, onFull, onPeek, onHide, header, children }) {
 export default function SonarMobile({ s }) {
   const {
     view, setView, vibeQuery, setVibeQuery, aboutOpen, setAboutOpen,
-    layers, playingId, isPlaying, progress, selectedId, setSelectedId,
+    layers, playingId, isPlaying, progress, peaks, selectedId, setSelectedId,
+    backdrop, probes, probeAt, clearProbes,
     candidates, labelsByTrackId, soloLayerId, zoom, setZoom,
     addVibeLayer, addSeedLayer, removeLayer, toggleLayerVisible, toggleSolo,
     showAllLayers, hideAllLayers,
@@ -171,6 +172,11 @@ export default function SonarMobile({ s }) {
     try { localStorage.setItem('sonar-autoplay', v ? '0' : '1'); } catch { /* ignore */ }
     return !v;
   });
+
+  // "Explore the corpus" mode: every search pill hidden (incl. a fresh map with
+  // no searches) and not in interpolation focus. In this mode the reticle probes
+  // the whole corpus (snapToCenter) and the backdrop field is brought forward.
+  const exploring = !candidates && visibleLayers.length === 0;
 
   // Inverse zoom so dots/rings stay a constant screen size (zoom between dots).
   const iz = 1 / zoom.k;
@@ -342,6 +348,19 @@ export default function SonarMobile({ s }) {
     const cvy = ((rect.height - dockH) / 2 - offY) / S;
     // plot coords under the reticle (inverting translate∘scale∘rotate)
     const cp = rot({ x: (cvx - z.x) / z.k, y: (cvy - z.y) / z.k }, -(z.r || 0));
+
+    // Background-exploration mode: when every search pill is hidden (and we're
+    // not in interpolation focus), tuning conjures the globally-nearest track
+    // from the WHOLE corpus via /map/nearest instead of snapping to a loaded
+    // dot. De-project the reticle to a normalized [0,1] coord, probe, then tune
+    // onto whatever it resolves.
+    if (exploring) {
+      const nx = (cp.x - MPAD) / (MVW - 2 * MPAD);
+      const ny = 1 - (cp.y - MPAD) / (MVH - 2 * MPAD);
+      probeAt(nx, ny).then((t) => { if (t) tuneToTrack(t, rect); });
+      return;
+    }
+
     let best = null, bestD = Infinity;
     const consider = (t) => {
       const p = dotPosM(t);
@@ -358,8 +377,20 @@ export default function SonarMobile({ s }) {
     } else {
       visibleTracks.forEach((e) => consider(e.track));
       playlistTracks.forEach(consider);
+      probes.forEach(consider); // conjured tracks are snappable too, like pills
     }
     if (!best || bestD * z.k * S > SNAP_MAX_PX) { lastSnapIdRef.current = null; return; }
+    tuneToTrack(best, rect);
+  };
+
+  // Animate the reticle onto `best`, then auto-play it (or just select it when
+  // exploring silently) and reveal the peek. Shared by visible-dot snapping and
+  // background probing.
+  const tuneToTrack = (best, rect) => {
+    const z = zoomRef.current;
+    const { S, offX, offY } = rectMetrics(rect);
+    const cvx = (rect.width / 2 - offX) / S;
+    const cvy = ((rect.height - dockH) / 2 - offY) / S;
     const rp = rot(dotPosM(best), z.r || 0);
     animateZoomTo({ k: z.k, r: z.r || 0, x: cvx - z.k * rp.x, y: cvy - z.k * rp.y });
     if (autoPlayRef.current) {
@@ -598,6 +629,14 @@ export default function SonarMobile({ s }) {
             <g transform={`translate(${zoom.x} ${zoom.y}) scale(${zoom.k}) rotate(${((zoom.r || 0) * 180) / Math.PI})`}>
               {/* Effectively-infinite grid (stays in plot space — scales with zoom). */}
               <rect x={-6000} y={-6000} width={12000} height={12000} fill="url(#ldm-grid)" style={{ pointerEvents: 'none' }} />
+              {/* Backdrop field — spatial context for the whole corpus. Dimmed
+                  normally; brought forward as brighter, larger white dots while
+                  exploring (pills hidden), since they become the probe targets. */}
+              {backdrop.length > 0 && (
+                <g style={{ pointerEvents: 'none' }}>
+                  {backdrop.map((pt) => { const p = dotPosM(pt); return <circle key={'bd' + pt.id} cx={p.x} cy={p.y} r={(exploring ? 2.1 : 1.6) * iz} fill="white" style={{ opacity: exploring ? 0.55 : 0.1, transition: 'opacity .3s ease' }} />; })}
+                </g>
+              )}
               {playing && [44, 90, 150, 220].map((r, i) => { const p = dotPosM(playing); return <circle key={i} cx={p.x} cy={p.y} r={r * iz} fill="none" stroke="var(--el-yellow-500)" strokeOpacity={[0.55, 0.35, 0.22, 0.12][i]} strokeWidth={iz} style={{ pointerEvents: 'none' }} />; })}
               {/* The now-playing rings must always sit on a dot. If the playing
                   track isn't otherwise drawn (its layer was hidden/deleted and
@@ -684,6 +723,19 @@ export default function SonarMobile({ s }) {
                       <circle cx={p.x} cy={p.y} r={(isPlay ? 9.5 : 7) * iz} fill={color} opacity={0.9} />
                       <circle cx={p.x} cy={p.y} r={9.5 * iz} fill="none" stroke="white" strokeWidth={iz} strokeOpacity="0.7" />
                     </g>); })}
+                  {/* Conjured tracks (probed from the background while pills are
+                      hidden). Persist as their own dashed-ring dots so you still
+                      see + can replay your picks once the pills are shown again. */}
+                  {probes.map((t) => {
+                    if (entryByTrackId.has(t.id) || playlistById.has(t.id)) return null;
+                    const p = dotPosM(t); const isPlay = t.id === playingId, isSel = t.id === selectedId;
+                    const r = (isPlay ? 9 : 7) * iz;
+                    return (<g key={'probe' + t.id} onClick={onTap(() => handleDotTap(t))}>
+                      <circle cx={p.x} cy={p.y} r={14 * iz} fill="transparent" />
+                      {isSel && <circle cx={p.x} cy={p.y} r={r + 6 * iz} fill="none" stroke={CONJURE_COLOR} strokeWidth={1.5 * iz} />}
+                      <circle cx={p.x} cy={p.y} r={r} fill={CONJURE_COLOR} style={{ filter: `drop-shadow(0 0 ${(isPlay ? 9 : 6) * iz}px ${CONJURE_COLOR})` }} />
+                      <circle cx={p.x} cy={p.y} r={r + 2.5 * iz} fill="none" stroke={CONJURE_COLOR} strokeWidth={iz} strokeOpacity="0.8" strokeDasharray={`${2.5 * iz} ${2 * iz}`} />
+                    </g>); })}
                 </>
               )}
             </g>
@@ -699,6 +751,13 @@ export default function SonarMobile({ s }) {
               <span className="ldm-interp-dot" /> tracks in between — tap to dismiss ✕
             </button>
           )}
+          {/* Conjured tracks (probed from the background) — tap to clear them all.
+              Shares the interp banner's bottom-center slot; the two never co-occur. */}
+          {!candidates && probes.length > 0 && (
+            <button className="ldm-interp-clear ldm-probes-clear" onClick={clearProbes}>
+              <span className="ldm-interp-dot" style={{ background: CONJURE_COLOR }} /> {probes.length} conjured — tap to clear ✕
+            </button>
+          )}
           <div className="ldm-zoombtns">
             <button className="lo-btn-icon" onClick={() => zoomBy(1.3)}><IconZoomIn size={16} /></button>
             <button className="lo-btn-icon" onClick={() => zoomBy(1 / 1.3)}><IconZoomOut size={16} /></button>
@@ -709,6 +768,16 @@ export default function SonarMobile({ s }) {
                 {!autoPlay && <path d="M4.5 4.5 L19.5 19.5" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" fill="none" />}
               </svg>
             </button>
+            {/* Hide-all-pills toggle, doubling as the explore-mode switch: with
+                pills hidden, tuning conjures from the whole corpus (see
+                snapToCenter). Indigo when exploring. */}
+            {displayLayers.length > 0 && (() => { const anyShown = visibleLayers.length > 0;
+              return (<button className={'lo-btn-icon ldm-eye ' + (anyShown ? '' : 'is-on')}
+                onClick={() => { clearCandidates(); (anyShown ? hideAllLayers : showAllLayers)(); }}
+                title={anyShown ? 'Hide pills — tune to conjure from the whole corpus' : 'Exploring the corpus — show your pills again'}
+                aria-label={anyShown ? 'Hide pills to explore the corpus' : 'Show pills'}>
+                {anyShown ? <IconEye size={16} /> : <IconEyeOff size={16} />}
+              </button>); })()}
           </div>
         </div>
       ) : (
@@ -716,7 +785,7 @@ export default function SonarMobile({ s }) {
           {visibleTracks.map(({ track: t, color, sources }) => { const inPl = playlistById.has(t.id), isPlay = playingId === t.id;
             return (<div key={t.id} className={'ldm-row ' + (isPlay ? 'is-playing' : '')} onClick={() => playTrack(t)}>
               <span className="ldm-row-dot" style={{ background: color }} />
-              <div className="ldm-row-info"><div className="ldm-row-title">{t.title}</div><div className="ldm-row-sub">{t.artist} · {sources.map(layerTag).join(', ')}</div></div>
+              <div className="ldm-row-info"><div className="ldm-row-title">{t.title}</div><div className="ldm-row-sub">{t.artist}{t.duration ? ` · ${fmtTime(t.duration)}` : ''} · {sources.map(layerTag).join(', ')}</div></div>
               <button className={'ldm-row-add ' + (inPl ? 'is-active' : '')} onClick={(e) => { e.stopPropagation(); addToPlaylist(t); }}>{inPl ? <IconCheck size={16} /> : <IconListPlus size={16} />}</button>
             </div>); })}
           {/* When there are no search results but a playlist exists, show it here
@@ -768,11 +837,6 @@ export default function SonarMobile({ s }) {
           </div>
         )}
         <div className="ldm-chips-ctl">
-          {displayLayers.length > 0 && (() => { const anyShown = visibleLayers.length > 0;
-            return (<button className="ldm-chip ldm-chip-eye" onClick={() => { clearCandidates(); (anyShown ? hideAllLayers : showAllLayers)(); }}
-              title={anyShown ? 'Hide all searches' : 'Show all searches'} aria-label={anyShown ? 'Hide all searches' : 'Show all searches'}>
-              {anyShown ? <IconEye size={14} /> : <IconEyeOff size={14} />}
-            </button>); })()}
           <button className="ldm-chip ldm-chip-add" onClick={() => setSheet('search')}><IconPlus size={13} /> add</button>
         </div>
       </div>
@@ -819,7 +883,7 @@ export default function SonarMobile({ s }) {
               {playing && playing.id !== t.id && <span className="ld-detail-dist" style={{ marginLeft: 'auto' }}>{distBetween(playing, t).toFixed(2)} away</span>}
             </div>
             <div className="ldm-detail-title">{t.title}</div>
-            <div className="ldm-detail-sub">{t.artist} — {t.album}</div>
+            <div className="ldm-detail-sub">{t.artist} — {t.album}{t.duration ? ` · ${fmtTime(t.duration)}` : ''}</div>
             {t.track_url && (<a className="ld-detail-url" href={t.track_url} target="_blank" rel="noopener noreferrer" style={{ marginTop: 6 }}><IconExternal size={12} />{prettyUrl(t.track_url)}</a>)}
             <div className="ldm-detail-fb"><FeedbackPills track={t} value={labelsByTrackId[t.id]} onLabel={labelTrack} source={sourceTagFor(t)} /></div>
             {/* No Add button here — the peek header's add button covers it. */}
@@ -928,7 +992,7 @@ export default function SonarMobile({ s }) {
             <div className="lo-eyebrow-strong">Now playing</div>
             <div className="ldm-now-title">{playing.title}</div>
             <div className="ldm-now-sub">{playing.artist} — {playing.album}</div>
-            <div style={{ marginTop: 14 }}><Waveform width={350} height={40} progress={progress} bars={56} seed={(playingId || 'x').charCodeAt(0) + 3} onSeek={seekTo} /></div>
+            <div style={{ marginTop: 14 }}><Waveform width={350} height={40} progress={progress} bars={56} seed={(playingId || 'x').charCodeAt(0) + 3} peaks={peaks} onSeek={seekTo} /></div>
             <div className="ldm-now-times"><span>{fmtTime(playingTotal * progress)}</span><span>{fmtTime(playingTotal)}</span></div>
             <div className="ldm-now-transport">
               <button className="ldm-now-tbtn" onClick={() => step(-1)}><svg viewBox="0 0 24 24" fill="currentColor" width="18" height="18"><path d="M6 6h2v12H6zm3.5 6l8.5 6V6z" /></svg></button>

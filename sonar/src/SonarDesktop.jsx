@@ -11,7 +11,7 @@ import {
   IconZoomIn, IconZoomOut, IconRecenter, IconInfo,
 } from './icons.jsx';
 import {
-  CANDIDATE_COLOR, FALLBACK_COLOR, fmtTime, coordsOf, distBetween, distChipValue,
+  CANDIDATE_COLOR, FALLBACK_COLOR, CONJURE_COLOR, fmtTime, coordsOf, distBetween, distChipValue,
   layerTag, layerKindWord, prettyUrl, FeedbackPills, SourceLink, AboutModal,
 } from './sonar-utils.jsx';
 
@@ -31,8 +31,9 @@ export default function SonarDesktop({ s }) {
   const {
     view, setView, vibeQuery, setVibeQuery, suggestions, aboutOpen, setAboutOpen,
     layers, playingId, hoverId, setHoverId, selectedId, setSelectedId,
-    isPlaying, progress, playlist, candidates, labelsByTrackId, soloLayerId,
+    isPlaying, progress, peaks, playlist, candidates, labelsByTrackId, soloLayerId,
     zoom, setZoom,
+    backdrop, probes, probeAt, clearProbes,
     addVibeLayer, addSeedLayer, restoreLayer, removeLayer, clearLayers,
     toggleLayerVisible, toggleSolo, showAllLayers,
     visibleLayers, displayLayers, displayVisibleLayers,
@@ -95,13 +96,13 @@ export default function SonarDesktop({ s }) {
     visibleTracks.forEach((e) => consider(e.track));
     if (candidates) candidates.tracks.forEach(consider);
     playlistTracks.forEach(consider);
+    probes.forEach(consider);
     return best;
   };
   const onMapBackgroundClick = (e) => {
     // A click that came at the end of a pan-drag shouldn't also select a track.
     if (didPanRef.current) { didPanRef.current = false; return; }
-    // Clicks on a dot/line stopPropagation, so reaching here means empty space:
-    // select the nearest track to the click.
+    // Clicks on a dot/line stopPropagation, so reaching here means empty space.
     const svg = e.currentTarget;
     const rect = svg.getBoundingClientRect();
     const sx = ((e.clientX - rect.left) / rect.width) * VW;
@@ -109,8 +110,13 @@ export default function SonarDesktop({ s }) {
     // invert zoom transform: screen = k*plot + offset
     const px = (sx - zoom.x) / zoom.k;
     const py = (sy - zoom.y) / zoom.k;
+    // Instant feedback: select the nearest already-loaded track…
     const t = nearestTrack(px, py);
     if (t) setSelectedId(t.id);
+    // …then probe the whole corpus for the true nearest at this coordinate.
+    const nx = (px - PAD) / (VW - 2 * PAD);
+    const ny = 1 - (py - PAD) / (VH - 2 * PAD);
+    probeAt(nx, ny);
   };
 
   // ---- click-drag to pan (only meaningful when zoomed in) ----
@@ -390,6 +396,9 @@ export default function SonarDesktop({ s }) {
             {candidates && (
               <button className="lo-btn-ghost ld-mini-btn" onClick={clearCandidates}>Clear interpolation</button>
             )}
+            {probes.length > 0 && (
+              <button className="lo-btn-ghost ld-mini-btn" onClick={clearProbes}>Clear conjured</button>
+            )}
           </div>
 
           {/* Track detail card — lives ABOVE the map so it never obscures dots. */}
@@ -428,6 +437,17 @@ export default function SonarDesktop({ s }) {
                     ))}
                     <rect x={PAD} y={PAD} width={VW - 2 * PAD} height={VH - 2 * PAD} fill="none" stroke="white" strokeWidth="0.6" />
                   </g>
+
+                  {/* dimmed backdrop field — spatial context for the whole
+                      corpus, so clicking empty space (probe) is meaningful */}
+                  {backdrop.length > 0 && (
+                    <g style={{ pointerEvents: 'none' }}>
+                      {backdrop.map((pt) => {
+                        const p = dotPos(pt);
+                        return <circle key={'bd_' + pt.id} cx={p.x} cy={p.y} r={1.6 * iz} fill="var(--el-fg-primary)" opacity={0.1} />;
+                      })}
+                    </g>
+                  )}
 
                   {/* sonar rings on playing dot */}
                   {playing && [50, 100, 160, 230].map((r, i) => {
@@ -526,6 +546,27 @@ export default function SonarDesktop({ s }) {
                     );
                   })}
 
+                  {/* probed tracks (discovered by clicking empty space) that
+                      aren't already shown as a result/playlist dot */}
+                  {probes.map((t) => {
+                    if (entryByTrackId.has(t.id) || playlistById.has(t.id)) return null;
+                    const p = dotPos(t);
+                    const isSel = t.id === selectedId;
+                    const isPlay = t.id === playingId;
+                    return (
+                      <g key={'probe_' + t.id}
+                        onMouseEnter={() => setHoverId(t.id)}
+                        onMouseLeave={() => setHoverId((prev) => (prev === t.id ? null : prev))}
+                        onClick={(e) => { e.stopPropagation(); setSelectedId(t.id); }}
+                        onDoubleClick={(e) => { e.stopPropagation(); addToPlaylist(t); }}
+                        style={{ cursor: 'pointer' }}>
+                        {isSel && <circle cx={p.x} cy={p.y} r={12 * iz} fill="none" stroke={CONJURE_COLOR} strokeWidth={1.5 * iz} />}
+                        <circle cx={p.x} cy={p.y} r={(isPlay ? 9 : 6) * iz} fill={CONJURE_COLOR} style={{ filter: `drop-shadow(0 0 ${(isPlay ? 9 : 6) * iz}px ${CONJURE_COLOR})` }} />
+                        <circle cx={p.x} cy={p.y} r={9 * iz} fill="none" stroke={CONJURE_COLOR} strokeWidth={iz} strokeOpacity="0.7" strokeDasharray={`${3 * iz} ${2 * iz}`} />
+                      </g>
+                    );
+                  })}
+
                 </g>
               </svg>
 
@@ -585,7 +626,7 @@ export default function SonarDesktop({ s }) {
                     <button className="lo-track-play" title="Play" onClick={(e) => { e.stopPropagation(); playTrack(t); }}>▶</button>
                     <div className="lo-track-info">
                       <div className="lo-track-title">{t.title}<SourceLink track={t} /></div>
-                      <div className="lo-track-sub">{t.artist} — {t.album}</div>
+                      <div className="lo-track-sub">{t.artist} — {t.album}{t.duration ? ` · ${fmtTime(t.duration)}` : ''}</div>
                       {/* search origin shown inline in every row */}
                       <div className="ld-track-origin">
                         {sources.map((l) => (
@@ -630,7 +671,7 @@ export default function SonarDesktop({ s }) {
               })()}
             </div>
             <div>
-              <Waveform width={244} height={36} progress={progress} bars={48} seed={(playingId || 'x').charCodeAt(0) + 3} onSeek={playing ? seekTo : null} />
+              <Waveform width={244} height={36} progress={progress} bars={48} seed={(playingId || 'x').charCodeAt(0) + 3} peaks={peaks} onSeek={playing ? seekTo : null} />
               <div className="lo-now-times">
                 <span>{fmtTime(playingTotal * progress)}</span>
                 <span>{fmtTime(playingTotal)}</span>
