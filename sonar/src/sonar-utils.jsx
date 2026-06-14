@@ -55,7 +55,7 @@ export function coordsOf(t) {
   return hashCoord(t?.id || '');
 }
 
-// Decorate the baked real-corpus sample (BACKDROP_SEED — a 2400-point random
+// Decorate the baked real-corpus sample (BACKDROP_SEED — a baked random
 // draw from the full `tracks` distribution) into a "galaxy" starfield. Positions
 // are the ACTUAL data, so the field mirrors the real corpus shape (a centered
 // cloud), while still painting on the very FIRST render with no API round-trip.
@@ -81,7 +81,7 @@ export function makeGalaxy() {
       x, y,
       r: 0.3 + g * 1.3 + a * a * 0.8,   // size: grows toward the dense core
       o: 0.1 + g * 0.55 + b * 0.16,     // brightness: faint at the edges
-      tw: c < 0.16,                     // ~1 in 6 twinkles
+      tw: c < 0.2,                      // ~1 in 5 twinkles
       d,                                // twinkle phase (randomizes delay/duration)
     };
   });

@@ -921,8 +921,11 @@
    they shimmer out of phase. Positions/brightness come from the real corpus
    sample (backdrop-seed.js), identical for every user. */
 @keyframes el-twinkle {
-  0%, 100% { opacity: calc(var(--o, 0.4) * 0.3); }
-  50%      { opacity: var(--o, 0.4); }
+  /* Rests at the star's baked base brightness (so there is NO dim-then-fade-in
+     on load), then briefly flashes brighter. calc may exceed 1 — the browser
+     clamps, so brighter stars sparkle hard while faint ones stay subtle. */
+  0%, 100% { opacity: var(--o, 0.4); }
+  50%      { opacity: calc(var(--o, 0.4) * 2.6); }
 }
 .el-star-tw {
   animation: el-twinkle var(--td, 3s) ease-in-out infinite;

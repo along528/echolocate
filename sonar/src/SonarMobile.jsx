@@ -640,8 +640,8 @@ export default function SonarMobile({ s }) {
                     return <circle key={'bd' + pt.id} cx={p.x} cy={p.y} r={(0.7 + pt.r) * (exploring ? 1.15 : 1) * iz} fill="#fff"
                       className={pt.tw ? 'el-star-tw' : undefined}
                       style={pt.tw
-                        ? { '--o': ob, '--td': `${2.4 + pt.d * 3.2}s`, '--tdl': `${pt.d * 4}s` }
-                        : { opacity: ob, transition: 'opacity .3s ease' }} />;
+                        ? { '--o': ob, '--td': `${2.0 + pt.d * 2.4}s`, '--tdl': `${pt.d * 4}s` }
+                        : { opacity: ob }} />;
                   })}
                 </g>
               )}
