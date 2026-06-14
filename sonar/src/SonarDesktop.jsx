@@ -11,7 +11,7 @@ import {
   IconZoomIn, IconZoomOut, IconRecenter, IconInfo,
 } from './icons.jsx';
 import {
-  CANDIDATE_COLOR, FALLBACK_COLOR, fmtTime, coordsOf, distBetween, distChipValue,
+  CANDIDATE_COLOR, FALLBACK_COLOR, CONJURE_COLOR, fmtTime, coordsOf, distBetween, distChipValue,
   layerTag, layerKindWord, prettyUrl, FeedbackPills, SourceLink, AboutModal,
 } from './sonar-utils.jsx';
 
@@ -560,9 +560,9 @@ export default function SonarDesktop({ s }) {
                         onClick={(e) => { e.stopPropagation(); setSelectedId(t.id); }}
                         onDoubleClick={(e) => { e.stopPropagation(); addToPlaylist(t); }}
                         style={{ cursor: 'pointer' }}>
-                        {isSel && <circle cx={p.x} cy={p.y} r={12 * iz} fill="none" stroke={FALLBACK_COLOR} strokeWidth={1.5 * iz} />}
-                        <circle cx={p.x} cy={p.y} r={(isPlay ? 9 : 6) * iz} fill={FALLBACK_COLOR} opacity={0.9} />
-                        <circle cx={p.x} cy={p.y} r={9 * iz} fill="none" stroke="white" strokeWidth={iz} strokeOpacity="0.5" strokeDasharray={`${3 * iz} ${2 * iz}`} />
+                        {isSel && <circle cx={p.x} cy={p.y} r={12 * iz} fill="none" stroke={CONJURE_COLOR} strokeWidth={1.5 * iz} />}
+                        <circle cx={p.x} cy={p.y} r={(isPlay ? 9 : 6) * iz} fill={CONJURE_COLOR} style={{ filter: `drop-shadow(0 0 ${(isPlay ? 9 : 6) * iz}px ${CONJURE_COLOR})` }} />
+                        <circle cx={p.x} cy={p.y} r={9 * iz} fill="none" stroke={CONJURE_COLOR} strokeWidth={iz} strokeOpacity="0.7" strokeDasharray={`${3 * iz} ${2 * iz}`} />
                       </g>
                     );
                   })}

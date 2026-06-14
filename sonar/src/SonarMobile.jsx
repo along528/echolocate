@@ -12,7 +12,7 @@ import {
   IconZoomIn, IconZoomOut, IconTilde,
 } from './icons.jsx';
 import {
-  CANDIDATE_COLOR, FALLBACK_COLOR, fmtTime, coordsOf, distBetween,
+  CANDIDATE_COLOR, FALLBACK_COLOR, CONJURE_COLOR, fmtTime, coordsOf, distBetween,
   layerTag, layerKindWord, prettyUrl, FeedbackPills, AboutModal,
 } from './sonar-utils.jsx';
 
@@ -727,12 +727,12 @@ export default function SonarMobile({ s }) {
                   {probes.map((t) => {
                     if (entryByTrackId.has(t.id) || playlistById.has(t.id)) return null;
                     const p = dotPosM(t); const isPlay = t.id === playingId, isSel = t.id === selectedId;
-                    const r = (isPlay ? 9 : 6.5) * iz;
+                    const r = (isPlay ? 9 : 7) * iz;
                     return (<g key={'probe' + t.id} onClick={onTap(() => handleDotTap(t))}>
                       <circle cx={p.x} cy={p.y} r={14 * iz} fill="transparent" />
-                      {isSel && <circle cx={p.x} cy={p.y} r={r + 6 * iz} fill="none" stroke={FALLBACK_COLOR} strokeWidth={1.5 * iz} />}
-                      <circle cx={p.x} cy={p.y} r={r} fill={FALLBACK_COLOR} opacity={0.9} style={{ filter: isPlay ? `drop-shadow(0 0 8px ${FALLBACK_COLOR})` : 'none' }} />
-                      <circle cx={p.x} cy={p.y} r={r + 2.5 * iz} fill="none" stroke="white" strokeWidth={iz} strokeOpacity="0.6" strokeDasharray={`${2.5 * iz} ${2 * iz}`} />
+                      {isSel && <circle cx={p.x} cy={p.y} r={r + 6 * iz} fill="none" stroke={CONJURE_COLOR} strokeWidth={1.5 * iz} />}
+                      <circle cx={p.x} cy={p.y} r={r} fill={CONJURE_COLOR} style={{ filter: `drop-shadow(0 0 ${(isPlay ? 9 : 6) * iz}px ${CONJURE_COLOR})` }} />
+                      <circle cx={p.x} cy={p.y} r={r + 2.5 * iz} fill="none" stroke={CONJURE_COLOR} strokeWidth={iz} strokeOpacity="0.8" strokeDasharray={`${2.5 * iz} ${2 * iz}`} />
                     </g>); })}
                 </>
               )}
@@ -753,7 +753,7 @@ export default function SonarMobile({ s }) {
               Shares the interp banner's bottom-center slot; the two never co-occur. */}
           {!candidates && probes.length > 0 && (
             <button className="ldm-interp-clear ldm-probes-clear" onClick={clearProbes}>
-              <span className="ldm-interp-dot" style={{ background: FALLBACK_COLOR }} /> {probes.length} conjured — tap to clear ✕
+              <span className="ldm-interp-dot" style={{ background: CONJURE_COLOR }} /> {probes.length} conjured — tap to clear ✕
             </button>
           )}
           <div className="ldm-zoombtns">
