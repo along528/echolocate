@@ -7,6 +7,7 @@
 // (390×780). Only the unitless coords math (coordsOf / distBetween) is shared.
 import React from 'react';
 import { IconCheck, IconTilde, IconX, IconExternal } from './icons.jsx';
+import { BACKDROP_SEED } from './backdrop-seed.js';
 
 // Per-search layer colors. A search's color is its identity everywhere (pill,
 // dots, list rows). White is reserved for interpolation candidates. Eight
@@ -52,6 +53,38 @@ export function hashCoord(id) {
 export function coordsOf(t) {
   if (t && typeof t.x === 'number' && typeof t.y === 'number') return [t.x, t.y];
   return hashCoord(t?.id || '');
+}
+
+// Decorate the baked real-corpus sample (BACKDROP_SEED — a 2400-point random
+// draw from the full `tracks` distribution) into a "galaxy" starfield. Positions
+// are the ACTUAL data, so the field mirrors the real corpus shape (a centered
+// cloud), while still painting on the very FIRST render with no API round-trip.
+// Each star gets a deterministic size `r`, base opacity `o`, twinkle flag `tw`,
+// and phase `d` (0..1) — mostly small/faint with a few bright, for depth. It's
+// decorative only (probing resolves real tracks via /map/nearest at runtime).
+export function makeGalaxy() {
+  let s = 0x5eed1 >>> 0;
+  const rand = () => {
+    s = (s + 0x6D2B79F5) | 0;
+    let t = Math.imul(s ^ (s >>> 15), 1 | s);
+    t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t;
+    return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+  };
+  return BACKDROP_SEED.map(([x, y, g], i) => {
+    const a = rand(), b = rand(), c = rand(), d = rand();
+    // Local density `g` (0..1) drives the core->edge falloff: the dense core is
+    // brighter and larger, the faint outskirts at the boundary stay small and
+    // dim — so the field thins exactly where the real data does. A little
+    // randomness on top adds per-star sparkle.
+    return {
+      id: 'g' + i,
+      x, y,
+      r: 0.3 + g * 1.3 + a * a * 0.8,   // size: grows toward the dense core
+      o: 0.1 + g * 0.55 + b * 0.16,     // brightness: faint at the edges
+      tw: c < 0.16,                     // ~1 in 6 twinkles
+      d,                                // twinkle phase (randomizes delay/duration)
+    };
+  });
 }
 
 export function distBetween(a, b) {

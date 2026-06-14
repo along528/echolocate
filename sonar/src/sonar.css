@@ -915,3 +915,16 @@
   outline: 2px solid var(--el-indigo-500);
   outline-offset: 1px;
 }
+
+/* Galaxy backdrop twinkle — a subset of stars pulse their opacity around their
+   own baked base brightness (--o). Duration/delay are per-star (--td/--tdl) so
+   they shimmer out of phase. Positions/brightness come from the real corpus
+   sample (backdrop-seed.js), identical for every user. */
+@keyframes el-twinkle {
+  0%, 100% { opacity: calc(var(--o, 0.4) * 0.3); }
+  50%      { opacity: var(--o, 0.4); }
+}
+.el-star-tw {
+  animation: el-twinkle var(--td, 3s) ease-in-out infinite;
+  animation-delay: var(--tdl, 0s);
+}

@@ -8,7 +8,7 @@ import React from 'react';
 import { API } from './api.js';
 import { Labels } from './labels.js';
 import { Cache, FALLBACK_SUGGESTIONS } from './cache.js';
-import { LAYER_COLORS, CANDIDATE_COLOR, FALLBACK_COLOR, distBetween, layerTag } from './sonar-utils.jsx';
+import { LAYER_COLORS, CANDIDATE_COLOR, FALLBACK_COLOR, distBetween, layerTag, makeGalaxy } from './sonar-utils.jsx';
 
 const STORE_KEY = 'sonar-state-v1';
 
@@ -124,11 +124,11 @@ export function useSonar({ initialView = 'map' } = {}) {
   const [peaks, setPeaks] = React.useState(null);
 
   // ---- whole-corpus map probing ----
-  // `backdrop` is a dimmed sample of {id,x,y} points giving spatial context to
-  // the corpus; `probes` are full tracks discovered by clicking empty map space
-  // (resolved via /map/nearest — the true nearest track, not just one already
-  // loaded in the UI).
-  const [backdrop, setBackdrop] = React.useState([]);
+  // `backdrop` is a procedural galaxy starfield (generated once, so it paints on
+  // the first render) giving decorative spatial context to the corpus; `probes`
+  // are full tracks discovered by clicking empty map space (resolved via
+  // /map/nearest — the true nearest track, not just one already loaded).
+  const [backdrop] = React.useState(makeGalaxy);
   const [probes, setProbes] = React.useState([]);
 
   const [playlist, setPlaylist] = React.useState(boot?.playlist || []);
@@ -145,15 +145,6 @@ export function useSonar({ initialView = 'map' } = {}) {
 
   React.useEffect(() => { Labels.init(); }, []);
   React.useEffect(() => { Cache.getSuggestions().then(setSuggestions).catch(() => {}); }, []);
-
-  // Fetch the dimmed backdrop field once (best-effort; degrades to nothing).
-  React.useEffect(() => {
-    let alive = true;
-    API.mapBackdrop('fma', 600)
-      .then((pts) => { if (alive) setBackdrop(Array.isArray(pts) ? pts : []); })
-      .catch(() => {});
-    return () => { alive = false; };
-  }, []);
 
   // Probe the whole corpus at a normalized (x,y): resolve the globally-nearest
   // track via /map/nearest, remember it (so it gets a dot + is selectable), and
