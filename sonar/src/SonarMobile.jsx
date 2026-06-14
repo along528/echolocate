@@ -634,7 +634,15 @@ export default function SonarMobile({ s }) {
                   exploring (pills hidden), since they become the probe targets. */}
               {backdrop.length > 0 && (
                 <g style={{ pointerEvents: 'none' }}>
-                  {backdrop.map((pt) => { const p = dotPosM(pt); return <circle key={'bd' + pt.id} cx={p.x} cy={p.y} r={(exploring ? 2.1 : 1.6) * iz} fill="white" style={{ opacity: exploring ? 0.55 : 0.1, transition: 'opacity .3s ease' }} />; })}
+                  {backdrop.map((pt) => {
+                    const p = dotPosM(pt);
+                    const ob = pt.o * (exploring ? 1.0 : 0.42); // brighter while exploring
+                    return <circle key={'bd' + pt.id} cx={p.x} cy={p.y} r={(0.7 + pt.r) * (exploring ? 1.15 : 1) * iz} fill="#fff"
+                      className={pt.tw ? 'el-star-tw' : undefined}
+                      style={pt.tw
+                        ? { '--o': ob, '--td': `${2.0 + pt.d * 2.4}s`, '--tdl': `${pt.d * 4}s` }
+                        : { opacity: ob }} />;
+                  })}
                 </g>
               )}
               {playing && [44, 90, 150, 220].map((r, i) => { const p = dotPosM(playing); return <circle key={i} cx={p.x} cy={p.y} r={r * iz} fill="none" stroke="var(--el-yellow-500)" strokeOpacity={[0.55, 0.35, 0.22, 0.12][i]} strokeWidth={iz} style={{ pointerEvents: 'none' }} />; })}

@@ -7,9 +7,11 @@
 // (390×780). Only the unitless coords math (coordsOf / distBetween) is shared.
 import React from 'react';
 import { IconCheck, IconTilde, IconX, IconExternal } from './icons.jsx';
+import { BACKDROP_SEED } from './backdrop-seed.js';
 
 // Per-search layer colors. A search's color is its identity everywhere (pill,
-// dots, list rows). White is reserved for interpolation candidates. Eight
+// dots, list rows). Yellow (CANDIDATE_COLOR, the interp accent) is reserved
+// for interpolation candidates. Seven
 // hues of similar luminance on the dark bg, ordered so CONSECUTIVE picks are
 // far apart in hue (new layers grab the first unused entry), with a deliberate
 // gap around brand indigo (#6366f1) so no layer reads as the playlist color.
@@ -18,12 +20,11 @@ export const LAYER_COLORS = [
   '#f87171', // coral
   '#a3e635', // lime
   '#c084fc', // violet
-  '#fbbf24', // amber
   '#34d399', // emerald
   '#f472b6', // pink
   '#fb923c', // orange
 ];
-export const CANDIDATE_COLOR = '#ffffff';
+export const CANDIDATE_COLOR = '#facc15'; // interpolation candidates (interp-yellow)
 export const FALLBACK_COLOR = '#94a3b8';
 // Conjured tracks (probed from the background). A warm amber/gold that stands
 // apart from the white backdrop field, indigo playlist trail, and search hues.
@@ -52,6 +53,38 @@ export function hashCoord(id) {
 export function coordsOf(t) {
   if (t && typeof t.x === 'number' && typeof t.y === 'number') return [t.x, t.y];
   return hashCoord(t?.id || '');
+}
+
+// Decorate the baked real-corpus sample (BACKDROP_SEED — a baked random
+// draw from the full `tracks` distribution) into a "galaxy" starfield. Positions
+// are the ACTUAL data, so the field mirrors the real corpus shape (a centered
+// cloud), while still painting on the very FIRST render with no API round-trip.
+// Each star gets a deterministic size `r`, base opacity `o`, twinkle flag `tw`,
+// and phase `d` (0..1) — mostly small/faint with a few bright, for depth. It's
+// decorative only (probing resolves real tracks via /map/nearest at runtime).
+export function makeGalaxy() {
+  let s = 0x5eed1 >>> 0;
+  const rand = () => {
+    s = (s + 0x6D2B79F5) | 0;
+    let t = Math.imul(s ^ (s >>> 15), 1 | s);
+    t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t;
+    return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+  };
+  return BACKDROP_SEED.map(([x, y, g], i) => {
+    const a = rand(), b = rand(), c = rand(), d = rand();
+    // Local density `g` (0..1) drives the core->edge falloff: the dense core is
+    // brighter and larger, the faint outskirts at the boundary stay small and
+    // dim — so the field thins exactly where the real data does. A little
+    // randomness on top adds per-star sparkle.
+    return {
+      id: 'g' + i,
+      x, y,
+      r: 0.3 + g * 1.3 + a * a * 0.8,   // size: grows toward the dense core
+      o: 0.1 + g * 0.55 + b * 0.16,     // brightness: faint at the edges
+      tw: c < 0.2,                      // ~1 in 5 twinkles
+      d,                                // twinkle phase (randomizes delay/duration)
+    };
+  });
 }
 
 export function distBetween(a, b) {
