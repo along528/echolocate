@@ -88,6 +88,8 @@
 /* Auto-play-on-tune toggle: indigo when on, dimmed + slashed icon when off. */
 .ldm-autoplay.is-on { color: var(--el-indigo-500); border-color: var(--el-indigo-500); }
 .ldm-autoplay:not(.is-on) { opacity: 0.75; }
+/* Hide-pills / explore-mode toggle: indigo while exploring the corpus (pills hidden). */
+.ldm-eye.is-on { color: var(--el-indigo-500); border-color: var(--el-indigo-500); }
 
 /* Candidate reveal wave — a ring expands from the charged dot, and each
    candidate fades/pops in (per-dot animation-delay) as the ring reaches it. */

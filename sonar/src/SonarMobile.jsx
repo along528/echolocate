@@ -145,7 +145,7 @@ export default function SonarMobile({ s }) {
   const {
     view, setView, vibeQuery, setVibeQuery, aboutOpen, setAboutOpen,
     layers, playingId, isPlaying, progress, peaks, selectedId, setSelectedId,
-    backdrop,
+    backdrop, probes, probeAt, clearProbes,
     candidates, labelsByTrackId, soloLayerId, zoom, setZoom,
     addVibeLayer, addSeedLayer, removeLayer, toggleLayerVisible, toggleSolo,
     showAllLayers, hideAllLayers,
@@ -342,6 +342,19 @@ export default function SonarMobile({ s }) {
     const cvy = ((rect.height - dockH) / 2 - offY) / S;
     // plot coords under the reticle (inverting translate∘scale∘rotate)
     const cp = rot({ x: (cvx - z.x) / z.k, y: (cvy - z.y) / z.k }, -(z.r || 0));
+
+    // Background-exploration mode: when every search pill is hidden (and we're
+    // not in interpolation focus), tuning conjures the globally-nearest track
+    // from the WHOLE corpus via /map/nearest instead of snapping to a loaded
+    // dot. De-project the reticle to a normalized [0,1] coord, probe, then tune
+    // onto whatever it resolves.
+    if (!candidates && visibleLayers.length === 0) {
+      const nx = (cp.x - MPAD) / (MVW - 2 * MPAD);
+      const ny = 1 - (cp.y - MPAD) / (MVH - 2 * MPAD);
+      probeAt(nx, ny).then((t) => { if (t) tuneToTrack(t, rect); });
+      return;
+    }
+
     let best = null, bestD = Infinity;
     const consider = (t) => {
       const p = dotPosM(t);
@@ -360,6 +373,17 @@ export default function SonarMobile({ s }) {
       playlistTracks.forEach(consider);
     }
     if (!best || bestD * z.k * S > SNAP_MAX_PX) { lastSnapIdRef.current = null; return; }
+    tuneToTrack(best, rect);
+  };
+
+  // Animate the reticle onto `best`, then auto-play it (or just select it when
+  // exploring silently) and reveal the peek. Shared by visible-dot snapping and
+  // background probing.
+  const tuneToTrack = (best, rect) => {
+    const z = zoomRef.current;
+    const { S, offX, offY } = rectMetrics(rect);
+    const cvx = (rect.width / 2 - offX) / S;
+    const cvy = ((rect.height - dockH) / 2 - offY) / S;
     const rp = rot(dotPosM(best), z.r || 0);
     animateZoomTo({ k: z.k, r: z.r || 0, x: cvx - z.k * rp.x, y: cvy - z.k * rp.y });
     if (autoPlayRef.current) {
@@ -689,6 +713,19 @@ export default function SonarMobile({ s }) {
                       <circle cx={p.x} cy={p.y} r={(isPlay ? 9.5 : 7) * iz} fill={color} opacity={0.9} />
                       <circle cx={p.x} cy={p.y} r={9.5 * iz} fill="none" stroke="white" strokeWidth={iz} strokeOpacity="0.7" />
                     </g>); })}
+                  {/* Conjured tracks (probed from the background while pills are
+                      hidden). Persist as their own dashed-ring dots so you still
+                      see + can replay your picks once the pills are shown again. */}
+                  {probes.map((t) => {
+                    if (entryByTrackId.has(t.id) || playlistById.has(t.id)) return null;
+                    const p = dotPosM(t); const isPlay = t.id === playingId, isSel = t.id === selectedId;
+                    const r = (isPlay ? 9 : 6.5) * iz;
+                    return (<g key={'probe' + t.id} onClick={onTap(() => handleDotTap(t))}>
+                      <circle cx={p.x} cy={p.y} r={14 * iz} fill="transparent" />
+                      {isSel && <circle cx={p.x} cy={p.y} r={r + 6 * iz} fill="none" stroke={FALLBACK_COLOR} strokeWidth={1.5 * iz} />}
+                      <circle cx={p.x} cy={p.y} r={r} fill={FALLBACK_COLOR} opacity={0.9} style={{ filter: isPlay ? `drop-shadow(0 0 8px ${FALLBACK_COLOR})` : 'none' }} />
+                      <circle cx={p.x} cy={p.y} r={r + 2.5 * iz} fill="none" stroke="white" strokeWidth={iz} strokeOpacity="0.6" strokeDasharray={`${2.5 * iz} ${2 * iz}`} />
+                    </g>); })}
                 </>
               )}
             </g>
@@ -704,6 +741,13 @@ export default function SonarMobile({ s }) {
               <span className="ldm-interp-dot" /> tracks in between — tap to dismiss ✕
             </button>
           )}
+          {/* Conjured tracks (probed from the background) — tap to clear them all.
+              Shares the interp banner's bottom-center slot; the two never co-occur. */}
+          {!candidates && probes.length > 0 && (
+            <button className="ldm-interp-clear ldm-probes-clear" onClick={clearProbes}>
+              <span className="ldm-interp-dot" style={{ background: FALLBACK_COLOR }} /> {probes.length} conjured — tap to clear ✕
+            </button>
+          )}
           <div className="ldm-zoombtns">
             <button className="lo-btn-icon" onClick={() => zoomBy(1.3)}><IconZoomIn size={16} /></button>
             <button className="lo-btn-icon" onClick={() => zoomBy(1 / 1.3)}><IconZoomOut size={16} /></button>
@@ -714,6 +758,16 @@ export default function SonarMobile({ s }) {
                 {!autoPlay && <path d="M4.5 4.5 L19.5 19.5" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" fill="none" />}
               </svg>
             </button>
+            {/* Hide-all-pills toggle, doubling as the explore-mode switch: with
+                pills hidden, tuning conjures from the whole corpus (see
+                snapToCenter). Indigo when exploring. */}
+            {displayLayers.length > 0 && (() => { const anyShown = visibleLayers.length > 0;
+              return (<button className={'lo-btn-icon ldm-eye ' + (anyShown ? '' : 'is-on')}
+                onClick={() => { clearCandidates(); (anyShown ? hideAllLayers : showAllLayers)(); }}
+                title={anyShown ? 'Hide pills — tune to conjure from the whole corpus' : 'Exploring the corpus — show your pills again'}
+                aria-label={anyShown ? 'Hide pills to explore the corpus' : 'Show pills'}>
+                {anyShown ? <IconEye size={16} /> : <IconEyeOff size={16} />}
+              </button>); })()}
           </div>
         </div>
       ) : (
@@ -773,11 +827,6 @@ export default function SonarMobile({ s }) {
           </div>
         )}
         <div className="ldm-chips-ctl">
-          {displayLayers.length > 0 && (() => { const anyShown = visibleLayers.length > 0;
-            return (<button className="ldm-chip ldm-chip-eye" onClick={() => { clearCandidates(); (anyShown ? hideAllLayers : showAllLayers)(); }}
-              title={anyShown ? 'Hide all searches' : 'Show all searches'} aria-label={anyShown ? 'Hide all searches' : 'Show all searches'}>
-              {anyShown ? <IconEye size={14} /> : <IconEyeOff size={14} />}
-            </button>); })()}
           <button className="ldm-chip ldm-chip-add" onClick={() => setSheet('search')}><IconPlus size={13} /> add</button>
         </div>
       </div>

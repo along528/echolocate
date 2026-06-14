@@ -33,7 +33,7 @@ export default function SonarDesktop({ s }) {
     layers, playingId, hoverId, setHoverId, selectedId, setSelectedId,
     isPlaying, progress, peaks, playlist, candidates, labelsByTrackId, soloLayerId,
     zoom, setZoom,
-    backdrop, probes, probeAt,
+    backdrop, probes, probeAt, clearProbes,
     addVibeLayer, addSeedLayer, restoreLayer, removeLayer, clearLayers,
     toggleLayerVisible, toggleSolo, showAllLayers,
     visibleLayers, displayLayers, displayVisibleLayers,
@@ -395,6 +395,9 @@ export default function SonarDesktop({ s }) {
             </div>
             {candidates && (
               <button className="lo-btn-ghost ld-mini-btn" onClick={clearCandidates}>Clear interpolation</button>
+            )}
+            {probes.length > 0 && (
+              <button className="lo-btn-ghost ld-mini-btn" onClick={clearProbes}>Clear conjured</button>
             )}
           </div>
 
