@@ -77,7 +77,7 @@
   font-size: 0.76rem; font-weight: var(--el-fw-medium); backdrop-filter: blur(8px);
 }
 .ldm-interp-clear:active { transform: translateX(-50%) scale(0.97); }
-.ldm-interp-dot { width: 8px; height: 8px; border-radius: 50%; background: #ffffff; flex: 0 0 auto; }
+.ldm-interp-dot { width: 8px; height: 8px; border-radius: 50%; background: #facc15; flex: 0 0 auto; }
 
 .ldm-zoombtns {
   position: absolute; right: 12px; z-index: 6;

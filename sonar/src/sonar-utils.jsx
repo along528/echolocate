@@ -10,7 +10,8 @@ import { IconCheck, IconTilde, IconX, IconExternal } from './icons.jsx';
 import { BACKDROP_SEED } from './backdrop-seed.js';
 
 // Per-search layer colors. A search's color is its identity everywhere (pill,
-// dots, list rows). White is reserved for interpolation candidates. Eight
+// dots, list rows). Yellow (CANDIDATE_COLOR, the interp accent) is reserved
+// for interpolation candidates. Seven
 // hues of similar luminance on the dark bg, ordered so CONSECUTIVE picks are
 // far apart in hue (new layers grab the first unused entry), with a deliberate
 // gap around brand indigo (#6366f1) so no layer reads as the playlist color.
@@ -19,12 +20,11 @@ export const LAYER_COLORS = [
   '#f87171', // coral
   '#a3e635', // lime
   '#c084fc', // violet
-  '#fbbf24', // amber
   '#34d399', // emerald
   '#f472b6', // pink
   '#fb923c', // orange
 ];
-export const CANDIDATE_COLOR = '#ffffff';
+export const CANDIDATE_COLOR = '#facc15'; // interpolation candidates (interp-yellow)
 export const FALLBACK_COLOR = '#94a3b8';
 // Conjured tracks (probed from the background). A warm amber/gold that stands
 // apart from the white backdrop field, indigo playlist trail, and search hues.
