@@ -376,6 +376,7 @@ export default function SonarMobile({ s }) {
     } else {
       visibleTracks.forEach((e) => consider(e.track));
       playlistTracks.forEach(consider);
+      probes.forEach(consider); // conjured tracks are snappable too, like pills
     }
     if (!best || bestD * z.k * S > SNAP_MAX_PX) { lastSnapIdRef.current = null; return; }
     tuneToTrack(best, rect);
