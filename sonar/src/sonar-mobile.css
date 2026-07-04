@@ -90,6 +90,10 @@
 .ldm-autoplay:not(.is-on) { opacity: 0.75; }
 /* Hide-pills / explore-mode toggle: indigo while exploring the corpus (pills hidden). */
 .ldm-eye.is-on { color: var(--el-indigo-500); border-color: var(--el-indigo-500); }
+/* Drift-radio toggle (zoom cluster + now-sheet transport); the .lo-drift
+   slider row is styled in style.css (shared with desktop). */
+.ldm-radio.is-on { color: var(--el-indigo-500); border-color: var(--el-indigo-500); }
+.ldm-radio:not(.is-on) { opacity: 0.75; }
 
 /* Candidate reveal wave — a ring expands from the charged dot, and each
    candidate fades/pops in (per-dot animation-delay) as the ring reaches it. */

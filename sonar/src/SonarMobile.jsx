@@ -9,7 +9,7 @@ import { MascotSmall, Waveform } from './svg-bits.jsx';
 import {
   IconSearch, IconListPlus, IconCheck, IconPlus, IconSimilar, IconDissimilar,
   IconEye, IconEyeOff, IconClose, IconExternal, IconUp, IconDown,
-  IconZoomIn, IconZoomOut, IconTilde,
+  IconZoomIn, IconZoomOut, IconTilde, IconRadio,
 } from './icons.jsx';
 import {
   CANDIDATE_COLOR, FALLBACK_COLOR, CONJURE_COLOR, fmtTime, coordsOf, distBetween,
@@ -155,6 +155,7 @@ export default function SonarMobile({ s }) {
     addToPlaylist, insertCandidate, removeFromPlaylist, movePlaylist, clearPlaylist,
     interpolateEdge, clearCandidates, playTrack, togglePlay, step, labelTrack, seekTo,
     navList,
+    radioOn, toggleRadio, drift, setDrift, wake,
   } = s;
 
   // Mobile-only UI state. `sheet` is the modal layer (search / now / playlist);
@@ -603,8 +604,10 @@ export default function SonarMobile({ s }) {
 
   // Prev/next on the strip only make sense when the current track is in the list
   // step() walks (the playlist in map view, the results list in list view) and
-  // there's somewhere to go.
-  const stripNav = navList.length > 1 && navList.some((t) => t.id === playingId);
+  // there's somewhere to go — except with the radio on, where step() always
+  // drifts (next) or walks the wake (prev).
+  const stripNav = (radioOn && !!playing)
+    || (navList.length > 1 && navList.some((t) => t.id === playingId));
   const playSvg = <svg viewBox="0 0 24 24" fill="white" width="16" height="16"><path d="M8 5v14l11-7z" /></svg>;
   const pauseSvg = <svg viewBox="0 0 24 24" fill="white" width="16" height="16"><path d="M6 5h4v14H6zm8 0h4v14h-4z" /></svg>;
 
@@ -700,6 +703,25 @@ export default function SonarMobile({ s }) {
                 })()
               ) : (
                 <>
+                  {/* drift-radio wake — fading trail through the hops this
+                      session, oldest segments dimmest. Non-interactive. */}
+                  {wake.length > 1 && (
+                    <g style={{ pointerEvents: 'none' }}>
+                      {wake.slice(1).map((b, i) => {
+                        const a = wake[i], pa = dotPosM(a), pb = dotPosM(b);
+                        const op = 0.15 + 0.6 * (wake.length > 2 ? i / (wake.length - 2) : 1);
+                        return <line key={`wk${a.id}${b.id}`} x1={pa.x} y1={pa.y} x2={pb.x} y2={pb.y}
+                          stroke="var(--el-yellow-500)" strokeOpacity={op}
+                          strokeWidth={1.5 * iz} strokeDasharray={`${2 * iz} ${3 * iz}`} />;
+                      })}
+                      {wake.map((t) => {
+                        if (t.id === playingId) return null;
+                        const p = dotPosM(t);
+                        return <circle key={'wkd' + t.id} cx={p.x} cy={p.y} r={2.5 * iz}
+                          fill="var(--el-yellow-500)" opacity={0.5} />;
+                      })}
+                    </g>
+                  )}
                   {playlistTracks.length > 1 && playlistTracks.slice(1).map((b, i) => { const a = playlistTracks[i], pa = dotPosM(a), pb = dotPosM(b);
                     return (<g key={`s${a.id}${b.id}`} onClick={onTap(() => handleEdgeTap(a, b))}><line x1={pa.x} y1={pa.y} x2={pb.x} y2={pb.y} stroke="transparent" strokeWidth={20 * iz} /><line x1={pa.x} y1={pa.y} x2={pb.x} y2={pb.y} stroke="var(--el-indigo-500)" strokeOpacity={0.55} strokeWidth={2 * iz} strokeDasharray={`${4 * iz} ${4 * iz}`} /></g>); })}
                   {playlistTracks.map((t) => { const p = dotPosM(t); return <circle key={'r' + t.id} cx={p.x} cy={p.y} r={13 * iz} fill="none" stroke="var(--el-indigo-500)" strokeWidth={2 * iz} strokeOpacity="0.6" style={{ pointerEvents: 'none' }} />; })}
@@ -769,6 +791,11 @@ export default function SonarMobile({ s }) {
           <div className="ldm-zoombtns">
             <button className="lo-btn-icon" onClick={() => zoomBy(1.3)}><IconZoomIn size={16} /></button>
             <button className="lo-btn-icon" onClick={() => zoomBy(1 / 1.3)}><IconZoomOut size={16} /></button>
+            <button className={'lo-btn-icon ldm-radio ' + (radioOn ? 'is-on' : '')} onClick={toggleRadio}
+              title={radioOn ? 'Drift radio ON — tracks hop to sonic neighbors when they end' : 'Start drift radio'}
+              aria-label={radioOn ? 'Turn drift radio off' : 'Turn drift radio on'}>
+              <IconRadio size={16} />
+            </button>
             <button className={'lo-btn-icon ldm-autoplay ' + (autoPlay ? 'is-on' : '')} onClick={toggleAutoPlay}
               title={autoPlay ? 'Tuning auto-plays — tap to explore silently' : 'Silent exploring — tap to auto-play on tune'}>
               <svg viewBox="0 0 24 24" width="16" height="16" fill="currentColor">
@@ -1006,7 +1033,16 @@ export default function SonarMobile({ s }) {
               <button className="ldm-now-tbtn" onClick={() => step(-1)}><svg viewBox="0 0 24 24" fill="currentColor" width="18" height="18"><path d="M6 6h2v12H6zm3.5 6l8.5 6V6z" /></svg></button>
               <button className="ldm-now-tbtn is-play" onClick={togglePlay}>{isPlaying ? <svg viewBox="0 0 24 24" fill="white" width="22" height="22"><path d="M6 5h4v14H6zm8 0h4v14h-4z" /></svg> : <svg viewBox="0 0 24 24" fill="white" width="22" height="22"><path d="M8 5v14l11-7z" /></svg>}</button>
               <button className="ldm-now-tbtn" onClick={() => step(1)}><svg viewBox="0 0 24 24" fill="currentColor" width="18" height="18"><path d="M6 18l8.5-6L6 6v12zM16 6v12h2V6h-2z" /></svg></button>
+              <button className={'ldm-now-tbtn ldm-radio ' + (radioOn ? 'is-on' : '')} onClick={toggleRadio}
+                aria-label={radioOn ? 'Turn drift radio off' : 'Turn drift radio on'}><IconRadio size={18} /></button>
             </div>
+            {radioOn && (
+              <div className="lo-drift">
+                <span className="lo-eyebrow">drift</span>
+                <input type="range" min="0" max="1" step="0.05" value={drift}
+                  onChange={(e) => setDrift(Number(e.target.value))} />
+              </div>
+            )}
             <div className="ldm-detail-fb"><FeedbackPills track={playing} value={labelsByTrackId[playing.id]} onLabel={labelTrack} source={sourceTagFor(playing)} /></div>
           </div>
           <div className="ldm-now-quick">

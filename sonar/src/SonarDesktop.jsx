@@ -8,7 +8,7 @@ import { Wordmark, Waveform, DistanceChip } from './svg-bits.jsx';
 import {
   IconListPlus, IconSimilar, IconDissimilar, IconCheck, IconClose,
   IconExternal, IconEye, IconEyeOff, IconUp, IconDown, IconPlus,
-  IconZoomIn, IconZoomOut, IconRecenter, IconInfo,
+  IconZoomIn, IconZoomOut, IconRecenter, IconInfo, IconRadio,
 } from './icons.jsx';
 import {
   CANDIDATE_COLOR, FALLBACK_COLOR, CONJURE_COLOR, fmtTime, coordsOf, distBetween, distChipValue,
@@ -44,6 +44,7 @@ export default function SonarDesktop({ s }) {
     dragId, dropIdx, onDragStartSlot, onDragOverCard, onDragEndSlot, onDropSlot,
     interpolateEdge, clearCandidates,
     playTrack, togglePlay, seekTo, step, labelTrack, resetZoom,
+    radioOn, toggleRadio, drift, setDrift, wake,
   } = s;
 
   // Pan drag bookkeeping (click-drag to pan when zoomed in).
@@ -458,6 +459,27 @@ export default function SonarDesktop({ s }) {
                     return <circle key={i} cx={pos.x} cy={pos.y} r={r * iz} fill="none" stroke="var(--el-yellow-500)" strokeOpacity={[0.55, 0.35, 0.22, 0.12][i]} strokeWidth={iz} style={{ pointerEvents: 'none' }} />;
                   })}
 
+                  {/* drift-radio wake — fading trail through the hops this
+                      session, oldest segments dimmest. Non-interactive. */}
+                  {wake.length > 1 && (
+                    <g style={{ pointerEvents: 'none' }}>
+                      {wake.slice(1).map((b, i) => {
+                        const a = wake[i];
+                        const pa = dotPos(a); const pb = dotPos(b);
+                        const op = 0.15 + 0.6 * (wake.length > 2 ? i / (wake.length - 2) : 1);
+                        return <line key={`wk_${a.id}_${b.id}`} x1={pa.x} y1={pa.y} x2={pb.x} y2={pb.y}
+                          stroke="var(--el-yellow-500)" strokeOpacity={op}
+                          strokeWidth={1.5 * iz} strokeDasharray={`${2 * iz} ${3 * iz}`} />;
+                      })}
+                      {wake.map((t) => {
+                        if (t.id === playingId) return null;
+                        const p = dotPos(t);
+                        return <circle key={'wkd_' + t.id} cx={p.x} cy={p.y} r={2.5 * iz}
+                          fill="var(--el-yellow-500)" opacity={0.5} />;
+                      })}
+                    </g>
+                  )}
+
                   {/* playlist edges — clickable to interpolate between endpoints */}
                   {playlistTracks.length > 1 && playlistTracks.slice(1).map((b, i) => {
                     const a = playlistTracks[i];
@@ -613,6 +635,12 @@ export default function SonarDesktop({ s }) {
                     </div>
                   </>
                 )}
+                {wake.length > 1 && (
+                  <div className="lc-legend-row">
+                    <svg width="22" height="6"><line x1="0" y1="3" x2="22" y2="3" stroke="var(--el-yellow-500)" strokeWidth="1.5" strokeDasharray="2 3" /></svg>
+                    radio wake
+                  </div>
+                )}
               </div>
             </div>
           ) : (
@@ -689,10 +717,23 @@ export default function SonarDesktop({ s }) {
                   ? <svg viewBox="0 0 24 24" fill="white" width="18" height="18"><path d="M6 5h4v14H6zm8 0h4v14h-4z" /></svg>
                   : <svg viewBox="0 0 24 24" fill="white" width="18" height="18"><path d="M8 5v14l11-7z" /></svg>}
               </button>
-              <button className="lo-now-btn" title="Next (→)" onClick={() => step(1)}>
+              <button className="lo-now-btn" title={radioOn ? 'Skip — drift to a new neighbor (→)' : 'Next (→)'} onClick={() => step(1)}>
                 <svg viewBox="0 0 24 24" fill="currentColor" width="16" height="16"><path d="M6 18l8.5-6L6 6v12zM16 6v12h2V6h-2z" /></svg>
               </button>
+              <button className={'lo-now-btn lo-radio-btn ' + (radioOn ? 'is-on' : '')}
+                title={radioOn ? 'Drift radio ON — tracks hop to sonic neighbors when they end' : 'Start drift radio'}
+                onClick={toggleRadio}>
+                <IconRadio size={16} />
+              </button>
             </div>
+            {radioOn && (
+              <div className="lo-drift">
+                <span className="lo-eyebrow">drift</span>
+                <input type="range" min="0" max="1" step="0.05" value={drift}
+                  onChange={(e) => setDrift(Number(e.target.value))}
+                  title="0 = stay in the pocket · 1 = wander" />
+              </div>
+            )}
           </div>
 
           {playing && (
