@@ -13,6 +13,7 @@ import React from 'react';
 import { useSonar, useIsMobile } from './useSonar.js';
 import SonarDesktop from './SonarDesktop.jsx';
 import SonarMobile from './SonarMobile.jsx';
+import { Toasts, HintsOverlay } from './sonar-utils.jsx';
 
 export default function Sonar({ initialView = 'map' }) {
   const isMobile = useIsMobile();
@@ -27,8 +28,13 @@ export default function Sonar({ initialView = 'map' }) {
         onEnded={s.onAudioEnded}
         onPause={s.onAudioPause}
         onPlay={s.onAudioPlay}
+        onError={s.onAudioError}
       />
       {isMobile ? <SonarMobile s={s} /> : <SonarDesktop s={s} />}
+      {/* Error toasts + the gesture-hints overlay live in the shell so both
+          views share one instance (and they survive a breakpoint switch). */}
+      <Toasts toasts={s.toasts} onDismiss={s.dismissToast} />
+      {s.hintsOpen && <HintsOverlay mobile={isMobile} onClose={s.closeHints} />}
     </>
   );
 }

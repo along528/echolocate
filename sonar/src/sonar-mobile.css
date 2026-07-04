@@ -301,3 +301,12 @@
 
 .ldm-iconbtn { width: 34px; height: 34px; border-radius: var(--el-radius-md); background: var(--el-bg-tertiary); border: 1px solid var(--el-border); color: var(--el-fg-secondary); display: inline-flex; align-items: center; justify-content: center; }
 .ldm-onboard-eyebrow { color: var(--el-fg-secondary); font-size: 0.85rem; margin-bottom: 14px; line-height: 1.5; }
+
+/* ? button (gesture hints) in the zoom column. */
+.ldm-hints-btn { background: rgba(18,18,26,0.9); backdrop-filter: blur(8px); font-weight: var(--el-fw-semibold); }
+
+/* Error toasts: on mobile, sit above the dock + tab bar instead of the very
+   bottom edge (the shell renders .el-toasts as a sibling of .ldm-app). */
+.ldm-app ~ .el-toasts {
+  bottom: calc(126px + env(safe-area-inset-bottom, 0px));
+}

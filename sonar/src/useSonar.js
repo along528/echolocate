@@ -11,6 +11,7 @@ import { Cache, FALLBACK_SUGGESTIONS } from './cache.js';
 import { LAYER_COLORS, CANDIDATE_COLOR, FALLBACK_COLOR, distBetween, layerTag, makeGalaxy } from './sonar-utils.jsx';
 
 const STORE_KEY = 'sonar-state-v1';
+const HINTS_KEY = 'sonar-hints-v1';
 
 // Number of amplitude buckets in a real waveform (matches the bar count the
 // players render). Kept here so peak extraction and rendering agree.
@@ -73,6 +74,29 @@ export function useSonar({ initialView = 'map' } = {}) {
   const [vibeQuery, setVibeQuery] = React.useState('');
   const [suggestions, setSuggestions] = React.useState(FALLBACK_SUGGESTIONS);
   const [aboutOpen, setAboutOpen] = React.useState(false);
+
+  // ---- gesture hints (one-time overlay; the ? button reopens it) ----
+  const [hintsOpen, setHintsOpen] = React.useState(() => {
+    try { return localStorage.getItem(HINTS_KEY) !== '1'; } catch { return false; }
+  });
+  const openHints = React.useCallback(() => setHintsOpen(true), []);
+  const closeHints = React.useCallback(() => {
+    setHintsOpen(false);
+    try { localStorage.setItem(HINTS_KEY, '1'); } catch { /* ignore */ }
+  }, []);
+
+  // ---- error toasts ----
+  // Every silent catch reports here so failures are visible. A toast may carry
+  // a `retry` callback (re-runs the failed action); toasts auto-dismiss.
+  const [toasts, setToasts] = React.useState([]);
+  const toastIdRef = React.useRef(0);
+  const dismissToast = React.useCallback((id) =>
+    setToasts((ts) => ts.filter((t) => t.id !== id)), []);
+  const notify = React.useCallback((message, { retry } = {}) => {
+    const id = ++toastIdRef.current;
+    setToasts((ts) => [...ts.slice(-2), { id, message, retry }]); // keep ≤3 stacked
+    setTimeout(() => dismissToast(id), retry ? 8000 : 6000);
+  }, [dismissToast]);
 
   // ---- search layers ----
   const colorIdxRef = React.useRef(boot?.colorIdx || 0);
@@ -149,9 +173,13 @@ export function useSonar({ initialView = 'map' } = {}) {
   // Probe the whole corpus at a normalized (x,y): resolve the globally-nearest
   // track via /map/nearest, remember it (so it gets a dot + is selectable), and
   // select it. Used by both views' empty-space click handlers.
+  // `probing` holds the normalized coordinate of an in-flight probe so the maps
+  // can pulse at the click point while /map/nearest resolves.
+  const [probing, setProbing] = React.useState(null);
   const probeAt = React.useCallback(async (nx, ny) => {
     const x = Math.max(0, Math.min(1, nx));
     const y = Math.max(0, Math.min(1, ny));
+    setProbing({ x, y });
     try {
       const t = await API.mapNearest(x, y, 'fma');
       if (t && t.id) {
@@ -161,9 +189,12 @@ export function useSonar({ initialView = 'map' } = {}) {
       }
     } catch (e) {
       console.error('probe failed', e);
+      notify('Couldn’t probe that spot', { retry: () => probeAt(x, y) });
+    } finally {
+      setProbing(null);
     }
     return null;
-  }, []);
+  }, [notify]);
   const clearProbes = React.useCallback(() => setProbes([]), []);
 
   // Extract real waveform peaks for the playing track (fetch + decode + bucket),
@@ -241,11 +272,16 @@ export function useSonar({ initialView = 'map' } = {}) {
         })
         .catch((e) => {
           console.error('layer search failed', e);
+          // Marking the layer un-fetched re-enters this effect, re-running it.
+          notify(`Search “${l.label}” failed`, {
+            retry: () => setLayers((ls) => ls.map((x) => (x.id === l.id
+              ? { ...x, fetched: false } : x))),
+          });
           setLayers((ls) => ls.map((x) => (x.id === l.id
             ? { ...x, loading: false, fetched: true, results: [] } : x)));
         });
     });
-  }, [layers, runLayerSearch]);
+  }, [layers, runLayerSearch, notify]);
 
   // ---- layer ops ----
   // `solo` (default true) auto-selects the new pill so the map filters to it;
@@ -502,6 +538,7 @@ export function useSonar({ initialView = 'map' } = {}) {
       setCandidates({ aId: a.id, bId: b.id, tracks });
     } catch (e) {
       console.error('interpolate failed', e);
+      notify('Interpolation failed', { retry: () => interpolateEdge(a, b) });
     }
   };
   const clearCandidates = () => setCandidates(null);
@@ -665,19 +702,28 @@ export function useSonar({ initialView = 'map' } = {}) {
   const onAudioEnded = () => { setIsPlaying(false); playNextOnEnd(); };
   const onAudioPause = () => setIsPlaying(false);
   const onAudioPlay = () => setIsPlaying(true);
+  const onAudioError = (e) => {
+    const err = e.currentTarget.error;
+    // MEDIA_ERR_ABORTED (1) fires on a normal source swap — not a failure.
+    if (!err || err.code === 1) return;
+    setIsPlaying(false);
+    notify(playingTrack ? `Couldn’t play “${playingTrack.title}”` : 'Couldn’t play that track');
+  };
 
   return {
     // state
     view, setView, vibeQuery, setVibeQuery, suggestions, aboutOpen, setAboutOpen,
+    // toasts + hints
+    toasts, dismissToast, notify, hintsOpen, openHints, closeHints,
     layers, setLayers, playingId, setPlayingId, hoverId, setHoverId,
     selectedId, setSelectedId, isPlaying, progress, duration, peaks,
     playlist, setPlaylist, candidates, setCandidates, labelsByTrackId,
     soloLayerId, zoom, setZoom,
     // whole-corpus probing
-    backdrop, probes, probeAt, clearProbes,
+    backdrop, probes, probeAt, clearProbes, probing,
     // refs / audio
     audioRef,
-    onAudioTimeUpdate, onAudioLoadedMetadata, onAudioEnded, onAudioPause, onAudioPlay,
+    onAudioTimeUpdate, onAudioLoadedMetadata, onAudioEnded, onAudioPause, onAudioPlay, onAudioError,
     // layer ops
     addVibeLayer, addSeedLayer, restoreLayer, removeLayer, clearLayers,
     toggleLayerVisible, toggleSolo, showAllLayers, hideAllLayers,

@@ -145,7 +145,7 @@ export default function SonarMobile({ s }) {
   const {
     view, setView, vibeQuery, setVibeQuery, aboutOpen, setAboutOpen,
     layers, playingId, isPlaying, progress, peaks, selectedId, setSelectedId,
-    backdrop, probes, probeAt, clearProbes,
+    backdrop, probes, probeAt, clearProbes, probing, openHints,
     candidates, labelsByTrackId, soloLayerId, zoom, setZoom,
     addVibeLayer, addSeedLayer, removeLayer, toggleLayerVisible, toggleSolo,
     showAllLayers, hideAllLayers,
@@ -746,6 +746,17 @@ export default function SonarMobile({ s }) {
                     </g>); })}
                 </>
               )}
+              {/* in-flight probe — pulsing ring where the reticle is conjuring */}
+              {probing && (() => {
+                const px = MPAD + probing.x * (MVW - 2 * MPAD);
+                const py = MPAD + (1 - probing.y) * (MVH - 2 * MPAD);
+                return (
+                  <g style={{ pointerEvents: 'none' }}>
+                    <circle className="el-probe-ring" cx={px} cy={py} r={16 * iz} fill="none" stroke={CONJURE_COLOR} strokeWidth={1.5 * iz} />
+                    <circle cx={px} cy={py} r={3 * iz} fill={CONJURE_COLOR} opacity="0.9" />
+                  </g>
+                );
+              })()}
             </g>
           </svg>
 
@@ -767,8 +778,9 @@ export default function SonarMobile({ s }) {
             </button>
           )}
           <div className="ldm-zoombtns">
-            <button className="lo-btn-icon" onClick={() => zoomBy(1.3)}><IconZoomIn size={16} /></button>
-            <button className="lo-btn-icon" onClick={() => zoomBy(1 / 1.3)}><IconZoomOut size={16} /></button>
+            <button className="lo-btn-icon ldm-hints-btn" aria-label="How the map works" onClick={openHints}>?</button>
+            <button className="lo-btn-icon" aria-label="Zoom in" onClick={() => zoomBy(1.3)}><IconZoomIn size={16} /></button>
+            <button className="lo-btn-icon" aria-label="Zoom out" onClick={() => zoomBy(1 / 1.3)}><IconZoomOut size={16} /></button>
             <button className={'lo-btn-icon ldm-autoplay ' + (autoPlay ? 'is-on' : '')} onClick={toggleAutoPlay}
               title={autoPlay ? 'Tuning auto-plays — tap to explore silently' : 'Silent exploring — tap to auto-play on tune'}>
               <svg viewBox="0 0 24 24" width="16" height="16" fill="currentColor">
@@ -818,7 +830,7 @@ export default function SonarMobile({ s }) {
         {displayLayers.length > 0 && (
           <div className="ldm-chips">
             {displayLayers.map((l) => (
-              <span key={l.id} className={'ldm-chip ' + (l.visible ? '' : 'is-hidden ') + (soloLayerId === l.id ? 'is-solo' : '')} style={{ borderColor: l.color, background: `color-mix(in srgb, ${l.color} 12%, transparent)` }} onClick={() => { clearCandidates(); toggleSolo(l.id); }}>
+              <span key={l.id} className={'ldm-chip ' + (l.visible ? '' : 'is-hidden ') + (l.loading ? 'is-loading ' : '') + (soloLayerId === l.id ? 'is-solo' : '')} style={{ borderColor: l.color, background: `color-mix(in srgb, ${l.color} 12%, transparent)` }} onClick={() => { clearCandidates(); toggleSolo(l.id); }}>
                 <span className="ldm-chip-swatch" style={{ background: l.color }} />{layerTag(l)}
                 <button className="ldm-chip-x" onClick={(e) => { e.stopPropagation(); removeLayer(l.id); }}>×</button>
               </span>
@@ -973,7 +985,7 @@ export default function SonarMobile({ s }) {
               <div className="ldm-layer-manage">
                 {displayLayers.map((l) => (
                   <div key={l.id} className="ldm-layer-manage-row">
-                    <span className="ldm-chip-swatch" style={{ background: l.color, width: 10, height: 10 }} />
+                    <span className={'ldm-chip-swatch' + (l.loading ? ' is-loading' : '')} style={{ background: l.color, width: 10, height: 10 }} />
                     <div className="ldm-lm-text">
                       <span className="ldm-lm-label">{layerKindWord(l)} · {l.label}</span>
                       {l.enhancedQuery && <span className="ldm-lm-enh">✨ {l.enhancedQuery}</span>}

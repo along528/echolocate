@@ -916,6 +916,114 @@
   outline-offset: 1px;
 }
 
+/* =========================================================
+   ERROR TOASTS — bottom-center stack, shared by both views
+   ========================================================= */
+.el-toasts {
+  position: fixed; left: 50%; transform: translateX(-50%);
+  /* Above the mobile sheets (z 31) but BELOW modal overlays (z 100), so a toast
+     never covers the hints/About dialog's buttons. */
+  bottom: 24px; z-index: 90;
+  display: flex; flex-direction: column; gap: 8px; align-items: center;
+  pointer-events: none;
+}
+.el-toast {
+  pointer-events: auto;
+  display: inline-flex; align-items: center; gap: 10px;
+  max-width: min(92vw, 480px);
+  padding: 10px 12px 10px 14px;
+  background: var(--el-bg-secondary);
+  border: 1px solid var(--el-border-strong);
+  border-left: 3px solid var(--el-danger);
+  border-radius: var(--el-radius-md);
+  box-shadow: var(--el-shadow-md);
+  font-size: var(--el-fs-sm);
+  animation: el-toast-in 0.2s ease;
+}
+.el-toast-msg { min-width: 0; }
+.el-toast-retry {
+  flex: 0 0 auto;
+  padding: 4px 10px;
+  background: var(--el-bg-tertiary);
+  border: 1px solid var(--el-border);
+  border-radius: var(--el-radius-sm);
+  color: var(--el-fg-primary);
+  font-size: var(--el-fs-xs); font-weight: var(--el-fw-medium);
+}
+.el-toast-retry:hover { border-color: var(--el-indigo-500); background: var(--el-indigo-tint); }
+.el-toast-x {
+  flex: 0 0 auto;
+  background: none; border: none; color: var(--el-fg-secondary);
+  font-size: 1rem; line-height: 1; padding: 0 2px;
+}
+.el-toast-x:hover { color: var(--el-fg-primary); }
+@keyframes el-toast-in { from { opacity: 0; transform: translateY(8px); } to { opacity: 1; transform: none; } }
+
+/* =========================================================
+   LOADING FEEDBACK — pill spinner, probe pulse, busy dice
+   ========================================================= */
+/* A searching layer's swatch pulses (desktop pill, mobile chip + manage row). */
+@keyframes el-swatch-pulse {
+  0%, 100% { opacity: 1; transform: scale(1); }
+  50% { opacity: 0.35; transform: scale(0.65); }
+}
+.ld-layer-pill.is-loading .ld-layer-swatch,
+.ldm-chip.is-loading .ldm-chip-swatch,
+.ldm-chip-swatch.is-loading {
+  animation: el-swatch-pulse 1s ease-in-out infinite;
+}
+/* In-flight /map/nearest probe — expanding ring at the clicked/tuned spot. */
+@keyframes el-probe-ring {
+  0% { transform: scale(0.3); opacity: 0.9; }
+  100% { transform: scale(2.4); opacity: 0; }
+}
+.el-probe-ring {
+  transform-box: fill-box; transform-origin: center;
+  animation: el-probe-ring 0.9s ease-out infinite;
+}
+/* Dice is disabled (and pulses) while a search is in flight. */
+.ld-tagger-dice:disabled {
+  cursor: default; transform: none;
+  background: transparent; border-color: var(--el-border);
+  animation: el-swatch-pulse 1.2s ease-in-out infinite;
+}
+
+/* =========================================================
+   EMPTY MAP STATE — centered prompt; clicks pass through to probe
+   ========================================================= */
+.ld-map-empty {
+  position: absolute; inset: 0;
+  display: flex; flex-direction: column; align-items: center; justify-content: center;
+  gap: 6px; text-align: center; padding: 0 40px;
+  pointer-events: none;
+}
+.ld-map-empty-title { font-weight: var(--el-fw-semibold); font-size: var(--el-fs-lg); }
+
+/* =========================================================
+   GESTURE HINTS — one-time overlay + the ? buttons that reopen it
+   ========================================================= */
+.ld-hints-card { max-width: 500px; }
+.ld-hint-row { display: flex; gap: 12px; align-items: flex-start; margin-bottom: 14px; }
+.ld-hint-glyph { flex: 0 0 auto; font-size: 1.2rem; line-height: 1.5; }
+.ld-hint-title { font-weight: var(--el-fw-semibold); font-size: var(--el-fs-base); }
+.ld-hints-go {
+  width: 100%; margin-top: 6px; padding: 10px;
+  background: var(--el-gradient); border: none;
+  border-radius: var(--el-radius-md);
+  color: white; font-weight: var(--el-fw-semibold); font-size: var(--el-fs-sm);
+}
+.ld-hints-go:hover { box-shadow: var(--el-shadow-lg); }
+.ld-hints-btn { font-weight: var(--el-fw-semibold); font-size: 0.95rem; }
+
+@media (prefers-reduced-motion: reduce) {
+  .el-toast, .el-probe-ring,
+  .ld-layer-pill.is-loading .ld-layer-swatch,
+  .ldm-chip.is-loading .ldm-chip-swatch,
+  .ldm-chip-swatch.is-loading,
+  .ld-tagger-dice:disabled { animation: none; }
+  .ld-tagger-dice:disabled { opacity: 0.45; }
+}
+
 /* Galaxy backdrop twinkle — a subset of stars pulse their opacity around their
    own baked base brightness (--o). Duration/delay are per-star (--td/--tdl) so
    they shimmer out of phase. Positions/brightness come from the real corpus

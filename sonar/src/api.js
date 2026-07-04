@@ -15,7 +15,7 @@ async function request(method, path, body = null, params = null) {
   if (body) options.body = JSON.stringify(body);
 
   const response = await fetch(url, options);
-  if (!response.ok) throw new Error(`API error: ${response.status}`);
+  if (!response.ok) throw new Error(`API error: ${response.status} ${response.statusText}`.trim());
   return response.json();
 }
 

@@ -32,8 +32,8 @@ export default function SonarDesktop({ s }) {
     view, setView, vibeQuery, setVibeQuery, suggestions, aboutOpen, setAboutOpen,
     layers, playingId, hoverId, setHoverId, selectedId, setSelectedId,
     isPlaying, progress, peaks, playlist, candidates, labelsByTrackId, soloLayerId,
-    zoom, setZoom,
-    backdrop, probes, probeAt, clearProbes,
+    zoom, setZoom, openHints,
+    backdrop, probes, probeAt, clearProbes, probing,
     addVibeLayer, addSeedLayer, restoreLayer, removeLayer, clearLayers,
     toggleLayerVisible, toggleSolo, showAllLayers,
     visibleLayers, displayLayers, displayVisibleLayers,
@@ -211,6 +211,7 @@ export default function SonarDesktop({ s }) {
                 key={l.id}
                 className={'el-chip is-active ld-layer-pill '
                   + (l.visible ? '' : 'is-hidden ')
+                  + (l.loading ? 'is-loading ' : '')
                   + (soloLayerId === l.id ? 'is-solo ' : '')
                   + (soloLayerId && soloLayerId !== l.id ? 'is-ghost' : '')}
                 style={{ borderColor: l.color, background: `color-mix(in srgb, ${l.color} 10%, transparent)` }}
@@ -240,6 +241,8 @@ export default function SonarDesktop({ s }) {
           <button
             className="ld-tagger-dice"
             title="Surprise me"
+            aria-label="Surprise me — add a random vibe"
+            disabled={anyLoading}
             onClick={() => addVibeLayer(suggestions[Math.floor(Math.random() * suggestions.length)])}
           >🎲</button>
           {layers.length > 0 && (
@@ -282,7 +285,10 @@ export default function SonarDesktop({ s }) {
           </button>
         </div>
 
-        <button className="lo-btn-icon" title="About" onClick={() => setAboutOpen(true)}>
+        <button className="lo-btn-icon ld-hints-btn" title="How the map works" aria-label="How the map works"
+          onClick={openHints}>?</button>
+
+        <button className="lo-btn-icon" title="About" aria-label="About" onClick={() => setAboutOpen(true)}>
           <svg viewBox="0 0 24 24" fill="currentColor" width="18" height="18"><path d="M3 18h18v-2H3v2zm0-5h18v-2H3v2zm0-7v2h18V6H3z" /></svg>
         </button>
       </header>
@@ -570,8 +576,32 @@ export default function SonarDesktop({ s }) {
                     );
                   })}
 
+                  {/* in-flight probe — pulsing ring at the clicked spot while
+                      /map/nearest resolves */}
+                  {probing && (() => {
+                    const px = PAD + probing.x * (VW - 2 * PAD);
+                    const py = PAD + (1 - probing.y) * (VH - 2 * PAD);
+                    return (
+                      <g style={{ pointerEvents: 'none' }}>
+                        <circle className="el-probe-ring" cx={px} cy={py} r={16 * iz} fill="none" stroke={CONJURE_COLOR} strokeWidth={1.5 * iz} />
+                        <circle cx={px} cy={py} r={3 * iz} fill={CONJURE_COLOR} opacity="0.9" />
+                      </g>
+                    );
+                  })()}
                 </g>
               </svg>
+
+              {/* Empty map — no visible search results and nothing else plotted.
+                  pointer-events: none so click-to-probe still works through it. */}
+              {!anyLoading && visibleTracks.length === 0 && playlistTracks.length === 0
+                && probes.length === 0 && !candidates && (
+                <div className="ld-map-empty">
+                  <div className="ld-map-empty-title">The map is dark</div>
+                  <div className="el-body-muted">
+                    Type a vibe above, roll the 🎲, or click anywhere to conjure a track.
+                  </div>
+                </div>
+              )}
 
               {/* MERT projection caption + explainer */}
               <div className="ld-map-caption lo-eyebrow">

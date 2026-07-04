@@ -145,6 +145,65 @@ export function SourceLink({ track, className = '' }) {
   );
 }
 
+// Error toast stack — rendered once in the shell so both views share it. Each
+// toast may carry a retry callback (re-runs the action that failed).
+export function Toasts({ toasts, onDismiss }) {
+  if (!toasts.length) return null;
+  return (
+    <div className="el-toasts" role="status" aria-live="polite">
+      {toasts.map((t) => (
+        <div key={t.id} className="el-toast">
+          <span className="el-toast-msg">{t.message}</span>
+          {t.retry && (
+            <button className="el-toast-retry" onClick={() => { onDismiss(t.id); t.retry(); }}>
+              Retry
+            </button>
+          )}
+          <button className="el-toast-x" aria-label="Dismiss" onClick={() => onDismiss(t.id)}>×</button>
+        </div>
+      ))}
+    </div>
+  );
+}
+
+// One-time gesture-hints overlay (the map's core interactions are invisible
+// otherwise). Shown on first visit; the ? button reopens it. Copy differs per
+// view since the gestures differ (click vs reticle tuning).
+const DESKTOP_HINTS = [
+  ['🔍', 'Search in layers', 'Every vibe or similar-search is its own colored layer of dots. Click a pill to filter to just that search.'],
+  ['✨', 'Click empty space', 'Conjures the nearest track from the whole corpus at that spot — it appears as an amber dot.'],
+  ['➕', 'Double-click a dot', 'Adds that track to your playlist.'],
+  ['〰️', 'Click the dashed ＋ between playlist dots', 'Finds tracks that sit sonically in between the two (interpolation).'],
+];
+const MOBILE_HINTS = [
+  ['🎯', 'Pan to tune', 'Drag the map — the center reticle locks onto the nearest track and plays it.'],
+  ['✨', 'Explore the whole corpus', 'Hide your search pills (eye button) and tune: the reticle conjures tracks from the entire library.'],
+  ['➕', 'Add to playlist', 'Tap a dot, then ＋ in the panel that peeks up from the bottom.'],
+  ['〰️', 'Double-tap to interpolate', 'Double-tap a dot to find tracks between it and the tuned one — or double-tap a playlist link.'],
+];
+export function HintsOverlay({ mobile = false, onClose }) {
+  const hints = mobile ? MOBILE_HINTS : DESKTOP_HINTS;
+  return (
+    <div className="ld-about-overlay" role="dialog" aria-modal="true" aria-label="How the sonar map works"
+      onClick={(e) => { if (e.target === e.currentTarget) onClose(); }}>
+      <div className="ld-about-card ld-hints-card">
+        <button className="ld-about-close" aria-label="Close" onClick={onClose}>✕</button>
+        <h2 className="el-h2" style={{ fontSize: '1.4rem', marginBottom: 14 }}>How the sonar map works</h2>
+        {hints.map(([glyph, title, body]) => (
+          <div key={title} className="ld-hint-row">
+            <span className="ld-hint-glyph" aria-hidden="true">{glyph}</span>
+            <div>
+              <div className="ld-hint-title">{title}</div>
+              <div className="el-body-muted">{body}</div>
+            </div>
+          </div>
+        ))}
+        <button className="ld-hints-go" onClick={onClose}>Got it</button>
+      </div>
+    </div>
+  );
+}
+
 // About modal — shared by the desktop header button and the mobile About tab.
 export function AboutModal({ onClose }) {
   return (
