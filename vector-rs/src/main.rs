@@ -247,13 +247,26 @@ fn build_cors_layer(config: &Config) -> CorsLayer {
             if origins.contains(&"*") {
                 panic!("CORS_ALLOW_ORIGINS=* is not allowed in production; specify explicit origins");
             } else {
-                let parsed: Vec<_> = origins
-                    .iter()
-                    .filter_map(|o| o.trim().parse().ok())
-                    .collect();
-                tracing::info!("CORS Allowed Origins: {:?}", origins);
+                let exact: Vec<String> =
+                    origins.iter().map(|o| o.trim().to_string()).collect();
+                tracing::info!("CORS Allowed Origins: {:?} (+ sonar PR previews)", exact);
                 CorsLayer::new()
-                    .allow_origin(AllowOrigin::list(parsed))
+                    .allow_origin(AllowOrigin::predicate(move |origin, _parts| {
+                        let Ok(origin) = origin.to_str() else {
+                            return false;
+                        };
+                        // Exact match against the configured allowlist (prod domains).
+                        if exact.iter().any(|o| o == origin) {
+                            return true;
+                        }
+                        // Sonar PR-preview revisions get ephemeral Cloud Run tag URLs like
+                        // https://pr123---cloud-crate-sonar-<hash>.<region>.run.app that can't
+                        // be listed ahead of time. Scoped to the sonar service so this does
+                        // NOT open CORS to arbitrary *.run.app apps.
+                        origin.starts_with("https://")
+                            && origin.ends_with(".run.app")
+                            && origin.contains("---cloud-crate-sonar-")
+                    }))
                     .allow_methods(tower_http::cors::Any)
                     .allow_headers(tower_http::cors::Any)
             }

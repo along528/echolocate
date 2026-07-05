@@ -1,0 +1,84 @@
+name: sonar-deploy
+
+# Deploy the sonar frontend to production (serving revision of cloud-crate-sonar) on
+# every merge to main that touches sonar/**. Automates the build+deploy half of
+# sonar/deploy.sh; the one-time DNS / domain-mapping steps stay manual.
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'sonar/**'
+      - '.github/workflows/sonar-deploy.yml'
+
+concurrency:
+  group: sonar-deploy
+  cancel-in-progress: false
+
+env:
+  PROJECT_ID: cloud-crate-485418
+  REGION: us-central1
+  SERVICE: cloud-crate-sonar
+  VECTOR_SERVICE: cloud-crate-vector-rs
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    permissions:
+      id-token: write
+      contents: read
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+          cache-dependency-path: sonar/package-lock.json
+
+      - name: Install + build (gate)
+        working-directory: sonar
+        run: |
+          npm ci
+          npm run build
+
+      - id: auth
+        uses: google-github-actions/auth@v2
+        with:
+          workload_identity_provider: ${{ vars.WIF_PROVIDER }}
+          service_account: ${{ vars.WIF_SERVICE_ACCOUNT }}
+
+      - uses: google-github-actions/setup-gcloud@v2
+
+      - name: Resolve backend URL + image tag
+        id: vars
+        run: |
+          SHA="$(echo "${{ github.sha }}" | cut -c1-8)"
+          VECTOR_URL="$(gcloud run services describe "$VECTOR_SERVICE" \
+            --region "$REGION" --project "$PROJECT_ID" --format='value(status.url)')"
+          if [ -z "$VECTOR_URL" ]; then
+            echo "Could not resolve $VECTOR_SERVICE URL" >&2
+            exit 1
+          fi
+          {
+            echo "image=gcr.io/${PROJECT_ID}/${SERVICE}:main-${SHA}"
+            echo "vector_url=$VECTOR_URL"
+          } >> "$GITHUB_OUTPUT"
+
+      - name: Build image (bakes VITE_VECTOR_API_URL)
+        run: |
+          gcloud builds submit sonar \
+            --config sonar/cloudbuild.yaml \
+            --project "$PROJECT_ID" \
+            --substitutions "_IMAGE=${{ steps.vars.outputs.image }},_VITE_VECTOR_API_URL=${{ steps.vars.outputs.vector_url }}"
+
+      - name: Deploy serving revision (100% traffic)
+        run: |
+          gcloud run deploy "$SERVICE" \
+            --image "${{ steps.vars.outputs.image }}" \
+            --region "$REGION" --project "$PROJECT_ID" \
+            --platform managed \
+            --allow-unauthenticated \
+            --ingress all \
+            --port 8080 \
+            --quiet
