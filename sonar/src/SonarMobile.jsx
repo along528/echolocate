@@ -157,7 +157,23 @@ export default function SonarMobile({ s }) {
     navList,
     radioOn, toggleRadio, drift, setDrift, wake,
     radioCandidates, radioWindow, hopToCandidate,
+    driftPreviewing, bumpDriftPreview,
   } = s;
+
+  // Radio focus mode: keep the camera centered + zoomed on the playing track;
+  // a hop re-targets it and the CSS transition on the map <g> (.ld-cam-anim)
+  // glides there. Reset the view when leaving radio.
+  const RADIO_ZOOM_M = 2.2;
+  React.useEffect(() => {
+    if (!radioOn || !playing) return;
+    const p = dotPosM(playing);
+    setZoom({ k: RADIO_ZOOM_M, x: MVW / 2 - RADIO_ZOOM_M * p.x, y: MVH / 2 - RADIO_ZOOM_M * p.y, r: 0 });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [radioOn, playingId]);
+  React.useEffect(() => {
+    if (!radioOn) setZoom({ k: 1, x: 0, y: 0, r: 0 });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [radioOn]);
 
   // Mobile-only UI state. `sheet` is the modal layer (search / now / playlist);
   // `detailMode` is the separate non-modal peek panel over the dock.
@@ -243,6 +259,9 @@ export default function SonarMobile({ s }) {
   // was tuned *before* this tap — the interpolation anchor; a quick second tap on
   // the same dot fires the interpolation against that anchor.
   const handleDotTap = (t) => {
+    // Radio focus mode has no track selection/peek (it would overlap the drift
+    // bar) — tapping the playing dot just toggles playback.
+    if (radioOn) { togglePlay(); return; }
     const now = Date.now();
     const prev = lastTapRef.current;
     if (prev.key === t.id && now - prev.t < DOUBLE_TAP_MS && prev.anchor && prev.anchor.id !== t.id) {
@@ -529,6 +548,7 @@ export default function SonarMobile({ s }) {
   }, [candidates]);
 
   const onTouchStart = (e) => {
+    if (radioOn) return; // no pan/pinch/tune in radio focus mode — camera is auto-driven
     cancelAnimationFrame(animRef.current); // grab the map mid-tween
     const t = e.touches;
     const rect = e.currentTarget.getBoundingClientRect();
@@ -630,7 +650,8 @@ export default function SonarMobile({ s }) {
                 <path d="M 74.5 0 L 0 0 0 74.5" fill="none" stroke="white" strokeOpacity="0.14" strokeWidth="0.6" />
               </pattern>
             </defs>
-            <g transform={`translate(${zoom.x} ${zoom.y}) scale(${zoom.k}) rotate(${((zoom.r || 0) * 180) / Math.PI})`}>
+            <g className={radioOn ? 'ld-cam-anim' : undefined}
+              transform={`translate(${zoom.x} ${zoom.y}) scale(${zoom.k}) rotate(${((zoom.r || 0) * 180) / Math.PI})`}>
               {/* Effectively-infinite grid (stays in plot space — scales with zoom). */}
               <rect x={-6000} y={-6000} width={12000} height={12000} fill="url(#ldm-grid)" style={{ pointerEvents: 'none' }} />
               {/* Backdrop field — spatial context for the whole corpus. Dimmed
@@ -723,13 +744,13 @@ export default function SonarMobile({ s }) {
                       })}
                     </g>
                   )}
-                  {/* drift preview — the next-hop pool, live with the drift slider:
+                  {/* drift preview — only while adjusting drift (fades after);
                       reach halo + lit candidate dots (tap to hop there now). */}
                   {radioOn && playing && radioCandidates && (() => {
                     const geom = radioPreviewGeom(playing, radioCandidates.tracks, radioWindow, dotPosM);
                     if (!geom) return null;
                     return (
-                      <g>
+                      <g className={'ld-radio-preview' + (driftPreviewing ? ' is-on' : '')}>
                         {geom.haloR > 0 && (
                           <circle className="ld-radio-halo" cx={geom.origin.x} cy={geom.origin.y} r={geom.haloR + 8 * iz}
                             fill="var(--el-yellow-500)" fillOpacity={0.06}
@@ -970,7 +991,8 @@ export default function SonarMobile({ s }) {
         <div className="ldm-driftbar">
           <span className="ldm-driftbar-badge"><IconRadio size={13} /> drift</span>
           <input type="range" min="0" max="1" step="0.05" value={drift}
-            onChange={(e) => setDrift(Number(e.target.value))} aria-label="Drift" />
+            onChange={(e) => { setDrift(Number(e.target.value)); bumpDriftPreview(); }}
+            onPointerDown={bumpDriftPreview} onFocus={bumpDriftPreview} aria-label="Drift" />
           <span className="lo-eyebrow ldm-driftbar-count">
             {radioCandidates ? `${radioWindow}/${radioCandidates.tracks.length}` : '…'}
           </span>
@@ -1084,13 +1106,8 @@ export default function SonarMobile({ s }) {
               <button className={'ldm-now-tbtn ldm-radio ' + (radioOn ? 'is-on' : '')} onClick={toggleRadio}
                 aria-label={radioOn ? 'Turn drift radio off' : 'Turn drift radio on'}><IconRadio size={18} /></button>
             </div>
-            {radioOn && (
-              <div className="lo-drift">
-                <span className="lo-eyebrow">drift</span>
-                <input type="range" min="0" max="1" step="0.05" value={drift}
-                  onChange={(e) => setDrift(Number(e.target.value))} />
-              </div>
-            )}
+            {/* Drift lives in the persistent bar over the map in radio mode; no
+                duplicate here. */}
             <div className="ldm-detail-fb"><FeedbackPills track={playing} value={labelsByTrackId[playing.id]} onLabel={labelTrack} source={sourceTagFor(playing)} /></div>
           </div>
           <div className="ldm-now-quick">

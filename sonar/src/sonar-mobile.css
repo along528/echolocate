@@ -98,6 +98,8 @@
 /* Radio focus mode (mobile): hide the pill/search chrome and dim the disabled
    tabs; the persistent drift bar becomes the primary control. */
 .ldm-app.is-radio .ldm-top { display: none; }
+/* No reticle in radio mode — tuning is disabled, the camera drives itself. */
+.ldm-app.is-radio .ldm-reticle { display: none; }
 .ldm-tab:disabled { opacity: 0.32; pointer-events: none; }
 .ldm-driftbar {
   position: absolute; left: 10px; right: 10px; z-index: 7;

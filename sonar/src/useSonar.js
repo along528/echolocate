@@ -155,6 +155,16 @@ export function useSonar({ initialView = 'map' } = {}) {
   const playedIdsRef = React.useRef(new Set());
   // Guards against overlapping hops (double `ended` fires, skip mashing).
   const radioBusyRef = React.useRef(false);
+  // The drift preview (halo + candidate dots) is only shown *while you are
+  // adjusting drift* — `bumpDriftPreview` flips this on and lingers ~1.1s after
+  // the last change so you can see where the window settled, then hides it.
+  const [driftPreviewing, setDriftPreviewing] = React.useState(false);
+  const driftPreviewTimerRef = React.useRef(null);
+  const bumpDriftPreview = React.useCallback(() => {
+    setDriftPreviewing(true);
+    if (driftPreviewTimerRef.current) clearTimeout(driftPreviewTimerRef.current);
+    driftPreviewTimerRef.current = setTimeout(() => setDriftPreviewing(false), 1100);
+  }, []);
   const [labelsByTrackId, setLabelsByTrackId] = React.useState({});
   // When set, only this layer's tracks are shown (click a pill to filter to its
   // members). null = show every layer that isn't explicitly hidden.
@@ -854,6 +864,7 @@ export function useSonar({ initialView = 'map' } = {}) {
     // drift radio
     radioOn, toggleRadio, drift, setDrift, wake,
     radioCandidates, radioWindow, hopToCandidate,
+    driftPreviewing, bumpDriftPreview,
     // zoom
     resetZoom,
   };

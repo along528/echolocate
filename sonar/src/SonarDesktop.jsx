@@ -46,7 +46,25 @@ export default function SonarDesktop({ s }) {
     playTrack, togglePlay, seekTo, step, labelTrack, resetZoom,
     radioOn, toggleRadio, drift, setDrift, wake,
     radioCandidates, radioWindow, hopToCandidate,
+    driftPreviewing, bumpDriftPreview,
   } = s;
+
+  // Radio focus mode: keep the camera zoomed in on the playing track. When the
+  // track changes (a hop), setting the target transform animates via the CSS
+  // transition on the map's <g> (see .ld-cam-anim) — the scene glides to the
+  // next dot. Leaving radio resets the view.
+  const RADIO_ZOOM = 2.6;
+  React.useEffect(() => {
+    if (!radioOn || !playing) return;
+    const p = dotPos(playing);
+    setZoom({ k: RADIO_ZOOM, x: VW / 2 - RADIO_ZOOM * p.x, y: VH / 2 - RADIO_ZOOM * p.y, r: 0 });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [radioOn, playingId]);
+  // Reset the view only when leaving radio (not on every track change elsewhere).
+  React.useEffect(() => {
+    if (!radioOn) resetZoom();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [radioOn]);
 
   // Pan drag bookkeeping (click-drag to pan when zoomed in).
   const panRef = React.useRef(null); // { sx, sy, ox, oy } during a drag
@@ -81,6 +99,7 @@ export default function SonarDesktop({ s }) {
     return { k, x: cx - (cx - z.x) * (k / z.k), y: cy - (cy - z.y) * (k / z.k) };
   });
   const onWheelMap = (e) => {
+    if (radioOn) return; // camera is auto-driven in radio focus mode
     if (!e.ctrlKey && Math.abs(e.deltaY) < 1) return;
     e.preventDefault();
     zoomBy(e.deltaY < 0 ? 1.12 : 1 / 1.12);
@@ -125,6 +144,7 @@ export default function SonarDesktop({ s }) {
 
   // ---- click-drag to pan (only meaningful when zoomed in) ----
   const onMapPointerDown = (e) => {
+    if (radioOn) return; // no dragging in radio focus mode — the camera drives itself
     if (zoom.k <= 1 || e.button !== 0) return;
     panRef.current = { sx: e.clientX, sy: e.clientY, ox: zoom.x, oy: zoom.y, rect: e.currentTarget.getBoundingClientRect() };
     didPanRef.current = false;
@@ -419,8 +439,9 @@ export default function SonarDesktop({ s }) {
             )}
           </div>
 
-          {/* Track detail card — lives ABOVE the map so it never obscures dots. */}
-          {(view === 'map' || radioOn) && (
+          {/* Track detail card — lives ABOVE the map so it never obscures dots.
+              Hidden in radio focus mode (nothing is selectable there). */}
+          {view === 'map' && !radioOn && (
             <div className="ld-detail-bar">
               {/* Call as a function (not <DetailCard/>) so it doesn't remount on
                   every re-render — remounting resets button :hover and makes the
@@ -445,7 +466,8 @@ export default function SonarDesktop({ s }) {
               >
                 {/* background catch-rect so clicks on empty space register */}
                 <rect x={0} y={0} width={VW} height={VH} fill="transparent" />
-                <g transform={`translate(${zoom.x} ${zoom.y}) scale(${zoom.k})`}>
+                <g className={radioOn ? 'ld-cam-anim' : undefined}
+                  transform={`translate(${zoom.x} ${zoom.y}) scale(${zoom.k})`}>
                   <g opacity="0.18" style={{ pointerEvents: 'none' }}>
                     {[0.25, 0.5, 0.75].map((g) => (
                       <React.Fragment key={g}>
@@ -497,16 +519,17 @@ export default function SonarDesktop({ s }) {
                     </g>
                   )}
 
-                  {/* drift preview — the pool the NEXT hop will pick from, live
-                      with the drift slider: a translucent "reach" halo enclosing
-                      the windowed candidates, rays to each lit candidate (nearest
-                      brightest), and dim ghosts for out-of-window neighbors.
-                      Clicking a lit candidate hops there now. */}
+                  {/* drift preview — the pool the NEXT hop will pick from. Only
+                      shown WHILE you're adjusting drift (driftPreviewing); it
+                      fades away shortly after you stop. A translucent "reach" halo
+                      encloses the windowed candidates, with rays to each lit one
+                      (nearest brightest) and dim ghosts for out-of-window
+                      neighbors. Clicking a lit candidate hops there now. */}
                   {radioOn && playing && radioCandidates && (() => {
                     const geom = radioPreviewGeom(playing, radioCandidates.tracks, radioWindow, dotPos);
                     if (!geom) return null;
                     return (
-                      <g>
+                      <g className={'ld-radio-preview' + (driftPreviewing ? ' is-on' : '')}>
                         {geom.haloR > 0 && (
                           <circle className="ld-radio-halo" cx={geom.origin.x} cy={geom.origin.y} r={geom.haloR + 8 * iz}
                             fill="var(--el-yellow-500)" fillOpacity={0.06}
@@ -522,9 +545,7 @@ export default function SonarDesktop({ s }) {
                           const r = (ray.rank === 0 ? 6 : 4.5) * iz;
                           return (
                             <g key={'rc_' + ray.id} className="ld-radio-cand" style={{ cursor: 'pointer' }}
-                              onClick={(e) => { e.stopPropagation(); hopToCandidate(ray.track); }}
-                              onMouseEnter={() => setHoverId(ray.id)}
-                              onMouseLeave={() => setHoverId((p) => (p === ray.id ? null : p))}>
+                              onClick={(e) => { e.stopPropagation(); hopToCandidate(ray.track); }}>
                               <title>Hop to “{ray.track.title}”</title>
                               <line x1={geom.origin.x} y1={geom.origin.y} x2={ray.x} y2={ray.y}
                                 stroke="var(--el-yellow-500)" strokeOpacity={0.22} strokeWidth={iz} />
@@ -666,15 +687,17 @@ export default function SonarDesktop({ s }) {
                 </span>
               </div>
 
-              {/* zoom controls */}
-              <div className="ld-zoom">
-                <button className="lo-btn-icon" title="Zoom in" onClick={() => zoomBy(1.25)}><IconZoomIn size={16} /></button>
-                <button className="lo-btn-icon" title="Zoom out" onClick={() => zoomBy(1 / 1.25)}><IconZoomOut size={16} /></button>
-                <button className="lo-btn-icon" title="Reset view" onClick={resetZoom} disabled={zoom.k === 1 && zoom.x === 0 && zoom.y === 0}><IconRecenter size={16} /></button>
-              </div>
+              {/* zoom controls — hidden in radio mode (the camera is auto-driven) */}
+              {!radioOn && (
+                <div className="ld-zoom">
+                  <button className="lo-btn-icon" title="Zoom in" onClick={() => zoomBy(1.25)}><IconZoomIn size={16} /></button>
+                  <button className="lo-btn-icon" title="Zoom out" onClick={() => zoomBy(1 / 1.25)}><IconZoomOut size={16} /></button>
+                  <button className="lo-btn-icon" title="Reset view" onClick={resetZoom} disabled={zoom.k === 1 && zoom.x === 0 && zoom.y === 0}><IconRecenter size={16} /></button>
+                </div>
+              )}
 
               <div className="lc-legend">
-                {radioOn && (
+                {radioOn && driftPreviewing && (
                   <div className="lc-legend-row">
                     <span className="lc-legend-dot" style={{ background: 'var(--el-yellow-500)' }} /> next-pick pool
                   </div>
@@ -793,7 +816,8 @@ export default function SonarDesktop({ s }) {
               <div className="lo-drift">
                 <span className="lo-eyebrow">drift</span>
                 <input type="range" min="0" max="1" step="0.05" value={drift}
-                  onChange={(e) => setDrift(Number(e.target.value))}
+                  onChange={(e) => { setDrift(Number(e.target.value)); bumpDriftPreview(); }}
+                  onPointerDown={bumpDriftPreview} onFocus={bumpDriftPreview}
                   title="0 = stay in the pocket · 1 = wander" />
                 <span className="lo-eyebrow lo-drift-count">
                   {radioCandidates ? `next: ${radioWindow}/${radioCandidates.tracks.length}` : '…'}

@@ -273,6 +273,14 @@ input { font-family: inherit; }
 }
 .ld-radio-exit { margin-left: auto; }
 
+/* Radio camera: animate the map <g> transform so a hop glides to the next track
+   (applied on both maps' zoom group only while radio is on). */
+.ld-cam-anim { transition: transform 0.7s cubic-bezier(0.22, 1, 0.36, 1); will-change: transform; }
+/* Drift preview only shows while adjusting drift — fade it in/out and disable
+   its hit-testing when hidden so candidates are clickable only while visible. */
+.ld-radio-preview { opacity: 0; pointer-events: none; transition: opacity 0.25s ease; }
+.ld-radio-preview.is-on { opacity: 1; pointer-events: auto; }
+
 /* =========================================================
    SHARED BUTTONS
    ========================================================= */
