@@ -13,7 +13,7 @@ import {
 } from './icons.jsx';
 import {
   CANDIDATE_COLOR, FALLBACK_COLOR, CONJURE_COLOR, fmtTime, coordsOf, distBetween,
-  layerTag, layerKindWord, prettyUrl, FeedbackPills, AboutModal,
+  layerTag, layerKindWord, prettyUrl, FeedbackPills, AboutModal, radioPreviewGeom,
 } from './sonar-utils.jsx';
 
 const MVW = 390, MVH = 780, MPAD = 46;
@@ -156,6 +156,7 @@ export default function SonarMobile({ s }) {
     interpolateEdge, clearCandidates, playTrack, togglePlay, step, labelTrack, seekTo,
     navList,
     radioOn, toggleRadio, drift, setDrift, wake,
+    radioCandidates, radioWindow, hopToCandidate,
   } = s;
 
   // Mobile-only UI state. `sheet` is the modal layer (search / now / playlist);
@@ -612,13 +613,13 @@ export default function SonarMobile({ s }) {
   const pauseSvg = <svg viewBox="0 0 24 24" fill="white" width="16" height="16"><path d="M6 5h4v14H6zm8 0h4v14h-4z" /></svg>;
 
   return (
-    <div ref={appRef} className={'ldm-app' + (detailMode === 'peek' ? ' is-peek' : '')}>
+    <div ref={appRef} className={'ldm-app' + (detailMode === 'peek' ? ' is-peek' : '') + (radioOn ? ' is-radio' : '')}>
       {/* iOS haptic shim — toggling a switch input produces a system tick. */}
       <input ref={hapticSwitchRef} type="checkbox" switch="" tabIndex={-1} aria-hidden="true"
         style={{ position: 'absolute', width: 1, height: 1, opacity: 0, pointerEvents: 'none' }}
         onChange={() => {}} />
-      {/* ===== MAP / LIST STAGE ===== */}
-      {view === 'map' ? (
+      {/* ===== MAP / LIST STAGE ===== (radio focus mode forces the map) */}
+      {(view === 'map' || radioOn) ? (
         <div className="ldm-stage">
           <svg ref={mapRef} className="ldm-map" viewBox={`0 0 ${MVW} ${MVH}`} preserveAspectRatio="xMidYMid slice"
             onClick={() => { if (!movedRef.current) { if (sheet) setSheet(null); else if (detailMode !== 'hidden') setDetailMode('hidden'); } }}
@@ -722,10 +723,43 @@ export default function SonarMobile({ s }) {
                       })}
                     </g>
                   )}
-                  {playlistTracks.length > 1 && playlistTracks.slice(1).map((b, i) => { const a = playlistTracks[i], pa = dotPosM(a), pb = dotPosM(b);
+                  {/* drift preview — the next-hop pool, live with the drift slider:
+                      reach halo + lit candidate dots (tap to hop there now). */}
+                  {radioOn && playing && radioCandidates && (() => {
+                    const geom = radioPreviewGeom(playing, radioCandidates.tracks, radioWindow, dotPosM);
+                    if (!geom) return null;
+                    return (
+                      <g>
+                        {geom.haloR > 0 && (
+                          <circle className="ld-radio-halo" cx={geom.origin.x} cy={geom.origin.y} r={geom.haloR + 8 * iz}
+                            fill="var(--el-yellow-500)" fillOpacity={0.06}
+                            stroke="var(--el-yellow-500)" strokeOpacity={0.4} strokeWidth={iz}
+                            strokeDasharray={`${3 * iz} ${3 * iz}`} style={{ pointerEvents: 'none' }} />
+                        )}
+                        {geom.rays.map((ray) => {
+                          if (!ray.inWindow) {
+                            return <circle key={'rg' + ray.id} cx={ray.x} cy={ray.y} r={2.5 * iz}
+                              fill="var(--el-yellow-500)" opacity={0.14} style={{ pointerEvents: 'none' }} />;
+                          }
+                          const op = 0.95 - 0.55 * (ray.rank / Math.max(1, radioWindow - 1 || 1));
+                          const r = (ray.rank === 0 ? 7 : 5.5) * iz;
+                          return (
+                            <g key={'rc' + ray.id} className="ld-radio-cand" onClick={onTap(() => hopToCandidate(ray.track))}>
+                              <line x1={geom.origin.x} y1={geom.origin.y} x2={ray.x} y2={ray.y}
+                                stroke="var(--el-yellow-500)" strokeOpacity={0.22} strokeWidth={iz} />
+                              <circle cx={ray.x} cy={ray.y} r={14 * iz} fill="transparent" />
+                              {ray.rank === 0 && <circle cx={ray.x} cy={ray.y} r={r + 3 * iz} fill="none" stroke="var(--el-yellow-500)" strokeWidth={iz} strokeOpacity={0.7} />}
+                              <circle cx={ray.x} cy={ray.y} r={r} fill="var(--el-yellow-500)" opacity={op} />
+                            </g>
+                          );
+                        })}
+                      </g>
+                    );
+                  })()}
+                  {!radioOn && playlistTracks.length > 1 && playlistTracks.slice(1).map((b, i) => { const a = playlistTracks[i], pa = dotPosM(a), pb = dotPosM(b);
                     return (<g key={`s${a.id}${b.id}`} onClick={onTap(() => handleEdgeTap(a, b))}><line x1={pa.x} y1={pa.y} x2={pb.x} y2={pb.y} stroke="transparent" strokeWidth={20 * iz} /><line x1={pa.x} y1={pa.y} x2={pb.x} y2={pb.y} stroke="var(--el-indigo-500)" strokeOpacity={0.55} strokeWidth={2 * iz} strokeDasharray={`${4 * iz} ${4 * iz}`} /></g>); })}
-                  {playlistTracks.map((t) => { const p = dotPosM(t); return <circle key={'r' + t.id} cx={p.x} cy={p.y} r={13 * iz} fill="none" stroke="var(--el-indigo-500)" strokeWidth={2 * iz} strokeOpacity="0.6" style={{ pointerEvents: 'none' }} />; })}
-                  {visibleTracks.map(({ track: t, color }, i) => { const p = dotPosM(t), isPlay = t.id === playingId, isSel = t.id === selectedId, inPl = playlistById.has(t.id); const r = (isPlay ? 9.5 : isSel ? 8 : 5.5) * iz;
+                  {!radioOn && playlistTracks.map((t) => { const p = dotPosM(t); return <circle key={'r' + t.id} cx={p.x} cy={p.y} r={13 * iz} fill="none" stroke="var(--el-indigo-500)" strokeWidth={2 * iz} strokeOpacity="0.6" style={{ pointerEvents: 'none' }} />; })}
+                  {!radioOn && visibleTracks.map(({ track: t, color }, i) => { const p = dotPosM(t), isPlay = t.id === playingId, isSel = t.id === selectedId, inPl = playlistById.has(t.id); const r = (isPlay ? 9.5 : isSel ? 8 : 5.5) * iz;
                     return (<g key={t.id} className="el-dot-pop" style={{ animationDelay: `${Math.min(i * 14, 320)}ms` }} onClick={onTap(() => handleDotTap(t))}>
                       <circle cx={p.x} cy={p.y} r={14 * iz} fill="transparent" />
                       {isSel && <circle cx={p.x} cy={p.y} r={r + 6 * iz} fill="none" stroke={color} strokeWidth={1.5 * iz} />}
@@ -735,7 +769,7 @@ export default function SonarMobile({ s }) {
                   {/* Seed track of the expanded (soloed) similar/dissimilar pill:
                       a distinct dashed-ring marker, clickable to peek/play. Only
                       shown while that pill is soloed. */}
-                  {soloSeed && (() => { const p = dotPosM(soloSeed); const isPlay = soloSeed.id === playingId, isSel = soloSeed.id === selectedId; const color = soloLayer.color; const core = (isPlay ? 9 : 7) * iz;
+                  {!radioOn && soloSeed && (() => { const p = dotPosM(soloSeed); const isPlay = soloSeed.id === playingId, isSel = soloSeed.id === selectedId; const color = soloLayer.color; const core = (isPlay ? 9 : 7) * iz;
                     return (<g key={'seed' + soloSeed.id} onClick={onTap(() => handleDotTap(soloSeed))}>
                       <circle cx={p.x} cy={p.y} r={16 * iz} fill="transparent" />
                       <circle cx={p.x} cy={p.y} r={13 * iz} fill="none" stroke={color} strokeWidth={1.5 * iz} strokeDasharray={`${3 * iz} ${2 * iz}`} />
@@ -746,7 +780,7 @@ export default function SonarMobile({ s }) {
                   {/* playlist tracks whose source layer is no longer visible still
                       get a dot (colored by their saved origin), so the trail stays
                       on the map after the searches are cleared. */}
-                  {playlistTracks.map((t) => { if (entryByTrackId.has(t.id)) return null; const p = dotPosM(t); const slot = playlistById.get(t.id); const color = slot?.color || FALLBACK_COLOR; const isPlay = t.id === playingId, isSel = t.id === selectedId;
+                  {!radioOn && playlistTracks.map((t) => { if (entryByTrackId.has(t.id)) return null; const p = dotPosM(t); const slot = playlistById.get(t.id); const color = slot?.color || FALLBACK_COLOR; const isPlay = t.id === playingId, isSel = t.id === selectedId;
                     return (<g key={'pl' + t.id} onClick={onTap(() => handleDotTap(t))}>
                       <circle cx={p.x} cy={p.y} r={14 * iz} fill="transparent" />
                       {isSel && <circle cx={p.x} cy={p.y} r={12 * iz} fill="none" stroke={color} strokeWidth={1.5 * iz} />}
@@ -756,7 +790,7 @@ export default function SonarMobile({ s }) {
                   {/* Conjured tracks (probed from the background while pills are
                       hidden). Persist as their own dashed-ring dots so you still
                       see + can replay your picks once the pills are shown again. */}
-                  {probes.map((t) => {
+                  {!radioOn && probes.map((t) => {
                     if (entryByTrackId.has(t.id) || playlistById.has(t.id)) return null;
                     const p = dotPosM(t); const isPlay = t.id === playingId, isSel = t.id === selectedId;
                     const r = (isPlay ? 9 : 7) * iz;
@@ -930,6 +964,20 @@ export default function SonarMobile({ s }) {
           </PeekSheet>
         ); })()}
 
+      {/* Radio focus mode: a persistent drift bar above the dock, so drift is the
+          primary (and only) control — with the next-pick count and an exit. */}
+      {radioOn && (
+        <div className="ldm-driftbar">
+          <span className="ldm-driftbar-badge"><IconRadio size={13} /> drift</span>
+          <input type="range" min="0" max="1" step="0.05" value={drift}
+            onChange={(e) => setDrift(Number(e.target.value))} aria-label="Drift" />
+          <span className="lo-eyebrow ldm-driftbar-count">
+            {radioCandidates ? `${radioWindow}/${radioCandidates.tracks.length}` : '…'}
+          </span>
+          <button className="lo-btn-ghost ld-mini-btn" onClick={toggleRadio}>Exit</button>
+        </div>
+      )}
+
       {/* ===== DOCK — now-playing strip + tab bar ===== */}
       <div className="ldm-dock" ref={dockRef}>
         {/* The player bar is always present — it shows a muted placeholder when
@@ -957,14 +1005,14 @@ export default function SonarMobile({ s }) {
             <svg viewBox="0 0 24 24" width="22" height="22" fill="currentColor"><circle cx="12" cy="12" r="2.5" /><circle cx="12" cy="12" r="6" fill="none" stroke="currentColor" strokeWidth="1.4" /><circle cx="12" cy="12" r="10" fill="none" stroke="currentColor" strokeWidth="1.4" opacity="0.5" /></svg>
             <span>Map</span>
           </button>
-          <button className={'ldm-tab ' + (view === 'list' ? 'is-active' : '')} onClick={() => { setView('list'); setSheet(null); }}>
+          <button className={'ldm-tab ' + (view === 'list' ? 'is-active' : '')} disabled={radioOn} onClick={() => { setView('list'); setSheet(null); }}>
             <svg viewBox="0 0 24 24" width="22" height="22" fill="currentColor"><rect x="3" y="5" width="18" height="2" rx="1" /><rect x="3" y="11" width="18" height="2" rx="1" /><rect x="3" y="17" width="18" height="2" rx="1" /></svg>
             <span>List</span>
           </button>
-          <button className={'ldm-tab ' + (sheet === 'search' ? 'is-active' : '')} onClick={() => setSheet('search')}>
+          <button className={'ldm-tab ' + (sheet === 'search' ? 'is-active' : '')} disabled={radioOn} onClick={() => setSheet('search')}>
             <IconSearch size={20} /><span>Search</span>
           </button>
-          <button className={'ldm-tab ' + (sheet === 'playlist' ? 'is-active' : '')} onClick={() => setSheet('playlist')}>
+          <button className={'ldm-tab ' + (sheet === 'playlist' ? 'is-active' : '')} disabled={radioOn} onClick={() => setSheet('playlist')}>
             <span className="ldm-tab-iconwrap"><IconListPlus size={20} />{playlistTracks.length > 0 && <span className="ldm-tab-badge">{playlistTracks.length}</span>}</span>
             <span>Playlist</span>
           </button>
