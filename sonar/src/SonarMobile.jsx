@@ -157,17 +157,16 @@ export default function SonarMobile({ s }) {
     navList,
     radioOn, toggleRadio, drift, setDrift, wake,
     radioCandidates, radioWindow, hopToCandidate,
-    driftPreviewing, bumpDriftPreview,
+    driftPreviewing, bumpDriftPreview, animateZoomTo: animateCameraTo,
   } = s;
 
-  // Radio focus mode: keep the camera centered + zoomed on the playing track;
-  // a hop re-targets it and the CSS transition on the map <g> (.ld-cam-anim)
-  // glides there. Reset the view when leaving radio.
-  const RADIO_ZOOM_M = 2.2;
+  // Radio focus mode: keep the camera centered + zoomed on the playing track; a
+  // hop glides it to the next dot (JS-tweened). Reset the view on exit.
+  const RADIO_ZOOM_M = 4;
   React.useEffect(() => {
     if (!radioOn || !playing) return;
     const p = dotPosM(playing);
-    setZoom({ k: RADIO_ZOOM_M, x: MVW / 2 - RADIO_ZOOM_M * p.x, y: MVH / 2 - RADIO_ZOOM_M * p.y, r: 0 });
+    animateCameraTo({ k: RADIO_ZOOM_M, x: MVW / 2 - RADIO_ZOOM_M * p.x, y: MVH / 2 - RADIO_ZOOM_M * p.y, r: 0 });
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [radioOn, playingId]);
   React.useEffect(() => {

@@ -173,6 +173,35 @@ export function useSonar({ initialView = 'map' } = {}) {
   // Rotation (radians) is only driven by the mobile two-finger gesture; the
   // desktop view ignores it.
   const [zoom, setZoom] = React.useState({ k: 1, x: 0, y: 0, r: 0 });
+  // Mirror of the latest zoom + a rAF handle, so the camera tween reads a fresh
+  // start value without re-creating the callback.
+  const zoomRef = React.useRef(zoom);
+  zoomRef.current = zoom;
+  const camRafRef = React.useRef(null);
+  // Smoothly tween the map camera (translate/scale/rotate) to a target, easing
+  // out. Used for the radio camera: zoom into the playing track and glide to the
+  // next on a hop. JS-driven rather than a CSS transition because CSS transitions
+  // don't reliably animate the SVG `transform` *attribute* across browsers.
+  const animateZoomTo = React.useCallback((target, duration = 750) => {
+    if (typeof requestAnimationFrame === 'undefined') { setZoom(target); return; }
+    cancelAnimationFrame(camRafRef.current);
+    const from = { ...zoomRef.current };
+    const t0 = (typeof performance !== 'undefined' ? performance.now() : Date.now());
+    const ease = (p) => 1 - Math.pow(1 - p, 3); // easeOutCubic
+    const tick = (now) => {
+      const p = Math.min(1, (now - t0) / duration);
+      const e = ease(p);
+      setZoom({
+        k: from.k + (target.k - from.k) * e,
+        x: from.x + (target.x - from.x) * e,
+        y: from.y + (target.y - from.y) * e,
+        r: (from.r || 0) + ((target.r || 0) - (from.r || 0)) * e,
+      });
+      if (p < 1) camRafRef.current = requestAnimationFrame(tick);
+    };
+    camRafRef.current = requestAnimationFrame(tick);
+  }, []);
+  React.useEffect(() => () => cancelAnimationFrame(camRafRef.current), []);
   const audioRef = React.useRef(null);
 
   React.useEffect(() => { Labels.init(); }, []);
@@ -818,7 +847,7 @@ export function useSonar({ initialView = 'map' } = {}) {
   const detailPinned = !hover && !!selected;
 
   // ---- shared zoom (reset is geometry-agnostic; zoomBy is per-view) ----
-  const resetZoom = () => setZoom({ k: 1, x: 0, y: 0, r: 0 });
+  const resetZoom = () => { cancelAnimationFrame(camRafRef.current); setZoom({ k: 1, x: 0, y: 0, r: 0 }); };
 
   // ---- audio element event handlers (the <audio> lives in the shell) ----
   const onAudioTimeUpdate = (e) => {
@@ -866,6 +895,6 @@ export function useSonar({ initialView = 'map' } = {}) {
     radioCandidates, radioWindow, hopToCandidate,
     driftPreviewing, bumpDriftPreview,
     // zoom
-    resetZoom,
+    resetZoom, animateZoomTo,
   };
 }

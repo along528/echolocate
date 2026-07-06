@@ -43,21 +43,20 @@ export default function SonarDesktop({ s }) {
     addToPlaylist, insertCandidate, removeFromPlaylist, movePlaylist, clearPlaylist,
     dragId, dropIdx, onDragStartSlot, onDragOverCard, onDragEndSlot, onDropSlot,
     interpolateEdge, clearCandidates,
-    playTrack, togglePlay, seekTo, step, labelTrack, resetZoom,
+    playTrack, togglePlay, seekTo, step, labelTrack, resetZoom, animateZoomTo,
     radioOn, toggleRadio, drift, setDrift, wake,
     radioCandidates, radioWindow, hopToCandidate,
     driftPreviewing, bumpDriftPreview,
   } = s;
 
-  // Radio focus mode: keep the camera zoomed in on the playing track. When the
-  // track changes (a hop), setting the target transform animates via the CSS
-  // transition on the map's <g> (see .ld-cam-anim) — the scene glides to the
-  // next dot. Leaving radio resets the view.
-  const RADIO_ZOOM = 2.6;
+  // Radio focus mode: keep the camera zoomed in on the playing track. Entering
+  // radio zooms in; a hop glides the camera to the next dot (JS-tweened, see
+  // animateZoomTo). Leaving radio resets the view.
+  const RADIO_ZOOM = 5;
   React.useEffect(() => {
     if (!radioOn || !playing) return;
     const p = dotPos(playing);
-    setZoom({ k: RADIO_ZOOM, x: VW / 2 - RADIO_ZOOM * p.x, y: VH / 2 - RADIO_ZOOM * p.y, r: 0 });
+    animateZoomTo({ k: RADIO_ZOOM, x: VW / 2 - RADIO_ZOOM * p.x, y: VH / 2 - RADIO_ZOOM * p.y, r: 0 });
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [radioOn, playingId]);
   // Reset the view only when leaving radio (not on every track change elsewhere).
