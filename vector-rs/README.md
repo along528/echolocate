@@ -56,6 +56,97 @@ cargo build --release
 INDEX_DB_PATH=../data/index.duckdb CLAP_ONNX_DIR=./clap_text_onnx PORT=8000 cargo run
 ```
 
+## Dev Sandbox (remote / interactive development)
+
+vector-rs is the hardest service to iterate on remotely: it needs a Rust
+toolchain plus native `libduckdb`, `libonnxruntime` + the DuckDB `vss`
+extension, the CLAP ONNX model, and *data*. The real index is ~1.4GB and the
+full DB ~23GB (both gitignored), so a fresh sandbox can't build or query
+anything out of the box. The dev-sandbox tooling fixes that with a tiny
+**committed sample index** and one **provisioning script**, exposed through
+three substrates.
+
+### Sample index
+
+`vector-rs/testdata/sample_index.duckdb` (~5MB, committed) is a 600-track
+stand-in with the *exact* baked-index schema (`tracks_library` + `tracks_fma` +
+the `tracks` union view, `v_mid`/`v_clap`/`x`/`y`/`duration`). Its vectors are
+synthetic (meaningless similarity, but every endpoint returns real JSON), so it
+verifies API *shape* and wiring, not real results. Regenerate it — or make a
+realistic subset from the full DB — with:
+
+```bash
+python embeddings/generate_sample_index.py                 # synthetic (default)
+python embeddings/generate_sample_index.py --source ../data/cloudcrate.duckdb --n 500
+```
+
+### Provisioning
+
+`vector-rs/scripts/setup-dev.sh` is idempotent and installs everything:
+`libduckdb` (required to compile), `onnxruntime` + `vss` + the CLAP model
+(required only to *run* — `ort` uses load-dynamic, so `cargo build`/`cargo test`
+don't need onnxruntime). Then:
+
+```bash
+bash vector-rs/scripts/setup-dev.sh
+cd vector-rs && source scripts/dev-env.sh
+cargo test                      # interpolation unit tests
+cargo run                       # serves the sample index on :8000
+curl localhost:8000/ ; curl 'localhost:8000/search?q=blue&source=library'
+```
+
+**Egress requirements.** The provisioning fetches from these hosts — a remote
+sandbox's network policy must allow them (see
+[Claude Code on the web docs](https://code.claude.com/docs/en/claude-code-on-the-web)):
+
+| Host | For |
+|------|-----|
+| `github.com` + `objects.githubusercontent.com` | libduckdb, onnxruntime, duckdb CLI release assets |
+| `extensions.duckdb.org` | the `vss` extension (also needed at service runtime for `LOAD vss`) |
+| `storage.googleapis.com` | CLAP ONNX model (and optionally `vss`) from `gs://cloud-crate-vector-db/dev-artifacts/` |
+
+The CLAP model and `vss` extension can instead be published to the
+`dev-artifacts/` GCS prefix and fetched with ADC, avoiding the DuckDB
+extension repo.
+
+### Substrate 1 — Claude Code on the web
+
+`.claude/hooks/session-start.sh` (registered in `.claude/settings.json`) runs
+`setup-dev.sh` on every web session and persists the build env via
+`$CLAUDE_ENV_FILE`, so a session boots ready to build/run/query. It degrades
+gracefully: if a required host is blocked it reports which one and lets the
+session start anyway.
+
+### Substrate 2 — dev container
+
+`vector-rs/Dockerfile.dev` bakes the whole toolchain + sample index + CLAP model
+(source is bind-mounted, not copied). `.devcontainer/devcontainer.json` uses it
+for VS Code / Codespaces.
+
+```bash
+docker build -f vector-rs/Dockerfile.dev -t vector-rs-dev .
+docker run --rm -it -p 8000:8000 -v "$PWD":/workspace vector-rs-dev
+```
+
+### Substrate 3 — PR previews
+
+`.github/workflows/vector-rs-ci.yml` gates PRs on `cargo build` + `cargo test`.
+`vector-rs-pr-preview.yml` builds an image baking the **sample** index (via the
+`INDEX_SRC` build arg + `vector-rs/cloudbuild.yaml`) and deploys a
+`--no-traffic --tag pr<N>` revision of `cloud-crate-vector-rs` — a live backend
+you can curl — commenting the URL on the PR; `vector-rs-pr-cleanup.yml` tears it
+down on close. Auth reuses the existing WIF setup (`.github/setup-wif.sh`); the
+`gha-sonar-deployer` SA already has `run.developer` + `cloudbuild` +
+`storage.admin`, which cover the vector-rs service too.
+
+### (Optional) GKE agent-sandbox
+
+For running agents *inside the GCP VPC* with egress control and access to
+internal services — a heavier, different tier than dev iteration — Anthropic's
+[self-hosted managed-agents sample](https://github.com/GoogleCloudPlatform/kubernetes-engine-samples/tree/main/ai-ml/anthropic-agent-sandbox)
+(GKE Autopilot + Terraform + gVisor + warm pools) would reuse `Dockerfile.dev`
+as its worker image. Tracked as a follow-up, not part of the core dev loop.
+
 ## Baked-Index Architecture
 
 The full `cloudcrate.duckdb` (~23GB) is too large for fast cold starts on Cloud Run — GCS FUSE random I/O for HNSW index traversal caused ~250s cold starts. The solution: bake a stripped index DB into the Docker image.

@@ -1,0 +1,27 @@
+{
+  "name": "vector-rs dev",
+  "build": {
+    "dockerfile": "../vector-rs/Dockerfile.dev",
+    "context": ".."
+  },
+  "workspaceFolder": "/workspace",
+  "workspaceMount": "source=${localWorkspaceFolder},target=/workspace,type=bind",
+  "forwardPorts": [8000],
+  "portsAttributes": {
+    "8000": { "label": "vector-rs", "onAutoForward": "notify" }
+  },
+  "containerEnv": {
+    "INDEX_DB_PATH": "/opt/vector-rs/sample_index.duckdb",
+    "CLAP_ONNX_DIR": "/opt/vector-rs/clap_text_onnx",
+    "ORT_DYLIB_PATH": "/usr/local/lib/libonnxruntime.so",
+    "DUCKDB_LIB_DIR": "/usr/local/lib",
+    "DUCKDB_INCLUDE_DIR": "/usr/local/include",
+    "PORT": "8000"
+  },
+  "customizations": {
+    "vscode": {
+      "extensions": ["rust-lang.rust-analyzer", "tamasfe.even-better-toml"]
+    }
+  },
+  "postCreateCommand": "cd vector-rs && cargo fetch"
+}

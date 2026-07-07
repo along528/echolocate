@@ -27,6 +27,9 @@ clap_text_onnx/
 
 # DuckDB
 *.duckdb
+# Small committed sample index for the vector-rs dev sandbox (see
+# embeddings/generate_sample_index.py). Exception to the *.duckdb rule above.
+!vector-rs/testdata/sample_index.duckdb
 .bucket_name
 setup_iap_log.txt
 setup_iap_log_2.txt
