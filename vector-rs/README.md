@@ -139,13 +139,32 @@ down on close. Auth reuses the existing WIF setup (`.github/setup-wif.sh`); the
 `gha-sonar-deployer` SA already has `run.developer` + `cloudbuild` +
 `storage.admin`, which cover the vector-rs service too.
 
-### (Optional) GKE agent-sandbox
+### Substrate 4 — Managed Agents self-hosted worker
 
-For running agents *inside the GCP VPC* with egress control and access to
-internal services — a heavier, different tier than dev iteration — Anthropic's
-[self-hosted managed-agents sample](https://github.com/GoogleCloudPlatform/kubernetes-engine-samples/tree/main/ai-ml/anthropic-agent-sandbox)
-(GKE Autopilot + Terraform + gVisor + warm pools) would reuse `Dockerfile.dev`
-as its worker image. Tracked as a follow-up, not part of the core dev loop.
+Run agents against vector-rs inside infrastructure you control, using Anthropic
+[Managed Agents](https://www.anthropic.com/engineering/managed-agents): Anthropic
+orchestrates the model/harness (the brain) while every tool call executes in a
+vector-rs worker container on your Docker host (the hands). `Dockerfile.worker`
+builds `FROM` the dev image and adds the `ant` CLI; `scripts/run-worker.sh` polls
+the environment's work queue and `scripts/spawn.sh` launches one fresh container
+per session (repo at `/workspace`, deliverables at `/mnt/session/outputs`).
+
+```bash
+export ANTHROPIC_ENVIRONMENT_ID=env_...  ANTHROPIC_ENVIRONMENT_KEY=sk-ant-oat01-...
+bash vector-rs/scripts/run-worker.sh     # builds the image on first run, then polls
+```
+
+Full walkthrough (create the `self_hosted` environment, generate the environment
+key, create an agent, start a session, the credential boundary, and the GKE
+scale-up): **[`managed-agent/README.md`](managed-agent/README.md)**.
+
+### (Optional) GKE Agent Sandbox — scale-up
+
+The same `vector-rs-worker` image drops into the
+[GKE Agent Sandbox](https://github.com/GoogleCloudPlatform/kubernetes-engine-samples/tree/main/ai-ml/anthropic-agent-sandbox)
+(gVisor pods, `SandboxWarmPool` pre-warming, `FQDNNetworkPolicy` egress lock,
+queue-depth autoscaling) for a production fleet. Documented, not yet built —
+see [`managed-agent/gke/README.md`](managed-agent/gke/README.md).
 
 ## Baked-Index Architecture
 
