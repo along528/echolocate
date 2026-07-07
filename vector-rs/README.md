@@ -101,13 +101,23 @@ sandbox's network policy must allow them (see
 
 | Host | For |
 |------|-----|
-| `github.com` + `objects.githubusercontent.com` | libduckdb, onnxruntime, duckdb CLI release assets |
+| `github.com` + `objects.githubusercontent.com` | libduckdb, onnxruntime, duckdb CLI, `ant` CLI release assets |
 | `extensions.duckdb.org` | the `vss` extension (also needed at service runtime for `LOAD vss`) |
 | `storage.googleapis.com` | CLAP ONNX model (and optionally `vss`) from `gs://cloud-crate-vector-db/dev-artifacts/` |
 
-The CLAP model and `vss` extension can instead be published to the
-`dev-artifacts/` GCS prefix and fetched with ADC, avoiding the DuckDB
-extension repo.
+An actionable one-time checklist for the Claude Code on the web environment lives
+in [`.claude/README.md`](../.claude/README.md#one-time-environment-setup-network-policy).
+
+**Publishing the GCS dev artifacts (maintainer, one-time).** So sandboxes get the
+CLAP model + `vss` from GCS instead of running the torch export or hitting the
+DuckDB extension repo:
+
+```bash
+bash vector-rs/scripts/publish-dev-artifacts.sh   # needs storage.objectAdmin on the bucket
+```
+
+This uploads to the exact paths `setup-dev.sh` fetches
+(`.../dev-artifacts/clap_text_onnx/…`, `.../dev-artifacts/vss.duckdb_extension`).
 
 ### Substrate 1 — Claude Code on the web
 
@@ -137,7 +147,12 @@ docker run --rm -it -p 8000:8000 -v "$PWD":/workspace vector-rs-dev
 you can curl — commenting the URL on the PR; `vector-rs-pr-cleanup.yml` tears it
 down on close. Auth reuses the existing WIF setup (`.github/setup-wif.sh`); the
 `gha-sonar-deployer` SA already has `run.developer` + `cloudbuild` +
-`storage.admin`, which cover the vector-rs service too.
+`storage.admin`, which cover the vector-rs service too. Confirm before relying on
+previews:
+
+```bash
+bash vector-rs/scripts/verify-deployer-sa.sh   # read-only IAM check; no changes
+```
 
 ### Substrate 4 — Managed Agents self-hosted worker
 
