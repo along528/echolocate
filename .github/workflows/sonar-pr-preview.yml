@@ -58,20 +58,40 @@ jobs:
 
       - name: Resolve tags and backend URL
         id: vars
+        env:
+          GH_TOKEN: ${{ github.token }}
         run: |
           PR="${{ github.event.pull_request.number }}"
           SHA="$(echo "${{ github.event.pull_request.head.sha }}" | cut -c1-8)"
-          VECTOR_URL="$(gcloud run services describe "$VECTOR_SERVICE" \
+          SERVING_URL="$(gcloud run services describe "$VECTOR_SERVICE" \
             --region "$REGION" --project "$PROJECT_ID" --format='value(status.url)')"
-          if [ -z "$VECTOR_URL" ]; then
+          if [ -z "$SERVING_URL" ]; then
             echo "Could not resolve $VECTOR_SERVICE URL" >&2
             exit 1
           fi
+          # Combined sonar + vector-rs PR: if this PR also changes vector-rs, point
+          # the sonar preview at *this PR's* vector-rs preview revision instead of
+          # production, so the two are tested together. The Cloud Run tag URL is
+          # deterministic (pr<N>---<service-host>), so we can bake it at build time
+          # without waiting for the (slower) vector-rs preview to finish deploying —
+          # the sonar preview simply 502s until that revision is up, then works.
+          # CORS already allows sonar preview origins (vector-rs build_cors_layer
+          # permits *---cloud-crate-sonar-*.run.app).
+          if gh pr diff "$PR" --repo "$GITHUB_REPOSITORY" --name-only 2>/dev/null | grep -q '^vector-rs/'; then
+            HOST="${SERVING_URL#https://}"
+            VECTOR_URL="https://pr${PR}---${HOST}"
+            BACKEND="this PR's vector-rs preview"
+          else
+            VECTOR_URL="$SERVING_URL"
+            BACKEND="the production vector-rs backend"
+          fi
+          echo "Backend: $VECTOR_URL ($BACKEND)"
           {
             echo "pr=$PR"
             echo "tag=pr${PR}"
             echo "image=gcr.io/${PROJECT_ID}/${SERVICE}:pr${PR}-${SHA}"
             echo "vector_url=$VECTOR_URL"
+            echo "backend=$BACKEND"
           } >> "$GITHUB_OUTPUT"
 
       - name: Build image (bakes VITE_VECTOR_API_URL)
@@ -108,8 +128,9 @@ jobs:
           script: |
             const url = "${{ steps.deploy.outputs.url }}";
             const marker = "<!-- sonar-preview -->";
+            const backend = "${{ steps.vars.outputs.backend }}";
             const body = `${marker}\n### 🔊 Sonar preview\n\n**${url}**\n\n` +
-              `Serving this PR's build, pointed at the production vector-rs backend. ` +
+              `Serving this PR's build, pointed at ${backend}. ` +
               `Updates on every push; torn down when the PR closes.`;
             const { owner, repo } = context.repo;
             const issue_number = context.payload.pull_request.number;

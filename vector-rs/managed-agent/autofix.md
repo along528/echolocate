@@ -17,10 +17,34 @@ The agent **never** holds repo-write or org credentials. Its fix is validated
 in-sandbox before the patch is surfaced, and the resulting PR re-runs normal CI
 and waits for human review — no auto-merge.
 
-## Files
-- [`.github/workflows/vector-rs-autofix.yml`](../../.github/workflows/vector-rs-autofix.yml) — the workflow (inert until enabled).
-- [`../scripts/spawn.sh`](../scripts/spawn.sh) — per-session container (reused).
-- [`../scripts/apply-agent-patch.sh`](../scripts/apply-agent-patch.sh) — the trusted apply/open-PR step (also runs locally).
+## Three variants (pick one)
+
+| Variant | Where the hands run | When to use |
+|---------|---------------------|-------------|
+| **gh-aw on a self-hosted runner** (recommended) | your self-hosted GitHub runner, backed by the vector-rs sandbox image | GitHub-native CI autofix that stays in your infra, with minimal code |
+| Managed Agents worker | your container via the work queue | agents on vector-rs triggered from anywhere (not just CI), strict VPC/egress boundary |
+| Raw Actions workflow | ephemeral GitHub runner + the `ant` worker | quick illustration / no self-hosted runner yet |
+
+### Recommended: gh-aw + self-hosted runner
+[`.github/workflows/vector-rs-autofix.md`](../../.github/workflows/vector-rs-autofix.md)
+is a [GitHub Agentic Workflow](https://github.github.com/gh-aw/): a markdown
+workflow (`engine: claude`) whose agent runs **read-only** and opens the PR via a
+sanitized `safe-outputs: create-pull-request` — so gh-aw provides the guardrails
+(no repo-write creds to the agent, PR-not-push) natively. Point it at a
+`runs-on: [self-hosted, vector-rs]` runner backed by `Dockerfile.dev` (or one that
+runs `setup-dev.sh`) and tool execution stays in your infra. Compile + run:
+```bash
+gh extension install github/gh-aw
+gh aw compile          # emits .github/workflows/vector-rs-autofix.lock.yml (commit it)
+```
+Needs repo secret `ANTHROPIC_API_KEY`. gh-aw is in technical preview — verify the
+frontmatter against the current docs before compiling.
+
+### Files
+- [`.github/workflows/vector-rs-autofix.md`](../../.github/workflows/vector-rs-autofix.md) — gh-aw source (recommended). Inert until `gh aw compile`.
+- [`examples/vector-rs-autofix.yml`](examples/vector-rs-autofix.yml) — the raw Actions fallback (moved out of `.github/workflows/` so it doesn't run). Uses `spawn.sh` + `apply-agent-patch.sh` instead of safe-outputs.
+- [`../scripts/spawn.sh`](../scripts/spawn.sh) — per-session container (Managed Agents worker + raw fallback).
+- [`../scripts/apply-agent-patch.sh`](../scripts/apply-agent-patch.sh) — trusted apply/open-PR step for the raw/worker paths (also handy locally).
 
 ## Agent contract
 Configure the autofix agent's system prompt to:
@@ -63,16 +87,24 @@ Smaller pieces you can test with **no** Anthropic setup:
 - `docker run --rm vector-rs-worker ant --version` (image + entrypoint).
 
 ## Activate AFTER merging
-`workflow_run` workflows only fire from the default branch, so nothing happens
-until this is on `main` **and**:
+
+**Recommended (gh-aw + self-hosted runner):**
+1. Register a **self-hosted runner** labelled `vector-rs`, backed by the
+   `Dockerfile.dev` image (or running `setup-dev.sh` on startup). Keep fork PRs
+   off self-hosted runners.
+2. Add repo secret `ANTHROPIC_API_KEY`.
+3. `gh aw compile` and commit `vector-rs-autofix.lock.yml`.
+4. Push a deliberately-broken vector-rs commit → confirm an `autofix:` PR opens
+   with a validated fix and re-runs normal CI.
+
+**Raw Actions fallback** (`examples/vector-rs-autofix.yml`, if you don't have a
+self-hosted runner): move it back into `.github/workflows/`, then also:
 1. **Publish the worker image** to a registry the runner can pull (reuse the
    `cloudbuild.yaml` pattern to build + push `Dockerfile.worker`); set repo var
    `VECTOR_RS_WORKER_IMAGE`.
 2. **Repo secrets**: `ANTHROPIC_API_KEY`, `ANTHROPIC_ENVIRONMENT_ID`,
    `ANTHROPIC_ENVIRONMENT_KEY`, `AUTOFIX_AGENT_ID`.
 3. **Repo var** `VECTOR_RS_AUTOFIX_ENABLED=true`.
-4. Push a deliberately-broken vector-rs commit → confirm an `autofix/ci-*` PR
-   opens with a validated fix and re-runs normal CI.
 
 ## Known limits (be honest about these)
 - The sandbox uses the **synthetic sample index**, so it validates compile +
