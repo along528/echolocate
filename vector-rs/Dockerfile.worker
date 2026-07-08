@@ -1,0 +1,42 @@
+# Managed Agents self-hosted worker image for vector-rs.
+#
+# Anthropic Managed Agents decouples the brain (Claude + harness, run by
+# Anthropic's control plane) from the hands (tool execution, run here in your
+# infra). This image is the "hands": it builds FROM the vector-rs dev image
+# (native toolchain + CLAP model + committed sample index) and adds the `ant`
+# CLI, so a Managed Agents session's tool calls (bash/read/write/edit/glob/grep)
+# execute against a real, ready-to-build vector-rs checkout.
+#
+# `ant beta:worker run` handles exactly ONE session then exits — the poller
+# (scripts/run-worker.sh → scripts/spawn.sh) launches one fresh container per
+# session, so the blast radius of any session is a single container.
+#
+# Build (two steps — the dev image is the base):
+#   docker build -f vector-rs/Dockerfile.dev    -t vector-rs-dev    .
+#   docker build -f vector-rs/Dockerfile.worker -t vector-rs-worker .
+# (scripts/run-worker.sh does both automatically when the image is missing.)
+
+ARG BASE_IMAGE=vector-rs-dev
+FROM ${BASE_IMAGE}
+
+# Install the Anthropic `ant` CLI (the managed-agents worker entrypoint). curl is
+# already present from the dev image; it's only needed at build time.
+ARG ANT_VERSION=1.15.0
+ARG TARGETARCH
+RUN ARCH="$([ "${TARGETARCH:-amd64}" = "arm64" ] && echo arm64 || echo amd64)" && \
+    curl -fsSL "https://github.com/anthropics/anthropic-cli/releases/download/v${ANT_VERSION}/ant_${ANT_VERSION}_linux_${ARCH}.tar.gz" \
+      | tar -xz -C /usr/local/bin ant && \
+    ant --version
+
+# Managed Agents filesystem contract:
+#   /workspace            — tool working dir; skills download to skills/<name>/.
+#                           spawn.sh stages the vector-rs checkout here.
+#   /mnt/session/outputs  — final deliverables; spawn.sh bind-mounts a host dir
+#                           so they survive after the container exits.
+WORKDIR /workspace
+VOLUME /mnt/session/outputs
+
+# One session per container. `ant beta:worker run` reads ANTHROPIC_SESSION_ID /
+# ANTHROPIC_WORK_ID / ANTHROPIC_ENVIRONMENT_ID / ANTHROPIC_ENVIRONMENT_KEY from
+# the environment (injected by spawn.sh), handles the session, and exits.
+ENTRYPOINT ["ant", "beta:worker", "run"]
