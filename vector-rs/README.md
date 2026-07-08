@@ -82,6 +82,10 @@ python embeddings/generate_sample_index.py --source ../data/cloudcrate.duckdb --
 
 ### Provisioning
 
+> For when/by-whom each dev-sandbox script runs (the SessionStart hook,
+> `publish-dev-artifacts.sh`, sample regeneration, etc.), see
+> [`scripts/README.md`](scripts/README.md).
+
 `vector-rs/scripts/setup-dev.sh` is idempotent and installs everything:
 `libduckdb` (required to compile), `onnxruntime` + `vss` + the CLAP model
 (required only to *run* — `ort` uses load-dynamic, so `cargo build`/`cargo test`

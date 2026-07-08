@@ -6,7 +6,9 @@
 `vector-rs/scripts/setup-dev.sh` on every **Claude Code on the web** session so
 it boots ready to build/run/query vector-rs. It is a no-op for local CLI
 sessions (gated on `CLAUDE_CODE_REMOTE`). Full context:
-[`vector-rs/README.md` § Dev Sandbox](../vector-rs/README.md#dev-sandbox-remote--interactive-development).
+[`vector-rs/README.md` § Dev Sandbox](../vector-rs/README.md#dev-sandbox-remote--interactive-development);
+per-script timing/ownership in
+[`vector-rs/scripts/README.md`](../vector-rs/scripts/README.md).
 
 The hook takes effect for future sessions **once this is on the default branch**.
 
