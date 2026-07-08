@@ -1,0 +1,71 @@
+# Reusable vector-rs development image: the full native toolchain (Rust +
+# libduckdb + onnxruntime + vss) plus the CLAP ONNX model and the committed
+# sample index, ready to build, run, and query. Unlike the production Dockerfile
+# this does NOT bake the source or the ~1.4GB index or strip to a minimal
+# runtime — source is bind-mounted (see .devcontainer/devcontainer.json) so you
+# edit-compile-run in place.
+#
+# Build from the repo root (needs vector/ for the CLAP export + the sample index):
+#   docker build -f vector-rs/Dockerfile.dev -t vector-rs-dev .
+#   docker run --rm -it -p 8000:8000 -v "$PWD":/workspace vector-rs-dev
+#
+# Then inside: cd vector-rs && cargo run   (env is preset; queries the sample index)
+
+# === Stage 1: Export CLAP text encoder to ONNX (torch stays out of the final image) ===
+FROM python:3.11-slim AS exporter
+WORKDIR /app
+COPY vector/requirements.txt .
+RUN pip install --no-cache-dir -r requirements.txt
+COPY vector/export_clap_text.py .
+RUN python export_clap_text.py --output-dir /app/clap_text_onnx
+
+# === Stage 2: Dev toolchain ===
+FROM rust:1.93-slim-bookworm
+
+RUN apt-get update && apt-get install -y --no-install-recommends \
+      pkg-config libssl-dev cmake g++ curl unzip wget ca-certificates jq \
+    && rm -rf /var/lib/apt/lists/*
+
+# Handy inner-loop tooling
+RUN cargo install cargo-watch --locked
+
+# libduckdb (links the `duckdb` crate)
+ENV DUCKDB_VERSION=1.2.2
+RUN curl -fL "https://github.com/duckdb/duckdb/releases/download/v${DUCKDB_VERSION}/libduckdb-linux-amd64.zip" -o /tmp/libduckdb.zip && \
+    unzip /tmp/libduckdb.zip -d /tmp/libduckdb && \
+    cp /tmp/libduckdb/libduckdb.so /usr/local/lib/ && \
+    cp /tmp/libduckdb/duckdb.h /tmp/libduckdb/duckdb.hpp /usr/local/include/ && \
+    ldconfig && rm -rf /tmp/libduckdb*
+ENV DUCKDB_LIB_DIR=/usr/local/lib
+ENV DUCKDB_INCLUDE_DIR=/usr/local/include
+
+# onnxruntime (dlopen'd at runtime via the ort load-dynamic feature)
+RUN ORT_VERSION="1.23.0" && \
+    curl -fL "https://github.com/microsoft/onnxruntime/releases/download/v${ORT_VERSION}/onnxruntime-linux-x64-${ORT_VERSION}.tgz" \
+      | tar xz -C /tmp && \
+    cp /tmp/onnxruntime-linux-x64-${ORT_VERSION}/lib/libonnxruntime.so* /usr/local/lib/ && \
+    ldconfig
+ENV ORT_DYLIB_PATH=/usr/local/lib/libonnxruntime.so
+
+# DuckDB vss extension, pre-installed so runtime `LOAD vss` works offline.
+# The CLI version MUST match libduckdb above (1.2.2): the extension is written to
+# ~/.duckdb/extensions/v<CLI_VERSION>/..., and the runtime engine only looks under
+# its own version dir. A mismatched CLI (e.g. 1.2.0) lands it where LOAD can't find it.
+RUN wget -q "https://github.com/duckdb/duckdb/releases/download/v${DUCKDB_VERSION}/duckdb_cli-linux-amd64.zip" -O /tmp/duckdb.zip && \
+    unzip /tmp/duckdb.zip -d /tmp && \
+    /tmp/duckdb -c "INSTALL vss;" && \
+    rm -rf /tmp/duckdb.zip /tmp/duckdb
+
+# CLAP ONNX model + committed sample index (so the server runs with zero setup)
+COPY --from=exporter /app/clap_text_onnx /opt/vector-rs/clap_text_onnx
+COPY vector-rs/testdata/sample_index.duckdb /opt/vector-rs/sample_index.duckdb
+
+# Sensible defaults; devcontainer bind-mounts the repo over /workspace.
+ENV CLAP_ONNX_DIR=/opt/vector-rs/clap_text_onnx \
+    INDEX_DB_PATH=/opt/vector-rs/sample_index.duckdb \
+    LD_LIBRARY_PATH=/usr/local/lib \
+    PORT=8000
+
+WORKDIR /workspace
+EXPOSE 8000
+CMD ["bash"]

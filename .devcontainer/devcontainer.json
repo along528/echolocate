@@ -1,0 +1,38 @@
+{
+  "name": "vector-rs dev",
+  "build": {
+    "dockerfile": "../vector-rs/Dockerfile.dev",
+    "context": ".."
+  },
+  "workspaceFolder": "/workspace",
+  "workspaceMount": "source=${localWorkspaceFolder},target=/workspace,type=bind",
+  // forwardPorts is honored by VS Code; appPort publishes 8000 to the host so
+  // `curl localhost:8000` also works under the `devcontainer` CLI (which does
+  // not act on forwardPorts).
+  "forwardPorts": [8000],
+  "appPort": [8000],
+  "portsAttributes": {
+    "8000": { "label": "vector-rs", "onAutoForward": "notify" }
+  },
+  // Keep cargo's target dir off the bind-mounted /workspace: it isolates the
+  // container's Linux (ELF) artifacts from the host's (e.g. macOS Mach-O) build
+  // and persists them in a named volume so rebuilds after "Reopen in Container"
+  // stay fast.
+  "mounts": [
+    "source=vrs-cargo-target,target=/workspace/vector-rs/target,type=volume"
+  ],
+  "containerEnv": {
+    "INDEX_DB_PATH": "/opt/vector-rs/sample_index.duckdb",
+    "CLAP_ONNX_DIR": "/opt/vector-rs/clap_text_onnx",
+    "ORT_DYLIB_PATH": "/usr/local/lib/libonnxruntime.so",
+    "DUCKDB_LIB_DIR": "/usr/local/lib",
+    "DUCKDB_INCLUDE_DIR": "/usr/local/include",
+    "PORT": "8000"
+  },
+  "customizations": {
+    "vscode": {
+      "extensions": ["rust-lang.rust-analyzer", "tamasfe.even-better-toml"]
+    }
+  },
+  "postCreateCommand": "cd vector-rs && cargo fetch"
+}
