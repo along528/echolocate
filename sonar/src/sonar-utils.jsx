@@ -94,6 +94,29 @@ export function distBetween(a, b) {
   return Math.min(1, Math.sqrt((ax - bx) ** 2 + (ay - by) ** 2));
 }
 
+// Geometry for the drift-radio preview, shared by both maps (they only differ in
+// their dotPos projection). Given the playing track, its ranked candidate pool,
+// how many the current drift admits (windowN), and a track→{x,y} projector,
+// returns: `rays` for every candidate (SVG position + rank + whether it's inside
+// the pick window), the playing dot's position, and `haloR` — the SVG radius that
+// just encloses the windowed candidates (the drift's visible "reach"). Both views
+// draw the same halo + lit dots from this.
+export function radioPreviewGeom(playing, candidates, windowN, dotPosFn) {
+  if (!playing || !candidates || !candidates.length) return null;
+  const origin = dotPosFn(playing);
+  let haloR = 0;
+  const rays = candidates.map((t, i) => {
+    const p = dotPosFn(t);
+    const inWindow = i < windowN;
+    if (inWindow) {
+      const d = Math.hypot(p.x - origin.x, p.y - origin.y);
+      if (d > haloR) haloR = d;
+    }
+    return { id: t.id, x: p.x, y: p.y, rank: i, inWindow, track: t };
+  });
+  return { origin, rays, haloR };
+}
+
 export const distChipValue = (t) => (typeof t.similarity === 'number' ? 1 - t.similarity : 0);
 export const layerTag = (l) => (l.kind === 'similar' ? '≈ ' : l.kind === 'dissimilar' ? '≠ ' : '') + l.label;
 export const layerKindWord = (l) => (l.kind === 'similar' ? 'Similar to' : l.kind === 'dissimilar' ? 'Dissimilar to' : 'Vibe');

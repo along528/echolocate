@@ -250,6 +250,37 @@ input { font-family: inherit; }
   background: var(--el-gradient); border-color: transparent;
 }
 .lo-now-btn.is-play:hover { transform: translateY(-1px); box-shadow: var(--el-shadow-lg); }
+/* Drift-radio toggle (in the transport row) + drift slider row. Active state
+   mirrors the mobile .ldm-autoplay.is-on pattern. */
+.lo-radio-btn:not(.is-on) { opacity: 0.7; }
+.lo-radio-btn.is-on { color: var(--el-indigo-500); border-color: var(--el-indigo-500); }
+.lo-drift { display: flex; align-items: center; gap: 10px; margin-top: 10px; }
+.lo-drift input[type='range'] { flex: 1; accent-color: var(--el-indigo-500); min-width: 0; }
+.lo-drift-count { flex: 0 0 auto; font-variant-numeric: tabular-nums; color: var(--el-yellow-500); }
+
+/* Radio focus mode (desktop): strip the search workbench down to map + drift +
+   now-playing. Chrome blocks are hidden via the shell's is-radio class. */
+.ld-shell.is-radio .ld-tagger,
+.ld-shell.is-radio .ld-view-toggle,
+.ld-shell.is-radio .ld-suggest-strip,
+.ld-shell.is-radio .ld-rail { display: none; }
+/* No left rail in radio mode → let the map+now-playing fill the row. */
+.ld-shell.is-radio .ld-main { grid-template-columns: 1fr var(--ld-now-w); }
+.ld-radio-banner { display: flex; align-items: center; gap: 12px; flex: 1; min-width: 0; }
+.ld-radio-badge {
+  display: inline-flex; align-items: center; gap: 6px;
+  color: var(--el-yellow-500); font-weight: 600; white-space: nowrap;
+}
+.ld-radio-exit { margin-left: auto; }
+
+/* Radio camera: the transform is JS-tweened (animateZoomTo) — CSS transitions
+   don't reliably animate the SVG transform attribute — so we only hint the
+   compositor here. */
+.ld-cam-anim { will-change: transform; }
+/* Drift preview only shows while adjusting drift — fade it in/out and disable
+   its hit-testing when hidden so candidates are clickable only while visible. */
+.ld-radio-preview { opacity: 0; pointer-events: none; transition: opacity 0.25s ease; }
+.ld-radio-preview.is-on { opacity: 1; pointer-events: auto; }
 
 /* =========================================================
    SHARED BUTTONS

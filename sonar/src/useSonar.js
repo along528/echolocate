@@ -133,6 +133,38 @@ export function useSonar({ initialView = 'map' } = {}) {
 
   const [playlist, setPlaylist] = React.useState(boot?.playlist || []);
   const [candidates, setCandidates] = React.useState(null); // { aId, bId, tracks }
+
+  // ---- drift radio ----
+  // Autopilot playback: when ON, end-of-track hops to a nearest sonic neighbor
+  // of the just-finished track (instead of walking the nav list), skipping
+  // anything already played this session. `drift` (0..1) widens the pick window
+  // down the similarity ranking: 0 = always the closest unplayed neighbor,
+  // 1 = anywhere in the fetched candidates. Visited hops accumulate in `wake`,
+  // which the maps draw as a fading trail. Radio starts OFF every session; only
+  // the drift setting persists.
+  const [radioOn, setRadioOn] = React.useState(false);
+  const [drift, setDrift] = React.useState(
+    typeof boot?.drift === 'number' ? Math.max(0, Math.min(1, boot.drift)) : 0.3);
+  const [wake, setWake] = React.useState([]);
+  // Prefetched, played-filtered, similarity-ranked neighbors of the playing
+  // track: { seedId, tracks }. Drives both the live drift preview on the map and
+  // the actual next hop (so the pick comes from exactly the pool the user saw).
+  // Session-only.
+  const [radioCandidates, setRadioCandidates] = React.useState(null);
+  // Every track played this session (any source), so the radio never repeats.
+  const playedIdsRef = React.useRef(new Set());
+  // Guards against overlapping hops (double `ended` fires, skip mashing).
+  const radioBusyRef = React.useRef(false);
+  // The drift preview (halo + candidate dots) is only shown *while you are
+  // adjusting drift* — `bumpDriftPreview` flips this on and lingers ~1.1s after
+  // the last change so you can see where the window settled, then hides it.
+  const [driftPreviewing, setDriftPreviewing] = React.useState(false);
+  const driftPreviewTimerRef = React.useRef(null);
+  const bumpDriftPreview = React.useCallback(() => {
+    setDriftPreviewing(true);
+    if (driftPreviewTimerRef.current) clearTimeout(driftPreviewTimerRef.current);
+    driftPreviewTimerRef.current = setTimeout(() => setDriftPreviewing(false), 1100);
+  }, []);
   const [labelsByTrackId, setLabelsByTrackId] = React.useState({});
   // When set, only this layer's tracks are shown (click a pill to filter to its
   // members). null = show every layer that isn't explicitly hidden.
@@ -141,6 +173,35 @@ export function useSonar({ initialView = 'map' } = {}) {
   // Rotation (radians) is only driven by the mobile two-finger gesture; the
   // desktop view ignores it.
   const [zoom, setZoom] = React.useState({ k: 1, x: 0, y: 0, r: 0 });
+  // Mirror of the latest zoom + a rAF handle, so the camera tween reads a fresh
+  // start value without re-creating the callback.
+  const zoomRef = React.useRef(zoom);
+  zoomRef.current = zoom;
+  const camRafRef = React.useRef(null);
+  // Smoothly tween the map camera (translate/scale/rotate) to a target, easing
+  // out. Used for the radio camera: zoom into the playing track and glide to the
+  // next on a hop. JS-driven rather than a CSS transition because CSS transitions
+  // don't reliably animate the SVG `transform` *attribute* across browsers.
+  const animateZoomTo = React.useCallback((target, duration = 750) => {
+    if (typeof requestAnimationFrame === 'undefined') { setZoom(target); return; }
+    cancelAnimationFrame(camRafRef.current);
+    const from = { ...zoomRef.current };
+    const t0 = (typeof performance !== 'undefined' ? performance.now() : Date.now());
+    const ease = (p) => 1 - Math.pow(1 - p, 3); // easeOutCubic
+    const tick = (now) => {
+      const p = Math.min(1, (now - t0) / duration);
+      const e = ease(p);
+      setZoom({
+        k: from.k + (target.k - from.k) * e,
+        x: from.x + (target.x - from.x) * e,
+        y: from.y + (target.y - from.y) * e,
+        r: (from.r || 0) + ((target.r || 0) - (from.r || 0)) * e,
+      });
+      if (p < 1) camRafRef.current = requestAnimationFrame(tick);
+    };
+    camRafRef.current = requestAnimationFrame(tick);
+  }, []);
+  React.useEffect(() => () => cancelAnimationFrame(camRafRef.current), []);
   const audioRef = React.useRef(null);
 
   React.useEffect(() => { Labels.init(); }, []);
@@ -200,10 +261,10 @@ export function useSonar({ initialView = 'map' } = {}) {
     try {
       const slim = layers.map(({ loading, ...l }) => ({ ...l, fetched: true }));
       localStorage.setItem(STORE_KEY, JSON.stringify({
-        view, layers: slim, playlist, colorIdx: colorIdxRef.current,
+        view, layers: slim, playlist, colorIdx: colorIdxRef.current, drift,
       }));
     } catch { /* quota / serialization — ignore */ }
-  }, [view, layers, playlist]);
+  }, [view, layers, playlist, drift]);
 
   // Run the actual API call for one layer.
   const runLayerSearch = React.useCallback(async (layer) => {
@@ -370,9 +431,11 @@ export function useSonar({ initialView = 'map' } = {}) {
     if (candidates) candidates.tracks.forEach((t) => m.set(t.id, t));
     playlist.forEach((s) => { if (s.track) m.set(s.track.id, s.track); });
     probes.forEach((t) => m.set(t.id, t));
+    wake.forEach((t) => m.set(t.id, t));
+    if (radioCandidates) radioCandidates.tracks.forEach((t) => m.set(t.id, t));
     if (playingTrack && !m.has(playingTrack.id)) m.set(playingTrack.id, playingTrack);
     return m;
-  }, [layers, candidates, playlist, probes, playingTrack]);
+  }, [layers, candidates, playlist, probes, wake, radioCandidates, playingTrack]);
 
   const playing = playingId ? (tracksById.get(playingId) || (playingTrack?.id === playingId ? playingTrack : null)) : null;
   const hover = hoverId ? tracksById.get(hoverId) : null;
@@ -509,6 +572,7 @@ export function useSonar({ initialView = 'map' } = {}) {
   // ---- player ----
   const playTrack = (track) => {
     if (!track) return;
+    playedIdsRef.current.add(track.id);
     setPlayingId(track.id);
     setPlayingTrack(track);
     setPlayingOrigin(originFor(track) || playlistById.get(track.id)?.origin || null);
@@ -547,13 +611,142 @@ export function useSonar({ initialView = 'map' } = {}) {
     audio.currentTime = frac * audio.duration;
     setProgress(frac);
   };
+
+  // ---- drift radio engine ----
+  // The radio prefetches the playing track's neighbors ONCE per hop
+  // (`radioCandidates`), then both the live map preview and the actual next pick
+  // read from that same played-filtered, similarity-ranked list — so moving the
+  // drift slider never re-fetches, and the hop lands in exactly the pool the user
+  // was previewing. `drift` (0..1) sets how many ranks the pick window spans.
+  const RADIO_FETCH = 30;
+  const WAKE_MAX = 30;
+
+  // How many of the ranked candidates the current drift admits into the pick
+  // window: drift 0 → just the nearest (a guaranteed next), drift 1 → all of them.
+  const radioWindow = React.useMemo(() => {
+    const n = radioCandidates?.tracks.length || 0;
+    if (n <= 1) return n;
+    return 1 + Math.round(drift * (n - 1));
+  }, [radioCandidates, drift]);
+
+  // Fetch + played-filter the neighbors of `seedId`, log the 'radio' search once,
+  // and store as radioCandidates. Widens the fetch once if the played-filter
+  // empties it. Returns the unplayed list (also stored). No-op reuse if we
+  // already hold this seed's candidates.
+  const fetchRadioCandidates = React.useCallback(async (seedId, existing) => {
+    if (existing && existing.seedId === seedId) return existing.tracks;
+    let unplayed = [];
+    for (const limit of [RADIO_FETCH, RADIO_FETCH * 2]) {
+      const results = await API.findSimilar(seedId, 'fma', limit);
+      Labels.recordSearch(`/tracks/${seedId}/similar`, 'radio',
+        { seed_track_id: seedId }, { source: 'fma', polarity: 'similar', limit }, results);
+      unplayed = (results || []).filter((t) => t && t.id
+        && t.id !== seedId && !playedIdsRef.current.has(t.id));
+      if (unplayed.length) break;
+    }
+    setRadioCandidates({ seedId, tracks: unplayed });
+    return unplayed;
+  }, []);
+
+  // One hop: reuse the prefetched candidates for `from` (fetch only if missing),
+  // pick from the current drift window at random, append to the wake, and play.
+  const radioNext = async (fromTrack) => {
+    const from = fromTrack || playing || playingTrack;
+    if (!from || radioBusyRef.current) return;
+    radioBusyRef.current = true;
+    try {
+      const cur = radioCandidates;
+      const unplayed = (cur && cur.seedId === from.id)
+        ? cur.tracks
+        : await fetchRadioCandidates(from.id, cur);
+      if (!unplayed.length) { setRadioOn(false); return; } // corpus pocket exhausted
+      const windowSize = unplayed.length <= 1
+        ? unplayed.length : 1 + Math.round(drift * (unplayed.length - 1));
+      const pick = unplayed[Math.floor(Math.random() * windowSize)];
+      setWake((w) => {
+        const base = w.length ? w : [from]; // first hop starts the trail at the seed
+        return [...base.filter((t) => t.id !== pick.id), pick].slice(-WAKE_MAX);
+      });
+      playTrack(pick); // triggers the prefetch effect for the new seed
+    } catch (e) {
+      console.error('radio hop failed', e);
+      setRadioOn(false);
+    } finally {
+      radioBusyRef.current = false;
+    }
+  };
+
+  // Jump straight to a previewed candidate (clicking a lit dot on the map): treat
+  // it like a manual skip of the current track, then play the chosen one.
+  const hopToCandidate = (track) => {
+    if (!track) return;
+    const cur = playing || playingTrack;
+    if (cur && cur.id !== track.id) Labels.recordLabel(cur, 'radio_skip');
+    setWake((w) => {
+      const base = w.length ? w : (cur ? [cur] : []);
+      return [...base.filter((t) => t.id !== track.id), track].slice(-WAKE_MAX);
+    });
+    playTrack(track);
+  };
+
+  const toggleRadio = () => {
+    const next = !radioOn;
+    setRadioOn(next);
+    if (next) {
+      const cur = playing || playingTrack;
+      if (cur) {
+        playedIdsRef.current.add(cur.id);
+        setWake((w) => (w.length ? w : [cur]));
+        // Turning the radio on while paused/cued resumes playback.
+        const audio = audioRef.current;
+        if (!isPlaying && audio && audio.src) audio.play().catch(() => {});
+      } else {
+        // "Press play and lean back": nothing cued, so seed from a random track.
+        API.getTracks(1, 'fma')
+          .then((tracks) => { const t = Array.isArray(tracks) ? tracks[0] : null; if (t) playTrack(t); })
+          .catch((e) => { console.error('radio random seed failed', e); setRadioOn(false); });
+      }
+    } else {
+      setRadioCandidates(null); // leaving the mode clears the preview
+    }
+  };
+
+  // Prefetch the playing track's candidates whenever radio is on and the track
+  // changes — this powers the live preview and pre-warms the next hop. Skips the
+  // fetch if we already hold this seed's candidates (e.g. a click-to-hop that set
+  // them). Cancels stale results if the track changes mid-flight.
+  React.useEffect(() => {
+    if (!radioOn || !playingId) { return undefined; }
+    if (radioCandidates && radioCandidates.seedId === playingId) return undefined;
+    let alive = true;
+    fetchRadioCandidates(playingId, radioCandidates)
+      .catch((e) => { if (alive) console.error('radio prefetch failed', e); });
+    return () => { alive = false; };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [radioOn, playingId, fetchRadioCandidates]);
   // Forward/back walks the playlist when one exists, EXCEPT in list view, where
   // it walks the visible results list the user is actually looking at.
   const playlistTracks = React.useMemo(() => playlist.filter((s) => s.track).map((s) => s.track), [playlist]);
   const usePlaylistNav = view !== 'list' && playlistTracks.length > 0;
   const navList = usePlaylistNav ? playlistTracks : flatResults;
-  const navSource = usePlaylistNav ? 'your playlist' : 'search results';
+  const navSource = radioOn ? 'drift radio' : (usePlaylistNav ? 'your playlist' : 'search results');
   const step = (dir) => {
+    // Radio owns the transport while it's on: forward = skip (drift to a new
+    // neighbor, logging the skip), back = walk the wake trail (replay without
+    // re-appending).
+    if (radioOn) {
+      const cur = playing || playingTrack;
+      if (dir > 0) {
+        if (cur) Labels.recordLabel(cur, 'radio_skip');
+        radioNext(cur);
+      } else {
+        const idx = wake.findIndex((t) => t.id === playingId);
+        const prev = idx > 0 ? wake[idx - 1]
+          : (idx === -1 && wake.length ? wake[wake.length - 1] : null);
+        if (prev) playTrack(prev);
+      }
+      return;
+    }
     if (!navList.length) return;
     const idx = navList.findIndex((t) => t.id === playingId);
     const next = navList[(idx + dir + navList.length) % navList.length];
@@ -654,7 +847,7 @@ export function useSonar({ initialView = 'map' } = {}) {
   const detailPinned = !hover && !!selected;
 
   // ---- shared zoom (reset is geometry-agnostic; zoomBy is per-view) ----
-  const resetZoom = () => setZoom({ k: 1, x: 0, y: 0, r: 0 });
+  const resetZoom = () => { cancelAnimationFrame(camRafRef.current); setZoom({ k: 1, x: 0, y: 0, r: 0 }); };
 
   // ---- audio element event handlers (the <audio> lives in the shell) ----
   const onAudioTimeUpdate = (e) => {
@@ -662,7 +855,11 @@ export function useSonar({ initialView = 'map' } = {}) {
     setProgress(a.duration ? a.currentTime / a.duration : 0);
   };
   const onAudioLoadedMetadata = (e) => setDuration(e.currentTarget.duration || 0);
-  const onAudioEnded = () => { setIsPlaying(false); playNextOnEnd(); };
+  const onAudioEnded = () => {
+    setIsPlaying(false);
+    if (radioOn) radioNext(playing || playingTrack);
+    else playNextOnEnd();
+  };
   const onAudioPause = () => setIsPlaying(false);
   const onAudioPlay = () => setIsPlaying(true);
 
@@ -693,7 +890,11 @@ export function useSonar({ initialView = 'map' } = {}) {
     interpolateEdge, clearCandidates,
     // player
     playTrack, togglePlay, cueTrack, seekTo, step, playNextOnEnd, labelTrack,
+    // drift radio
+    radioOn, toggleRadio, drift, setDrift, wake,
+    radioCandidates, radioWindow, hopToCandidate,
+    driftPreviewing, bumpDriftPreview,
     // zoom
-    resetZoom,
+    resetZoom, animateZoomTo,
   };
 }
