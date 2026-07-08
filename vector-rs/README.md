@@ -154,8 +154,32 @@ previews:
 bash vector-rs/scripts/verify-deployer-sa.sh   # read-only IAM check; no changes
 ```
 
-The Managed Agents self-hosted worker and the GKE scale-up are added in later
-parts of this series.
+### Substrate 4 — Managed Agents self-hosted worker
+
+Run agents against vector-rs inside infrastructure you control, using Anthropic
+[Managed Agents](https://www.anthropic.com/engineering/managed-agents): Anthropic
+orchestrates the model/harness (the brain) while every tool call executes in a
+vector-rs worker container on your Docker host (the hands). `Dockerfile.worker`
+builds `FROM` the dev image and adds the `ant` CLI; `scripts/run-worker.sh` polls
+the environment's work queue and `scripts/spawn.sh` launches one fresh container
+per session (repo at `/workspace`, deliverables at `/mnt/session/outputs`).
+
+```bash
+export ANTHROPIC_ENVIRONMENT_ID=env_...  ANTHROPIC_ENVIRONMENT_KEY=sk-ant-oat01-...
+bash vector-rs/scripts/run-worker.sh     # builds the image on first run, then polls
+```
+
+Full walkthrough (create the `self_hosted` environment, generate the environment
+key, create an agent, start a session, the credential boundary, and the GKE
+scale-up): **[`managed-agent/README.md`](managed-agent/README.md)**.
+
+### (Optional) GKE Agent Sandbox — scale-up
+
+The same `vector-rs-worker` image drops into the
+[GKE Agent Sandbox](https://github.com/GoogleCloudPlatform/kubernetes-engine-samples/tree/main/ai-ml/anthropic-agent-sandbox)
+(gVisor pods, `SandboxWarmPool` pre-warming, `FQDNNetworkPolicy` egress lock,
+queue-depth autoscaling) for a production fleet. Documented, not yet built —
+see [`managed-agent/gke/README.md`](managed-agent/gke/README.md).
 
 ## Baked-Index Architecture
 
