@@ -79,8 +79,12 @@ RUN ldconfig
 # Copy DuckDB extensions
 COPY --from=builder /app/duckdb_extensions/ /tmp/.duckdb/extensions/
 
-# Copy baked search index (~4GB, rarely changes — its own layer for caching)
-COPY data/index.duckdb /app/index.duckdb
+# Copy baked search index (~4GB, rarely changes — its own layer for caching).
+# INDEX_SRC defaults to the full baked index (deploy.sh / run-local.sh). PR
+# previews and dev images override it with the small committed sample:
+#   --build-arg INDEX_SRC=vector-rs/testdata/sample_index.duckdb
+ARG INDEX_SRC=data/index.duckdb
+COPY ${INDEX_SRC} /app/index.duckdb
 
 # Copy the Rust binary and libduckdb
 COPY --from=builder /app/target/release/cloud-crate-vector /app/cloud-crate-vector

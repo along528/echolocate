@@ -1,0 +1,107 @@
+name: vector-rs-pr-preview
+
+# Build a vector-rs image for a PR (baking the small committed sample index, not
+# the ~1.4GB production index) and publish it as a --no-traffic tagged revision
+# of the cloud-crate-vector-rs service. Production traffic is never touched. The
+# preview is a live backend you can curl (/, /search, /semantic-search,
+# /interpolate) to smoke-test the PR's API behavior. Torn down by
+# vector-rs-pr-cleanup.yml when the PR closes.
+
+on:
+  pull_request:
+    types: [opened, synchronize, reopened]
+    paths:
+      - 'vector-rs/**'
+      - '.github/workflows/vector-rs-pr-preview.yml'
+
+concurrency:
+  group: vector-rs-preview-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
+
+env:
+  PROJECT_ID: cloud-crate-485418
+  REGION: us-central1
+  SERVICE: cloud-crate-vector-rs
+
+jobs:
+  # Gate the deploy on the build+test workflow succeeding is handled separately
+  # (vector-rs-ci runs on the same PR); here we build the image and deploy.
+  preview:
+    runs-on: ubuntu-latest
+    permissions:
+      id-token: write        # mint the WIF OIDC token
+      contents: read
+      pull-requests: write   # post the preview-URL comment
+    steps:
+      - uses: actions/checkout@v4
+
+      - id: auth
+        uses: google-github-actions/auth@v2
+        with:
+          workload_identity_provider: ${{ vars.WIF_PROVIDER }}
+          service_account: ${{ vars.WIF_SERVICE_ACCOUNT }}
+
+      - uses: google-github-actions/setup-gcloud@v2
+
+      - name: Resolve tags
+        id: vars
+        run: |
+          PR="${{ github.event.pull_request.number }}"
+          SHA="$(echo "${{ github.event.pull_request.head.sha }}" | cut -c1-8)"
+          {
+            echo "tag=pr${PR}"
+            echo "image=gcr.io/${PROJECT_ID}/${SERVICE}:pr${PR}-${SHA}"
+          } >> "$GITHUB_OUTPUT"
+
+      - name: Build image (bakes the sample index)
+        run: |
+          gcloud builds submit . \
+            --config vector-rs/cloudbuild.yaml \
+            --project "$PROJECT_ID" \
+            --substitutions "_IMAGE=${{ steps.vars.outputs.image }},_INDEX_SRC=vector-rs/testdata/sample_index.duckdb"
+
+      - name: Deploy no-traffic preview revision
+        id: deploy
+        run: |
+          gcloud run deploy "$SERVICE" \
+            --image "${{ steps.vars.outputs.image }}" \
+            --region "$REGION" --project "$PROJECT_ID" \
+            --platform managed \
+            --tag "${{ steps.vars.outputs.tag }}" \
+            --no-traffic \
+            --allow-unauthenticated \
+            --execution-environment=gen2 \
+            --memory=2Gi --cpu=1 --cpu-boost \
+            --min-instances=0 \
+            --set-env-vars "^@^INDEX_DB_PATH=/app/index.duckdb@DB_POOL_SIZE=2@GCP_PROJECT_ID=${PROJECT_ID}@CORS_ALLOW_ORIGINS=https://echolocate.app,https://sonar.echolocate.app@GIT_SHA=${{ github.event.pull_request.head.sha }}" \
+            --quiet
+          URL="$(gcloud run services describe "$SERVICE" \
+            --region "$REGION" --project "$PROJECT_ID" --format=json \
+            | jq -r --arg TAG "${{ steps.vars.outputs.tag }}" \
+                '.status.traffic[] | select(.tag==$TAG) | .url' | head -1)"
+          if [ -z "$URL" ]; then
+            echo "Could not resolve preview URL for tag ${{ steps.vars.outputs.tag }}" >&2
+            exit 1
+          fi
+          echo "url=$URL" >> "$GITHUB_OUTPUT"
+
+      - name: Comment preview URL
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const url = "${{ steps.deploy.outputs.url }}";
+            const marker = "<!-- vector-rs-preview -->";
+            const body = `${marker}\n### 🛰️ vector-rs preview\n\n**${url}**\n\n` +
+              `A live \`--no-traffic\` revision baking the small sample index ` +
+              `(600 synthetic tracks — verifies API shape, not real results). ` +
+              `Try:\n\`\`\`\ncurl ${url}/\ncurl '${url}/search?q=blue&source=library'\n\`\`\`\n` +
+              `Updates on every push; torn down when the PR closes.`;
+            const { owner, repo } = context.repo;
+            const issue_number = context.payload.pull_request.number;
+            const comments = await github.rest.issues.listComments({ owner, repo, issue_number });
+            const existing = comments.data.find(c => c.body && c.body.includes(marker));
+            if (existing) {
+              await github.rest.issues.updateComment({ owner, repo, comment_id: existing.id, body });
+            } else {
+              await github.rest.issues.createComment({ owner, repo, issue_number, body });
+            }
