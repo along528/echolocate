@@ -9,7 +9,7 @@
 #   bash vector-rs/scripts/publish-dev-artifacts.sh
 #
 # Uploads to the exact paths setup-dev.sh reads:
-#   $BUCKET/clap_text_onnx/{clap_text.onnx,tokenizer.json}
+#   $BUCKET/clap_text_onnx/{clap_text.onnx,clap_text.onnx.data,tokenizer.json}
 #   $BUCKET/vss.duckdb_extension
 set -euo pipefail
 
@@ -29,8 +29,12 @@ if [[ ! -f "$CLAP_DIR/clap_text.onnx" || ! -f "$CLAP_DIR/tokenizer.json" ]]; the
   "$PYTHON" "$REPO_ROOT/vector/export_clap_text.py" --output-dir "$CLAP_DIR"
 fi
 echo "Uploading CLAP model → $BUCKET/clap_text_onnx/"
+# clap_text.onnx* deliberately globs both the graph (clap_text.onnx) and its
+# external weights (clap_text.onnx.data) — torch exports the ~500MB weights to a
+# sibling .data file that ORT loads by relative path, so publishing the graph
+# alone yields a weightless, unloadable model.
 gcloud storage cp \
-  "$CLAP_DIR/clap_text.onnx" \
+  "$CLAP_DIR"/clap_text.onnx* \
   "$CLAP_DIR/tokenizer.json" \
   "$BUCKET/clap_text_onnx/"
 

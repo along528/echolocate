@@ -1,3 +1,4 @@
+# shellcheck shell=bash
 # Source this to get the env vars vector-rs needs to build and run natively.
 #   source vector-rs/scripts/dev-env.sh
 #

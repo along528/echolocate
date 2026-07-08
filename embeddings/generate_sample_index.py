@@ -61,6 +61,22 @@ COLUMNS = [
 MID_DIM = 768
 CLAP_DIM = 512
 
+# vector-rs bakes libduckdb 1.2.x; a DB written by a newer duckdb may use a
+# storage format that 1.2.x cannot open. Warn (don't block — other uses are
+# fine) so a contributor doesn't commit a sample the service can't read.
+RUNTIME_DUCKDB_SERIES = "1.2"
+
+
+def _warn_duckdb_version():
+    if not duckdb.__version__.startswith(RUNTIME_DUCKDB_SERIES + "."):
+        print(
+            f"⚠️  duckdb {duckdb.__version__} != runtime series "
+            f"{RUNTIME_DUCKDB_SERIES}.x — the DB written here may not load in "
+            f"vector-rs (libduckdb {RUNTIME_DUCKDB_SERIES}.x). Before committing "
+            f"a new sample_index.duckdb, run: pip install "
+            f"'duckdb~={RUNTIME_DUCKDB_SERIES}.0'"
+        )
+
 # Placeholder metadata pools for synthetic mode.
 ARTISTS = [
     "Azure Drift", "Neon Vellum", "Coral Static", "Hollow Tide", "Glass Meridian",
@@ -203,6 +219,7 @@ def _finalize(con, has_vss):
 
 
 def build_sample(output_path, source_path, n, seed):
+    _warn_duckdb_version()
     if os.path.exists(output_path):
         os.remove(output_path)
     os.makedirs(os.path.dirname(output_path), exist_ok=True)

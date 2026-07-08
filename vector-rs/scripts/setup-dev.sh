@@ -46,6 +46,31 @@ fetch() { # fetch <url> <dest>
   curl -fSL --retry 3 --retry-delay 2 "$1" -o "$2"
 }
 
+# --- 0. System build toolchain (REQUIRED to build/test) ---------------------
+# The Rust build links openssl-sys (pkg-config + libssl-dev) and compiles native
+# C deps (cmake, g++); the steps below also use curl + unzip. Dockerfile.dev
+# apt-installs these, so a bare provisioning host must too — otherwise every step
+# here "succeeds" but `cargo build` later fails with "pkg-config could not be
+# found". Only apt is handled automatically; warn on other package managers.
+if command -v apt-get >/dev/null 2>&1; then
+  missing=()
+  for t in pkg-config cmake g++ curl unzip; do
+    command -v "$t" >/dev/null 2>&1 || missing+=("$t")
+  done
+  # libssl-dev ships headers, not a binary, so probe it separately.
+  { command -v dpkg >/dev/null 2>&1 && dpkg -s libssl-dev >/dev/null 2>&1; } || missing+=("libssl-dev")
+  if [[ ${#missing[@]} -gt 0 ]]; then
+    log "Installing system build deps: ${missing[*]}"
+    $SUDO apt-get update -qq \
+      && $SUDO apt-get install -y -qq pkg-config libssl-dev cmake g++ curl unzip ca-certificates \
+      || warn "apt-get install of build deps failed; cargo build/test will fail until they are present."
+  else
+    log "System build deps present."
+  fi
+else
+  warn "Non-apt system: ensure pkg-config, libssl-dev, cmake, g++, curl, unzip are installed to build vector-rs."
+fi
+
 # --- 1. Rust toolchain (usually already present in web envs) ----------------
 if ! command -v cargo >/dev/null 2>&1; then
   log "Installing Rust toolchain via rustup..."
