@@ -138,6 +138,13 @@ ant beta:environments:work stats --environment-id "$ANTHROPIC_ENVIRONMENT_ID"
 ant beta:environments:work stop --environment-id "$ANTHROPIC_ENVIRONMENT_ID" --work-id "$WORK_ID"
 ```
 
+## CI autofix (example)
+
+A worked example of triggering a session from a **failed CI build**, letting the
+agent fix + validate it in the sandbox, and opening a PR with the patch —
+honoring the brain/hands split end to end — is in
+[`autofix.md`](autofix.md) (opt-in; inert until enabled).
+
 ## Scaling up
 
 The generic Docker-host poller here is the reference path. To run this at scale

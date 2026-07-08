@@ -1,0 +1,103 @@
+name: vector-rs-autofix
+
+# EXAMPLE — opt-in CI autofix built on the Managed Agents brain/hands split.
+#
+# When vector-rs-ci fails, this hands the failure to a Managed Agents *session*
+# (the BRAIN — Claude + harness, on Anthropic's control plane). The session's tool
+# calls execute in the vector-rs worker container (the HANDS — here), where the
+# agent edits, `cargo build`s, and `cargo test`s until green, then writes a git
+# patch to /mnt/session/outputs/fix.patch. A separate TRUSTED step applies that
+# patch and opens a PR. The agent never holds repo-write or org credentials.
+#
+#   BRAIN (Anthropic)         HANDS (your container)        TRUSTED glue (Action)
+#   reasons about the fix  →  runs cargo test in-sandbox →  git apply + open PR
+#   ── never in this repo ──   ── env key only ──            ── GITHUB_TOKEN only ──
+#
+# SAFE TO MERGE AS-IS: it is inert until you opt in. `workflow_run` workflows only
+# run from the DEFAULT branch, and the job is additionally gated on a repo var.
+#
+# To activate (after merge) — see vector-rs/managed-agent/autofix.md:
+#   Repo variables:  VECTOR_RS_AUTOFIX_ENABLED=true
+#                    VECTOR_RS_WORKER_IMAGE=<prebuilt worker image ref>
+#   Repo secrets:    ANTHROPIC_API_KEY, ANTHROPIC_ENVIRONMENT_ID,
+#                    ANTHROPIC_ENVIRONMENT_KEY, AUTOFIX_AGENT_ID
+
+on:
+  workflow_run:
+    workflows: ["vector-rs-ci"]
+    types: [completed]
+
+permissions:
+  contents: write        # push the autofix branch
+  pull-requests: write   # open the autofix PR
+  actions: read          # read the failing run's logs
+
+jobs:
+  autofix:
+    # Only on a real failure, and only when explicitly enabled.
+    if: >
+      github.event.workflow_run.conclusion == 'failure' &&
+      vars.VECTOR_RS_AUTOFIX_ENABLED == 'true'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.workflow_run.head_sha }}
+
+      - name: Install ant CLI
+        run: |
+          VERSION="1.15.0"
+          curl -fsSL "https://github.com/anthropics/anthropic-cli/releases/download/v${VERSION}/ant_${VERSION}_linux_amd64.tar.gz" \
+            | sudo tar -xz -C /usr/local/bin ant
+          ant --version
+
+      - name: Stage the failing logs for the sandbox
+        id: ctx
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          mkdir -p .autofix
+          # The worker mounts this checkout at /workspace, so the agent can read
+          # the logs from /workspace/.autofix/ci-failure.log (no extra egress).
+          gh run view "${{ github.event.workflow_run.id }}" \
+            --repo "$GITHUB_REPOSITORY" --log-failed > .autofix/ci-failure.log || true
+          echo "sha=${{ github.event.workflow_run.head_sha }}" >> "$GITHUB_OUTPUT"
+
+      - name: Create session (BRAIN — API key lives ONLY in this step)
+        env:
+          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+        run: |
+          # Control-plane call: enqueue the task. The agent's system prompt is
+          # configured (once, at setup) to: read /workspace/.autofix/ci-failure.log,
+          # fix the build, validate with `cargo test`, and write the diff to
+          # /mnt/session/outputs/fix.patch. Context is passed via metadata.
+          ant beta:sessions create \
+            --agent "${{ secrets.AUTOFIX_AGENT_ID }}" \
+            --environment-id "${{ secrets.ANTHROPIC_ENVIRONMENT_ID }}" \
+            --metadata "$(jq -nc \
+              --arg sha "${{ steps.ctx.outputs.sha }}" \
+              --arg run "${{ github.event.workflow_run.html_url }}" \
+              '{task:"fix_ci", commit:$sha, ci_run:$run, logs:".autofix/ci-failure.log"}')"
+
+      - name: Run ephemeral worker (HANDS — env key only, NO API key here)
+        env:
+          ANTHROPIC_ENVIRONMENT_ID: ${{ secrets.ANTHROPIC_ENVIRONMENT_ID }}
+          ANTHROPIC_ENVIRONMENT_KEY: ${{ secrets.ANTHROPIC_ENVIRONMENT_KEY }}
+          VECTOR_RS_WORKER_IMAGE: ${{ vars.VECTOR_RS_WORKER_IMAGE }}
+          OUTPUTS_ROOT: ${{ github.workspace }}/.autofix/outputs
+        run: |
+          docker pull "$VECTOR_RS_WORKER_IMAGE"
+          # spawn.sh forwards ONLY the four ANTHROPIC_* session vars into the
+          # container — never the org API key (which isn't set in this step anyway).
+          # PoC: bound the long-poll with `timeout` so the job ends after the one
+          # queued session drains. Production: use the SDK EnvironmentWorker
+          # .handle_item() one-shot instead (see autofix.md).
+          timeout 1500 ant beta:worker poll --on-work vector-rs/scripts/spawn.sh || true
+
+      - name: Apply patch + open PR (TRUSTED — agent never had these creds)
+        env:
+          GH_TOKEN: ${{ github.token }}
+          OUTPUTS_ROOT: ${{ github.workspace }}/.autofix/outputs
+          APPLY_OPEN_PR: "true"
+          AUTOFIX_BASE_SHA: ${{ steps.ctx.outputs.sha }}
+        run: bash vector-rs/scripts/apply-agent-patch.sh
