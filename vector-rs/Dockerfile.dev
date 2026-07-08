@@ -47,8 +47,11 @@ RUN ORT_VERSION="1.23.0" && \
     ldconfig
 ENV ORT_DYLIB_PATH=/usr/local/lib/libonnxruntime.so
 
-# DuckDB vss extension, pre-installed so runtime `LOAD vss` works offline
-RUN wget -q "https://github.com/duckdb/duckdb/releases/download/v1.2.0/duckdb_cli-linux-amd64.zip" -O /tmp/duckdb.zip && \
+# DuckDB vss extension, pre-installed so runtime `LOAD vss` works offline.
+# The CLI version MUST match libduckdb above (1.2.2): the extension is written to
+# ~/.duckdb/extensions/v<CLI_VERSION>/..., and the runtime engine only looks under
+# its own version dir. A mismatched CLI (e.g. 1.2.0) lands it where LOAD can't find it.
+RUN wget -q "https://github.com/duckdb/duckdb/releases/download/v${DUCKDB_VERSION}/duckdb_cli-linux-amd64.zip" -O /tmp/duckdb.zip && \
     unzip /tmp/duckdb.zip -d /tmp && \
     /tmp/duckdb -c "INSTALL vss;" && \
     rm -rf /tmp/duckdb.zip /tmp/duckdb

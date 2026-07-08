@@ -5,3 +5,4 @@
 !vector-rs/Cargo.toml
 !vector-rs/Cargo.lock
 !vector-rs/src/
+!vector-rs/testdata/sample_index.duckdb

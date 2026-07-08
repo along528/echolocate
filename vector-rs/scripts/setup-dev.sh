@@ -27,7 +27,7 @@ set -euo pipefail
 
 DUCKDB_VERSION="1.2.2"
 ORT_VERSION="1.23.0"
-DUCKDB_CLI_VERSION="1.2.0"   # matches the Dockerfile's vss-install CLI
+DUCKDB_CLI_VERSION="$DUCKDB_VERSION"   # must match libduckdb: extension is written to v<CLI>/, engine looks under v<DUCKDB_VERSION>/
 GCS_ARTIFACTS="gs://cloud-crate-vector-db/dev-artifacts"
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -170,7 +170,7 @@ $(printf '\033[1;32m✅ vector-rs dev sandbox ready.\033[0m')
 
   Build + test:   cd $VECTOR_RS_DIR && cargo test
   Run the server: cd $VECTOR_RS_DIR && source scripts/dev-env.sh && cargo run
-  Smoke test:     curl localhost:\${PORT:-8000}/ ; curl 'localhost:\${PORT:-8000}/search?q=blue&source=library'
+  Smoke test:     curl localhost:\${PORT:-8000}/ ; curl 'localhost:\${PORT:-8000}/search?query=blue&source=library'
 
 Env is exported for this shell and future ones (via ~/.bashrc).
 EOF

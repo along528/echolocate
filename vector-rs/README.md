@@ -92,7 +92,7 @@ bash vector-rs/scripts/setup-dev.sh
 cd vector-rs && source scripts/dev-env.sh
 cargo test                      # interpolation unit tests
 cargo run                       # serves the sample index on :8000
-curl localhost:8000/ ; curl 'localhost:8000/search?q=blue&source=library'
+curl localhost:8000/ ; curl 'localhost:8000/search?query=blue&source=library'
 ```
 
 **Egress requirements.** The provisioning fetches from these hosts — a remote
