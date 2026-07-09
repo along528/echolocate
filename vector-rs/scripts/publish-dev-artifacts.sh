@@ -7,16 +7,29 @@
 # libduckdb + onnxruntime here isn't just an egress convenience: Claude Code on
 # the web scopes a session's GitHub access to a single owner's repos, so those
 # two cross-owner github.com downloads 403 UNCONDITIONALLY there (not a network
-# policy checkbox, and `add_repo` can't add a cross-owner repo either). GCS has
-# no such scoping.
+# policy checkbox, and `add_repo` can't add a cross-owner repo either).
+#
+# libduckdb + onnxruntime are uploaded PUBLIC (--predefined-acl=publicRead) so
+# setup-dev.sh can fetch them with plain curl — no gcloud/ADC needed in the
+# sandbox at all, which matters since some sandboxes don't even have `gcloud`
+# installed. This is scoped to those two objects ONLY. This bucket also serves
+# the private audio corpus vector-rs streams in production (GCS_AUDIO_PREFIX) —
+# never make the bucket itself public, and never add --predefined-acl=publicRead
+# to any other upload in this script. (If the bucket enforces Uniform
+# bucket-level access, per-object ACLs are rejected outright; in that case
+# publish these two objects to a separate, dedicated public bucket instead of
+# changing this bucket's access model.)
+#
+# vss + the CLAP model stay private, fetched via authenticated `gcloud storage
+# cp` (ADC) — unchanged from before.
 #
 # Run once by a maintainer with write access to the bucket:
 #   gcloud auth login   # (or ADC) with roles/storage.objectAdmin on the bucket
 #   bash vector-rs/scripts/publish-dev-artifacts.sh
 #
 # Uploads to the exact paths setup-dev.sh reads:
-#   $BUCKET/libduckdb-linux-amd64.zip
-#   $BUCKET/onnxruntime-linux-x64-<ORT_VERSION>.tgz
+#   $BUCKET/libduckdb-linux-amd64.zip                (public)
+#   $BUCKET/onnxruntime-linux-x64-<ORT_VERSION>.tgz  (public)
 #   $BUCKET/clap_text_onnx/{clap_text.onnx,clap_text.onnx.data,tokenizer.json}
 #   $BUCKET/vss.duckdb_extension
 set -euo pipefail
@@ -29,7 +42,7 @@ REPO_ROOT="$(cd "$SCRIPT_DIR/../.." && pwd)"
 
 command -v gcloud >/dev/null 2>&1 || { echo "❌ gcloud not found." >&2; exit 1; }
 
-# --- libduckdb ---------------------------------------------------------------
+# --- libduckdb (PUBLIC — see the scope warning above) ------------------------
 # Re-download from github.com/duckdb/duckdb (this machine isn't subject to the
 # cross-owner restriction) and re-upload verbatim, so setup-dev.sh's GCS fetch
 # unzips it identically to the GitHub fallback.
@@ -38,15 +51,17 @@ trap 'rm -rf "$tmp"' EXIT
 echo "Fetching libduckdb $DUCKDB_VERSION from github.com..."
 curl -fSL "https://github.com/duckdb/duckdb/releases/download/v${DUCKDB_VERSION}/libduckdb-linux-amd64.zip" \
   -o "$tmp/libduckdb-linux-amd64.zip"
-echo "Uploading libduckdb → $BUCKET/libduckdb-linux-amd64.zip"
-gcloud storage cp "$tmp/libduckdb-linux-amd64.zip" "$BUCKET/libduckdb-linux-amd64.zip"
+echo "Uploading libduckdb → $BUCKET/libduckdb-linux-amd64.zip (public)"
+gcloud storage cp --predefined-acl=publicRead \
+  "$tmp/libduckdb-linux-amd64.zip" "$BUCKET/libduckdb-linux-amd64.zip"
 
-# --- onnxruntime --------------------------------------------------------------
+# --- onnxruntime (PUBLIC — see the scope warning above) -----------------------
 echo "Fetching onnxruntime $ORT_VERSION from github.com..."
 curl -fSL "https://github.com/microsoft/onnxruntime/releases/download/v${ORT_VERSION}/onnxruntime-linux-x64-${ORT_VERSION}.tgz" \
   -o "$tmp/onnxruntime-linux-x64-${ORT_VERSION}.tgz"
-echo "Uploading onnxruntime → $BUCKET/onnxruntime-linux-x64-${ORT_VERSION}.tgz"
-gcloud storage cp "$tmp/onnxruntime-linux-x64-${ORT_VERSION}.tgz" "$BUCKET/onnxruntime-linux-x64-${ORT_VERSION}.tgz"
+echo "Uploading onnxruntime → $BUCKET/onnxruntime-linux-x64-${ORT_VERSION}.tgz (public)"
+gcloud storage cp --predefined-acl=publicRead \
+  "$tmp/onnxruntime-linux-x64-${ORT_VERSION}.tgz" "$BUCKET/onnxruntime-linux-x64-${ORT_VERSION}.tgz"
 
 # --- CLAP ONNX model --------------------------------------------------------
 # Reuse an existing export dir, or produce one with the same script the
