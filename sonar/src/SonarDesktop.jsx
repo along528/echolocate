@@ -12,7 +12,7 @@ import {
 } from './icons.jsx';
 import {
   CANDIDATE_COLOR, FALLBACK_COLOR, CONJURE_COLOR, fmtTime, coordsOf, distBetween, distChipValue,
-  layerTag, layerKindWord, prettyUrl, FeedbackPills, SourceLink, AboutModal,
+  layerTag, layerKindWord, prettyUrl, FeedbackPills, SourceLink, AboutModal, VibeChips,
 } from './sonar-utils.jsx';
 
 const VW = 760;
@@ -38,7 +38,7 @@ export default function SonarDesktop({ s }) {
     toggleLayerVisible, toggleSolo, showAllLayers,
     visibleLayers, displayLayers, displayVisibleLayers,
     anyLoading, allVisible, visibleTracks, entryByTrackId,
-    playlistById, playing, selected, flatResults, vibeSuggestions, playlistTracks,
+    playlistById, vibesByTrackId, playing, selected, flatResults, vibeSuggestions, playlistTracks,
     navSource, detail, detailPinned, isCandidate, playingTotal, sourceTagFor,
     addToPlaylist, insertCandidate, removeFromPlaylist, movePlaylist, clearPlaylist,
     dragId, dropIdx, onDragStartSlot, onDragOverCard, onDragEndSlot, onDropSlot,
@@ -177,6 +177,7 @@ export default function SonarDesktop({ s }) {
             {t.title}
           </div>
           <div className="ld-detail-sub">{t.artist} — {t.album}</div>
+          <VibeChips vibes={vibesByTrackId.get(t.id)} onPick={addVibeLayer} />
           {t.track_url && (
             <a className="ld-detail-url" href={t.track_url} target="_blank" rel="noopener noreferrer"
               onClick={(e) => e.stopPropagation()} title={t.track_url}>
@@ -630,6 +631,7 @@ export default function SonarDesktop({ s }) {
                     <div className="lo-track-info">
                       <div className="lo-track-title">{t.title}<SourceLink track={t} /></div>
                       <div className="lo-track-sub">{t.artist} — {t.album}{t.duration ? ` · ${fmtTime(t.duration)}` : ''}</div>
+                      <VibeChips className="lo-track-vibes" vibes={vibesByTrackId.get(t.id)} onPick={addVibeLayer} />
                       {/* search origin shown inline in every row */}
                       <div className="ld-track-origin">
                         {sources.map((l) => (
@@ -663,6 +665,7 @@ export default function SonarDesktop({ s }) {
               <div className="lo-eyebrow-strong">Now playing</div>
               <div className="lo-now-title">{playing ? <>{playing.title}<SourceLink track={playing} /></> : '—'}</div>
               <div className="lo-now-sub">{playing ? `${playing.artist} — ${playing.album}` : 'Pick a track'}</div>
+              {playing && <VibeChips className="la-now-vibes" vibes={vibesByTrackId.get(playing.id)} onPick={addVibeLayer} />}
               {playing && (() => {
                 const src = entryByTrackId.get(playing.id)?.sources?.[0] || playlistById.get(playing.id)?.origin;
                 return (

@@ -4,6 +4,8 @@ steps:
       - build
       - --build-arg
       - VITE_VECTOR_API_URL=${_VITE_VECTOR_API_URL}
+      - --build-arg
+      - VITE_VIBES_MIN_SCORE=${_VITE_VIBES_MIN_SCORE}
       - -t
       - ${_IMAGE}
       - .
@@ -12,5 +14,8 @@ steps:
 substitutions:
   _IMAGE: ""
   _VITE_VECTOR_API_URL: ""
+  # Vibe-chip threshold override; empty = backend default. PR previews backed
+  # by the synthetic sample index pass -1 so chips are visible.
+  _VITE_VIBES_MIN_SCORE: ""
 images:
   - ${_IMAGE}

@@ -55,6 +55,25 @@ export function coordsOf(t) {
   return hashCoord(t?.id || '');
 }
 
+// Per-track vibe chips, hydrated live from the vector service (useSonar's
+// vibesByTrackId). Renders nothing while vibes are unknown or empty — chips
+// are decoration, never a loading state. When onPick is given, clicking a
+// chip launches that vibe as a search layer.
+export function VibeChips({ vibes, onPick, className = '' }) {
+  if (!vibes || !vibes.length) return null;
+  return (
+    <div className={`el-vibe-chips ${className}`}>
+      {vibes.map((v) => (
+        <button key={v.vibe} type="button" className="el-chip is-sm is-track-vibe"
+          title={`vibe match ${v.score.toFixed(2)}${onPick ? ` — search “${v.vibe}”` : ''}`}
+          onClick={onPick ? (e) => { e.stopPropagation(); onPick(v.vibe); } : undefined}>
+          {v.vibe}
+        </button>
+      ))}
+    </div>
+  );
+}
+
 // Decorate the baked real-corpus sample (BACKDROP_SEED — a baked random
 // draw from the full `tracks` distribution) into a "galaxy" starfield. Positions
 // are the ACTUAL data, so the field mirrors the real corpus shape (a centered

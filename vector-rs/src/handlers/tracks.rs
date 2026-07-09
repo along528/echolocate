@@ -262,6 +262,11 @@ pub struct TracksByIdsRequest {
     /// Attach live vibe chips to each track (no-op while anchors are warming).
     #[serde(default)]
     pub include_vibes: bool,
+    /// Optional overrides for the attached vibes (defaults: k=3, min_score=0.25).
+    /// A permissive min_score (e.g. -1) is how previews show chips against the
+    /// synthetic sample index, whose random vectors score near 0.
+    pub vibes_k: Option<usize>,
+    pub vibes_min_score: Option<f32>,
 }
 
 const MAX_IDS_PER_CALL: usize = 500;
@@ -283,6 +288,8 @@ pub async fn tracks_by_ids(
     let ids = body.ids;
     let source = body.source;
     let include_vibes = body.include_vibes;
+    let vibes_k = body.vibes_k.unwrap_or(crate::vibes::DEFAULT_TOP_K);
+    let vibes_min_score = body.vibes_min_score.unwrap_or(crate::vibes::DEFAULT_MIN_SCORE);
 
     tokio::task::spawn_blocking(move || {
         let conn = pool.get()?;
@@ -331,8 +338,8 @@ pub async fn tracks_by_ids(
                         track.vibes = Some(crate::vibes::top_vibes(
                             anchors,
                             v_clap,
-                            crate::vibes::DEFAULT_TOP_K,
-                            crate::vibes::DEFAULT_MIN_SCORE,
+                            vibes_k,
+                            vibes_min_score,
                         ));
                     }
                 }

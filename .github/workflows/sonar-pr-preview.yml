@@ -81,9 +81,14 @@ jobs:
             HOST="${SERVING_URL#https://}"
             VECTOR_URL="https://pr${PR}---${HOST}"
             BACKEND="this PR's vector-rs preview"
+            # The vector preview bakes the synthetic sample index, whose random
+            # vectors score ~0 against every vibe anchor — drop the vibe-chip
+            # threshold so chips render in the preview UI.
+            VIBES_MIN_SCORE="-1"
           else
             VECTOR_URL="$SERVING_URL"
             BACKEND="the production vector-rs backend"
+            VIBES_MIN_SCORE=""
           fi
           echo "Backend: $VECTOR_URL ($BACKEND)"
           {
@@ -92,6 +97,7 @@ jobs:
             echo "image=gcr.io/${PROJECT_ID}/${SERVICE}:pr${PR}-${SHA}"
             echo "vector_url=$VECTOR_URL"
             echo "backend=$BACKEND"
+            echo "vibes_min_score=$VIBES_MIN_SCORE"
           } >> "$GITHUB_OUTPUT"
 
       - name: Build image (bakes VITE_VECTOR_API_URL)
@@ -99,7 +105,7 @@ jobs:
           gcloud builds submit sonar \
             --config sonar/cloudbuild.yaml \
             --project "$PROJECT_ID" \
-            --substitutions "_IMAGE=${{ steps.vars.outputs.image }},_VITE_VECTOR_API_URL=${{ steps.vars.outputs.vector_url }}"
+            --substitutions "_IMAGE=${{ steps.vars.outputs.image }},_VITE_VECTOR_API_URL=${{ steps.vars.outputs.vector_url }},_VITE_VIBES_MIN_SCORE=${{ steps.vars.outputs.vibes_min_score }}"
 
       - name: Deploy no-traffic preview revision
         id: deploy

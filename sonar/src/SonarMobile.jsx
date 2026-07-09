@@ -13,7 +13,7 @@ import {
 } from './icons.jsx';
 import {
   CANDIDATE_COLOR, FALLBACK_COLOR, CONJURE_COLOR, fmtTime, coordsOf, distBetween,
-  layerTag, layerKindWord, prettyUrl, FeedbackPills, AboutModal,
+  layerTag, layerKindWord, prettyUrl, FeedbackPills, AboutModal, VibeChips,
 } from './sonar-utils.jsx';
 
 const MVW = 390, MVH = 780, MPAD = 46;
@@ -150,7 +150,7 @@ export default function SonarMobile({ s }) {
     addVibeLayer, addSeedLayer, removeLayer, toggleLayerVisible, toggleSolo,
     showAllLayers, hideAllLayers,
     visibleTracks, visibleLayers, displayLayers, anyLoading,
-    entryByTrackId, playlistById, playlist, tracksById,
+    entryByTrackId, playlistById, playlist, tracksById, vibesByTrackId,
     playing, playingOrigin, selected, playlistTracks, playingTotal, vibeSuggestions, isCandidate, sourceTagFor,
     addToPlaylist, insertCandidate, removeFromPlaylist, movePlaylist, clearPlaylist,
     interpolateEdge, clearCandidates, playTrack, togglePlay, step, labelTrack, seekTo,
@@ -892,6 +892,7 @@ export default function SonarMobile({ s }) {
             </div>
             <div className="ldm-detail-title">{t.title}</div>
             <div className="ldm-detail-sub">{t.artist} — {t.album}{t.duration ? ` · ${fmtTime(t.duration)}` : ''}</div>
+            <VibeChips vibes={vibesByTrackId.get(t.id)} onPick={(v) => { addVibeLayer(v); setDetailMode('peek'); }} />
             {t.track_url && (<a className="ld-detail-url" href={t.track_url} target="_blank" rel="noopener noreferrer" style={{ marginTop: 6 }}><IconExternal size={12} />{prettyUrl(t.track_url)}</a>)}
             <div className="ldm-detail-fb"><FeedbackPills track={t} value={labelsByTrackId[t.id]} onLabel={labelTrack} source={sourceTagFor(t)} /></div>
             {/* No Add button here — the peek header's add button covers it. */}
@@ -1000,6 +1001,7 @@ export default function SonarMobile({ s }) {
             <div className="lo-eyebrow-strong">Now playing</div>
             <div className="ldm-now-title">{playing.title}</div>
             <div className="ldm-now-sub">{playing.artist} — {playing.album}</div>
+            <VibeChips vibes={vibesByTrackId.get(playing.id)} onPick={(v) => { addVibeLayer(v); setSheet(null); setView('map'); }} />
             <div style={{ marginTop: 14 }}><Waveform width={350} height={40} progress={progress} bars={56} seed={(playingId || 'x').charCodeAt(0) + 3} peaks={peaks} onSeek={seekTo} /></div>
             <div className="ldm-now-times"><span>{fmtTime(playingTotal * progress)}</span><span>{fmtTime(playingTotal)}</span></div>
             <div className="ldm-now-transport">

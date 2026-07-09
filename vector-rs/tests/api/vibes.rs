@@ -91,6 +91,25 @@ async fn by_ids_include_vibes_attaches_field() {
 }
 
 #[tokio::test]
+async fn by_ids_vibes_threshold_and_k_overrides() {
+    // The sonar preview drops the threshold to -1 so chips render against the
+    // synthetic index's random vectors — pin that contract.
+    let ids = sample_ids(2).await;
+    let (status, body) = post_json(
+        fake_vibes_app(),
+        "/tracks/by-ids",
+        json!({ "ids": ids, "include_vibes": true, "vibes_min_score": -1.0, "vibes_k": 5 }),
+    )
+    .await;
+    assert_eq!(status, StatusCode::OK);
+    for row in body.as_array().unwrap() {
+        let vibes = row["vibes"].as_array().unwrap();
+        assert_eq!(vibes.len(), FAKE_VIBES.len(), "min_score=-1 admits all fake anchors");
+        assert_sorted_desc(vibes, "score");
+    }
+}
+
+#[tokio::test]
 async fn by_ids_include_vibes_noop_while_warming() {
     // include_vibes against a state with no anchors: field silently absent.
     let ids = sample_ids(2).await;
