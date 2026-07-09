@@ -142,10 +142,11 @@ jobs:
 
       - name: Deploy serving revision (100% traffic)
         run: |
+          set -euo pipefail
           # Production flags/env mirror vector-rs/deploy.sh. INDEX_VERSION is the
           # GCS generation from the check job (an exact change key), which
           # intentionally differs from deploy.sh's YYYYMMDD date.
-          gcloud run deploy "$SERVICE" \
+          NEWREV="$(gcloud run deploy "$SERVICE" \
             --image "${{ steps.vars.outputs.image }}" \
             --region "$REGION" --project "$PROJECT_ID" \
             --platform managed \
@@ -159,4 +160,23 @@ jobs:
             --no-cpu-throttling \
             --min-instances=0 \
             --set-env-vars "^@^INDEX_DB_PATH=/app/index.duckdb@DB_POOL_SIZE=4@GCP_PROJECT_ID=${PROJECT_ID}@GEMINI_MODEL=gemini-2.5-flash@CORS_ALLOW_ORIGINS=https://echolocate.app,https://echoes.echolocate.app,https://sonar.echolocate.app@INDEX_VERSION=${{ needs.check.outputs.index_generation }}@MODEL_VERSION=mert-v1-95m+clap-htsat@GIT_SHA=${{ github.sha }}@LABELS_BUCKET=cloud-crate-vector-db" \
+            --quiet \
+            --format='value(status.latestCreatedRevisionName)')"
+          echo "Deployed revision: $NEWREV"
+
+          # Explicitly route 100% traffic to the revision we just created. A plain
+          # `gcloud run deploy` does NOT move traffic when the service is pinned to
+          # a specific revision — and the PR preview deploys (--no-traffic --tag)
+          # leave it pinned, so without this the new revision would sit at 0%.
+          # Pinning to the exact revision (not --to-latest, which a later preview
+          # deploy would re-pin away from) makes every deploy deterministic.
+          gcloud run services update-traffic "$SERVICE" \
+            --region "$REGION" --project "$PROJECT_ID" \
+            --to-revisions "$NEWREV=100" \
             --quiet
+
+      - name: Report serving traffic
+        run: |
+          gcloud run services describe "$SERVICE" \
+            --region "$REGION" --project "$PROJECT_ID" \
+            --format='value(status.traffic)'
