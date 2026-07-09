@@ -195,6 +195,30 @@ previews:
 bash vector-rs/scripts/verify-deployer-sa.sh   # read-only IAM check; no changes
 ```
 
+### Substrate 3.1 — production deploy on main
+
+`.github/workflows/vector-rs-deploy.yml` deploys the production serving revision
+(100% traffic) on every merge to main touching `vector-rs/**` — the CI-automated
+equivalent of running `vector-rs/deploy.sh` from a laptop (which stays as the
+manual fallback). It reuses the same WIF auth and `vector-rs/cloudbuild.yaml` as
+the preview, but bakes the **full** production index and applies the production
+Cloud Run sizing/env from `deploy.sh` (8Gi / 2 CPU / `--no-cpu-throttling`).
+
+Because the ~1.4GB `data/index.duckdb` is gitignored (not in the repo), it can't
+be built from source in CI like sonar. Instead, publish it once — and again
+whenever it's regenerated — to a **private** GCS object, which the workflow fetches
+and bakes in:
+
+```bash
+bash vector-rs/scripts/publish-index.sh   # → gs://cloud-crate-vector-db/vector-rs-index/index.duckdb
+```
+
+A cheap `check` job gates the expensive build: it compares this commit's SHA and
+the GCS index **generation** against the `GIT_SHA` / `INDEX_VERSION` the serving
+revision already carries, and skips the build+deploy when neither changed — so
+`workflow_dispatch` reruns (used to pick up an index-only refresh, which no code
+push would trigger) are idempotent.
+
 The Managed Agents self-hosted worker and the GKE scale-up are added in later
 parts of this series.
 
@@ -230,6 +254,10 @@ docker build -f vector-rs/Dockerfile -t cloud-crate-vector-rs .
 **Layer caching:** The baked index (~1.4GB) is a separate layer placed before the binary. Code changes only rebuild the binary layer; the index layer is cached unless `data/index.duckdb` changes.
 
 ## Deployment
+
+Production deploys run automatically on merge to main via
+[`vector-rs-deploy.yml`](#substrate-31--production-deploy-on-main). To deploy by
+hand (the manual fallback), from a machine that has the local `data/index.duckdb`:
 
 ```bash
 cd vector-rs && ./deploy.sh

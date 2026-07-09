@@ -1,0 +1,161 @@
+name: vector-rs-deploy
+
+# Deploy vector-rs to production (serving revision of cloud-crate-vector-rs, 100%
+# traffic) on every merge to main that touches vector-rs/**. Automates the
+# build+deploy that vector-rs/deploy.sh does from a laptop; deploy.sh stays as the
+# manual fallback.
+#
+# vector-rs is unlike sonar: its image bakes the ~1.4GB stripped index
+# (data/index.duckdb), which is gitignored and NOT in the repo. So instead of
+# building purely from source, this workflow fetches the index from a PRIVATE GCS
+# object (published by vector-rs/scripts/publish-index.sh) and bakes that in.
+#
+# A cheap `check` job gates the expensive build+deploy: it compares the desired
+# state (this commit's SHA + the GCS index generation) against what the serving
+# revision already carries (GIT_SHA + INDEX_VERSION env vars) and only deploys
+# when the code OR the index actually changed. That makes both the push trigger
+# and manual workflow_dispatch reruns (e.g. an index-only refresh) idempotent.
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'vector-rs/**'
+      - '.github/workflows/vector-rs-deploy.yml'
+  workflow_dispatch:        # manual re-deploy (e.g. index-only refresh; the
+                            # check job still no-ops if nothing changed)
+
+concurrency:
+  group: vector-rs-deploy
+  cancel-in-progress: false
+
+env:
+  PROJECT_ID: cloud-crate-485418
+  REGION: us-central1
+  SERVICE: cloud-crate-vector-rs
+  INDEX_GCS: gs://cloud-crate-vector-db/vector-rs-index/index.duckdb
+
+jobs:
+  # Cheap precheck: has the code (this commit) or the index (GCS generation)
+  # changed since the serving revision? Skip build+deploy if neither has.
+  check:
+    runs-on: ubuntu-latest
+    permissions:
+      id-token: write
+      contents: read
+    outputs:
+      changed: ${{ steps.diff.outputs.changed }}
+      index_generation: ${{ steps.diff.outputs.index_generation }}
+    steps:
+      - id: auth
+        uses: google-github-actions/auth@v2
+        with:
+          workload_identity_provider: ${{ vars.WIF_PROVIDER }}
+          service_account: ${{ vars.WIF_SERVICE_ACCOUNT }}
+
+      - uses: google-github-actions/setup-gcloud@v2
+
+      - name: Diff desired vs deployed
+        id: diff
+        run: |
+          set -euo pipefail
+
+          # Desired index version = the GCS object's generation number (unique &
+          # monotonic per upload — a precise change key, unlike a date).
+          GEN="$(gcloud storage objects describe "$INDEX_GCS" --format='value(generation)' 2>/dev/null || true)"
+          if [ -z "$GEN" ]; then
+            echo "❌ Index object $INDEX_GCS not found. Publish it first:" >&2
+            echo "   bash vector-rs/scripts/publish-index.sh" >&2
+            exit 1
+          fi
+
+          # Deployed markers come from the revision actually serving production
+          # traffic (100%) — NOT spec.template, which PR preview deploys
+          # (--no-traffic --tag) also overwrite. Empty if the service/revision
+          # doesn't exist yet — treated as "changed".
+          SVC_JSON="$(gcloud run services describe "$SERVICE" \
+            --region "$REGION" --project "$PROJECT_ID" --format=json 2>/dev/null || echo '{}')"
+          SERVING_REV="$(echo "$SVC_JSON" | jq -r '[.status.traffic[]? | select(.percent==100)][0].revisionName // ""')"
+          DEPLOYED_SHA=""
+          DEPLOYED_INDEX=""
+          if [ -n "$SERVING_REV" ]; then
+            REV_JSON="$(gcloud run revisions describe "$SERVING_REV" \
+              --region "$REGION" --project "$PROJECT_ID" --format=json 2>/dev/null || echo '{}')"
+            DEPLOYED_SHA="$(echo "$REV_JSON" | jq -r '.spec.containers[0].env[]? | select(.name=="GIT_SHA") | .value' | head -1)"
+            DEPLOYED_INDEX="$(echo "$REV_JSON" | jq -r '.spec.containers[0].env[]? | select(.name=="INDEX_VERSION") | .value' | head -1)"
+          fi
+
+          if [ "$DEPLOYED_SHA" = "${{ github.sha }}" ] && [ "$DEPLOYED_INDEX" = "$GEN" ]; then
+            echo "No change: code SHA and index generation already deployed. Skipping."
+            CHANGED=false
+          else
+            echo "Change detected — deploying."
+            echo "  code:  deployed=$DEPLOYED_SHA  desired=${{ github.sha }}"
+            echo "  index: deployed=$DEPLOYED_INDEX  desired=$GEN"
+            CHANGED=true
+          fi
+          {
+            echo "changed=$CHANGED"
+            echo "index_generation=$GEN"
+          } >> "$GITHUB_OUTPUT"
+
+  deploy:
+    needs: check
+    if: needs.check.outputs.changed == 'true'
+    runs-on: ubuntu-latest
+    permissions:
+      id-token: write
+      contents: read
+    steps:
+      - uses: actions/checkout@v4
+
+      - id: auth
+        uses: google-github-actions/auth@v2
+        with:
+          workload_identity_provider: ${{ vars.WIF_PROVIDER }}
+          service_account: ${{ vars.WIF_SERVICE_ACCOUNT }}
+
+      - uses: google-github-actions/setup-gcloud@v2
+
+      - name: Fetch production index from GCS
+        run: |
+          set -euo pipefail
+          mkdir -p data
+          # Lands at the Dockerfile's default INDEX_SRC=data/index.duckdb. The
+          # deployer SA has storage.admin, so this private object is readable.
+          gcloud storage cp "$INDEX_GCS" data/index.duckdb
+          ls -lh data/index.duckdb
+
+      - name: Resolve image tag
+        id: vars
+        run: |
+          SHA="$(echo "${{ github.sha }}" | cut -c1-8)"
+          echo "image=gcr.io/${PROJECT_ID}/${SERVICE}:main-${SHA}" >> "$GITHUB_OUTPUT"
+
+      - name: Build image (bakes the full production index)
+        run: |
+          gcloud builds submit . \
+            --config vector-rs/cloudbuild.yaml \
+            --project "$PROJECT_ID" \
+            --substitutions "_IMAGE=${{ steps.vars.outputs.image }},_INDEX_SRC=data/index.duckdb"
+
+      - name: Deploy serving revision (100% traffic)
+        run: |
+          # Production flags/env mirror vector-rs/deploy.sh. INDEX_VERSION is the
+          # GCS generation from the check job (an exact change key), which
+          # intentionally differs from deploy.sh's YYYYMMDD date.
+          gcloud run deploy "$SERVICE" \
+            --image "${{ steps.vars.outputs.image }}" \
+            --region "$REGION" --project "$PROJECT_ID" \
+            --platform managed \
+            --allow-unauthenticated \
+            --ingress all \
+            --execution-environment=gen2 \
+            --memory=8Gi \
+            --cpu=2 \
+            --timeout=900 \
+            --cpu-boost \
+            --no-cpu-throttling \
+            --min-instances=0 \
+            --set-env-vars "^@^INDEX_DB_PATH=/app/index.duckdb@DB_POOL_SIZE=4@GCP_PROJECT_ID=${PROJECT_ID}@GEMINI_MODEL=gemini-2.5-flash@CORS_ALLOW_ORIGINS=https://echolocate.app,https://echoes.echolocate.app,https://sonar.echolocate.app@INDEX_VERSION=${{ needs.check.outputs.index_generation }}@MODEL_VERSION=mert-v1-95m+clap-htsat@GIT_SHA=${{ github.sha }}@LABELS_BUCKET=cloud-crate-vector-db" \
+            --quiet
