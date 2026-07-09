@@ -1,12 +1,12 @@
 use std::sync::atomic::{AtomicBool, Ordering};
-use std::sync::Arc;
+use std::sync::{Arc, OnceLock};
 
 use cloud_crate_vector::clap_onnx::ClapOnnxModel;
 use cloud_crate_vector::config::Config;
 use cloud_crate_vector::db::DbPool;
 use cloud_crate_vector::gcs::GcsClient;
 use cloud_crate_vector::gemini::GeminiClient;
-use cloud_crate_vector::{build_router, db, handlers, AppState};
+use cloud_crate_vector::{build_router, db, handlers, vibes, AppState};
 
 #[tokio::main]
 async fn main() {
@@ -139,6 +139,26 @@ async fn main() {
         Err(e) => panic!("Cannot start without CLAP model: {e}"),
     };
 
+    // Embed the vibe vocabulary in the background (mirrors the HNSW warmup:
+    // never blocks serving; endpoints report ready:false until this lands).
+    let vibe_anchors: Arc<OnceLock<vibes::VibeAnchors>> = Arc::new(OnceLock::new());
+    {
+        let (vibe_anchors, onnx) = (vibe_anchors.clone(), onnx.clone());
+        tokio::task::spawn_blocking(move || {
+            if let Some(model) = onnx.as_ref() {
+                let start = std::time::Instant::now();
+                match vibes::compute_anchors(model, &vibes::default_vocab()) {
+                    Ok(anchors) => {
+                        let n = anchors.vocab.len();
+                        let _ = vibe_anchors.set(anchors);
+                        tracing::info!("Vibe anchors ready: {n} terms in {:.2?}", start.elapsed());
+                    }
+                    Err(e) => tracing::warn!("Vibe anchor warmup failed: {e}"),
+                }
+            }
+        });
+    }
+
     let gcs = match gcs_result {
         Ok(client) => {
             tracing::info!("GCS client initialized.");
@@ -161,6 +181,7 @@ async fn main() {
         gcs: Arc::new(gcs),
         v_mid_warm: v_mid_warm.clone(),
         v_clap_warm: v_clap_warm.clone(),
+        vibes: vibe_anchors,
     });
 
     let app = build_router(state);

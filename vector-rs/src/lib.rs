@@ -7,12 +7,13 @@ pub mod gemini;
 pub mod handlers;
 pub mod interpolation;
 pub mod models;
+pub mod vibes;
 
 use axum::extract::DefaultBodyLimit;
 use axum::routing::{get, post};
 use axum::Router;
 use std::sync::atomic::AtomicBool;
-use std::sync::Arc;
+use std::sync::{Arc, OnceLock};
 use tower_http::cors::{AllowOrigin, CorsLayer};
 use tower_http::trace::{DefaultOnResponse, TraceLayer};
 use tracing::Level;
@@ -34,6 +35,9 @@ pub struct AppState {
     pub gcs: Arc<Option<GcsClient>>,
     pub v_mid_warm: Arc<AtomicBool>,
     pub v_clap_warm: Arc<AtomicBool>,
+    /// Vibe anchor embeddings, set once by the background warmup task.
+    /// Empty until warm (or forever, without the CLAP model).
+    pub vibes: Arc<OnceLock<vibes::VibeAnchors>>,
 }
 
 pub fn build_router(state: Arc<AppState>) -> Router {
@@ -45,6 +49,7 @@ pub fn build_router(state: Arc<AppState>) -> Router {
         .route("/tracks/by-ids", post(handlers::tracks::tracks_by_ids).layer(DefaultBodyLimit::max(32 * 1024)))
         .route("/tracks/{track_id}/similar", get(handlers::tracks::find_similar))
         .route("/tracks/{track_id}/dissimilar", get(handlers::tracks::find_dissimilar))
+        .route("/tracks/{track_id}/vibes", get(handlers::vibes::get_track_vibes))
         .route("/search", get(handlers::search::search_tracks_text))
         .route("/vector-search", post(handlers::search::vector_search))
         .route("/semantic-search", post(handlers::semantic::semantic_search))

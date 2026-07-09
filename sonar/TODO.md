@@ -8,9 +8,13 @@ The prototype showed 2–3 "vibe" tag chips per track (tooltip, list rows, now-p
 There is **no backend source** for discrete tags today — "vibes" are only query terms.
 v1 omits per-track chips; the vibe tagger still drives search by joining vibes into the
 semantic query.
-- **In progress:** classify each track against a fixed vibe vocabulary via CLAP similarity
-  (text-anchor each vibe, take top-k per track), store as a column, return in responses.
-  Tracked on its own branch/PR (`generate_vibes.py` + `vibes` column + `VibeChips`).
+- **Backend DONE (live, no DB column):** vector-rs now embeds a fixed vibe vocabulary
+  (`vector-rs/vibes.txt` — the 24 suggested chips + mood terms) with its in-process CLAP
+  text encoder at startup and serves top-k cosine against each track's stored `v_clap`:
+  `GET /tracks/{id}/vibes?k=&min_score=` and `POST /tracks/by-ids` with `include_vibes:true`.
+  Responses carry `ready:false` until the anchors warm (~2s after boot) — treat chips as
+  optional decoration, no retry loop needed. The offline `generate_vibes.py` + `vibes`
+  column path is superseded. Remaining: the `VibeChips` component consuming this.
 
 ## Track duration (M:SS) in the list — **DONE** (needs DB rebuild to populate)
 `generate_db.py` now carries `duration` through to a `duration` column (it was already in

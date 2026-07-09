@@ -16,3 +16,4 @@ mod map;
 mod misc;
 mod search;
 mod tracks;
+mod vibes;

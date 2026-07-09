@@ -22,6 +22,7 @@ The Python vector service spent most of its cold start time on interpreter start
 | GET | `/tracks` | List/sample tracks |
 | GET | `/tracks/{id}/similar` | Find similar tracks by vector |
 | GET | `/tracks/{id}/dissimilar` | Find dissimilar tracks by vector |
+| GET | `/tracks/{id}/vibes` | Live vibe chips: top-k cosine between the track's `v_clap` and a fixed vocabulary (`vibes.txt`) embedded at startup — no DB column. Params `k` (default 3), `min_score` (default 0.25). Returns `ready:false` while anchors warm up. `POST /tracks/by-ids` accepts `include_vibes:true` for batches. |
 | GET | `/search` | Text search (ILIKE) by artist, album, title |
 | POST | `/vector-search` | Search by raw 768-dim vector |
 | POST | `/semantic-search` | Search by text description (CLAP + optional Gemini enhancement) |
@@ -58,7 +59,7 @@ INDEX_DB_PATH=../data/index.duckdb CLAP_ONNX_DIR=./clap_text_onnx PORT=8000 carg
 
 ### Tests
 
-Unit tests live next to the code (`src/interpolation/math.rs`).
+Unit tests live next to the code (`src/interpolation/math.rs`, `src/vibes.rs`).
 Integration tests (`tests/api/`) drive every HTTP endpoint through the real
 Axum router (`tower::ServiceExt::oneshot`) against the committed sample index
 (`testdata/sample_index.duckdb`) — no ports, no external services. The sample

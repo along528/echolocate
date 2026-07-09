@@ -23,6 +23,9 @@ pub struct TrackResponse {
     /// Track length in seconds (NULL until a DB rebuild surfaces it).
     #[serde(skip_serializing_if = "Option::is_none")]
     pub duration: Option<f64>,
+    /// Live vibe chips (only populated by /tracks/by-ids with include_vibes).
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub vibes: Option<Vec<VibeScore>>,
 }
 
 #[derive(Debug, Serialize, Clone)]
@@ -142,4 +145,28 @@ pub struct MapPoint {
     pub id: String,
     pub x: f64,
     pub y: f64,
+}
+
+/// One vibe chip: vocabulary term + cosine score against the track's v_clap.
+#[derive(Debug, Serialize, Clone)]
+pub struct VibeScore {
+    pub vibe: String,
+    pub score: f32,
+}
+
+/// Query parameters for GET /tracks/{id}/vibes
+#[derive(Debug, Deserialize)]
+pub struct TrackVibesQuery {
+    pub k: Option<usize>,
+    pub min_score: Option<f32>,
+}
+
+/// Response for GET /tracks/{id}/vibes. `ready` is false while the anchor
+/// embeddings are still warming up (or the CLAP model is unavailable) —
+/// clients should treat vibes as optional decoration, never retry-loop.
+#[derive(Debug, Serialize)]
+pub struct TrackVibesResponse {
+    pub track_id: String,
+    pub ready: bool,
+    pub vibes: Vec<VibeScore>,
 }
