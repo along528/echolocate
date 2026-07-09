@@ -865,7 +865,7 @@ export default function SonarMobile({ s }) {
                     {!cand && sources[0] && <span className="ldm-peek-tag" style={{ color: sources[0].color }}>{layerTag(sources[0])}</span>}
                     {!cand && !sources.length && slotOrigin && <span className="ldm-peek-tag" style={{ color: slotOrigin.color }}>{layerKindWord(slotOrigin)} {slotOrigin.label}</span>}
                     {!cand && !sources.length && !slotOrigin && playOrigin && <span className="ldm-peek-tag" style={{ color: playOrigin.color }}>{layerTag(playOrigin)}</span>}
-                    {t.album && <span className="ldm-peek-album">{t.album}</span>}
+                    {t.album && <span className="ldm-peek-album">{t.album}{t.duration ? ` · ${fmtTime(t.duration)}` : ''}</span>}
                     {playing && playing.id !== t.id && <span className="ldm-peek-dist">{distBetween(playing, t).toFixed(2)} away</span>}
                   </div>
                   <VibeChips vibes={vibesByTrackId.get(t.id)} onPick={(v) => { addVibeLayer(v); setDetailMode('peek'); }} />
@@ -884,16 +884,14 @@ export default function SonarMobile({ s }) {
                 </button>
               </div>
             )}>
-            <div className="ldm-detail-sources">
-              {cand && <span className="lc-source-tag" style={{ borderColor: CANDIDATE_COLOR, color: CANDIDATE_COLOR }}>interpolation</span>}
-              {sources.map((l) => (<span key={l.id} className="lc-source-tag" style={{ borderColor: l.color, color: l.color }}><span className="ld-layer-swatch" style={{ background: l.color }} />{layerTag(l)}</span>))}
-              {!sources.length && !cand && slotOrigin && (<span className="lc-source-tag" style={{ borderColor: slotOrigin.color, color: slotOrigin.color }}>{layerKindWord(slotOrigin)} {slotOrigin.label}</span>)}
-              {!sources.length && !cand && !slotOrigin && playOrigin && (<span className="lc-source-tag" style={{ borderColor: playOrigin.color, color: playOrigin.color }}><span className="ld-layer-swatch" style={{ background: playOrigin.color }} />{layerTag(playOrigin)}</span>)}
-              {playing && playing.id !== t.id && <span className="ld-detail-dist" style={{ marginLeft: 'auto' }}>{distBetween(playing, t).toFixed(2)} away</span>}
-            </div>
-            <div className="ldm-detail-title">{t.title}</div>
-            <div className="ldm-detail-sub">{t.artist} — {t.album}{t.duration ? ` · ${fmtTime(t.duration)}` : ''}</div>
-            <VibeChips vibes={vibesByTrackId.get(t.id)} onPick={(v) => { addVibeLayer(v); setDetailMode('peek'); }} />
+            {/* The peek header (title / artist / source / album / chips) stays
+                visible in full mode, so the body only adds what it lacks:
+                extra sources on multi-layer tracks, the link, feedback, actions. */}
+            {(sources.length > 1) && (
+              <div className="ldm-detail-sources">
+                {sources.map((l) => (<span key={l.id} className="lc-source-tag" style={{ borderColor: l.color, color: l.color }}><span className="ld-layer-swatch" style={{ background: l.color }} />{layerTag(l)}</span>))}
+              </div>
+            )}
             {t.track_url && (<a className="ld-detail-url" href={t.track_url} target="_blank" rel="noopener noreferrer" style={{ marginTop: 6 }}><IconExternal size={12} />{prettyUrl(t.track_url)}</a>)}
             <div className="ldm-detail-fb"><FeedbackPills track={t} value={labelsByTrackId[t.id]} onLabel={labelTrack} source={sourceTagFor(t)} /></div>
             {/* No Add button here — the peek header's add button covers it. */}
