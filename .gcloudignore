@@ -1,0 +1,35 @@
+# Controls what `gcloud builds submit` uploads as the Cloud Build context for the
+# builds that submit the repo root (vector-rs preview + vector-rs deploy).
+#
+# WHY THIS FILE EXISTS: with no .gcloudignore, gcloud falls back to .gitignore,
+# whose `data/` rule strips the baked search index (data/index.duckdb) the
+# vector-rs image COPYs — so the production build failed with
+# "COPY failed: ... stat data/index.duckdb: file does not exist". This file
+# overrides that fallback: exclude only heavy/irrelevant artifacts and KEEP
+# data/index.duckdb.
+#
+# (Does not affect sonar-deploy — that submits the `sonar/` dir, so gcloud looks
+# for sonar/.gcloudignore, not this root file.)
+
+# VCS + CI config (not needed in the image build)
+.git/
+.github/
+
+# Local dev / build artifacts. Never present on CI runners; this guards laptop
+# `gcloud builds submit` runs from bloating (or timing out) the context upload.
+.venv/
+venv/
+**/target/
+node_modules/
+**/__pycache__/
+*.pyc
+*.log
+
+# Everything under data/ EXCEPT the baked production index the Dockerfile needs.
+# data/index.duckdb is deliberately NOT excluded.
+data/cloudcrate.duckdb
+data/*.bak-*
+data/sample_cloudcrate.duckdb
+data/projection_anchors.json
+data/fma/
+data/library/

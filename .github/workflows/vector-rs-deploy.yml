@@ -22,6 +22,7 @@ on:
     paths:
       - 'vector-rs/**'
       - '.github/workflows/vector-rs-deploy.yml'
+      - '.gcloudignore'   # governs the build-context upload (baked index)
   workflow_dispatch:        # manual re-deploy (e.g. index-only refresh; the
                             # check job still no-ops if nothing changed)
 
