@@ -17,6 +17,9 @@
   overscroll-behavior: none;
 }
 .ldm-app.is-peek { --ldm-peek-h: 92px; }
+/* Peeked track has vibe chips: the peek head grows one chip row taller, and
+   everything offset by --ldm-peek-h (banners, conjured pill) tracks it. */
+.ldm-app.is-peek.has-peek-vibes { --ldm-peek-h: 120px; }
 
 /* ===== Top floating chrome — pills only, the map runs to the very top ===== */
 .ldm-top {
@@ -175,11 +178,17 @@
   background: rgba(18,18,26,0.78); backdrop-filter: blur(14px);
   border: 1px solid var(--el-border-strong); border-bottom: none;
   border-radius: 18px 18px 0 0; box-shadow: 0 -8px 30px rgba(0,0,0,0.45);
-  transform: translateY(calc(100% - 92px));
+  transform: translateY(calc(100% - var(--ldm-peek-head-h, 92px)));
   transition: transform 0.22s cubic-bezier(.2,.8,.2,1);
 }
+/* Extra head height when the peeked track has vibe chips (kept in sync with
+   .ldm-app.has-peek-vibes above). */
+.ldm-peek.has-vibes { --ldm-peek-head-h: 120px; }
 .ldm-peek.is-full { transform: translateY(0); background: var(--el-bg-secondary); }
-.ldm-peek-head { flex: 0 0 92px; display: flex; flex-direction: column; align-items: center; gap: 6px; padding: 7px 16px 0; touch-action: none; cursor: grab; }
+.ldm-peek-head { flex: 0 0 var(--ldm-peek-head-h, 92px); display: flex; flex-direction: column; align-items: center; gap: 6px; padding: 7px 16px 0; touch-action: none; cursor: grab; }
+/* One row only in the compact peek — overflowing chips clip horizontally
+   instead of pushing the head taller. */
+.ldm-peek-head .el-vibe-chips { flex-wrap: nowrap; overflow: hidden; }
 .ldm-peek-head .ldm-handle { width: 38px; height: 4px; border-radius: 2px; background: var(--el-border-strong); }
 .ldm-peek-row { display: flex; align-items: center; gap: 10px; width: 100%; }
 .ldm-peek-swatch { width: 11px; height: 11px; border-radius: 50%; flex: 0 0 auto; }
