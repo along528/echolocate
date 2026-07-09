@@ -99,6 +99,24 @@ cargo run                       # serves the sample index on :8000
 curl localhost:8000/ ; curl 'localhost:8000/search?query=blue&source=library'
 ```
 
+To confirm `vss`/HNSW actually loaded, hit the vector-backed routes too. Their
+shapes are easy to guess wrong: `similar` takes the id as a **path param**, and
+`semantic-search` / `interpolate` are **POSTs** (fields `track_id_1` /
+`track_id_2`, not `id`):
+
+```bash
+curl 'localhost:8000/tracks/<id>/similar'
+curl -X POST localhost:8000/semantic-search -H 'content-type: application/json' \
+  -d '{"query":"dreamy synth","limit":5}'
+curl -X POST localhost:8000/interpolate -H 'content-type: application/json' \
+  -d '{"track_id_1":"<id>","track_id_2":"<id>","limit":5}'
+```
+
+**Stopping the server:** the compiled binary's process name is
+`cloud-crate-vector` — **hyphens**, not `cloud_crate_vector`. `pkill`/`pgrep` on
+the underscore form matches nothing (and can match your own grep). Use
+`pkill -f cloud-crate-vector` or `lsof -ti:8000 | xargs kill`.
+
 **Egress requirements.** The provisioning fetches from these hosts — a remote
 sandbox's network policy must allow them (see
 [Claude Code on the web docs](https://code.claude.com/docs/en/claude-code-on-the-web)):

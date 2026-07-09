@@ -45,3 +45,43 @@ on `CLAUDE_CODE_REMOTE=true`.
   to `~=1.2.0`** — a sample written by a newer duckdb may embed a vss/HNSW index
   format the runtime's libduckdb 1.2.x can't use. The script warns if the
   installed duckdb differs from the 1.2.x series.
+
+## TODO — smoothing out artifact publishing
+
+`publish-dev-artifacts.sh` works and all four dev-artifacts objects are now
+published public, but the *maintainer* flow is rougher than it should be. Rough
+edges hit in practice, roughly in priority order:
+
+1. **The CLAP export has undocumented Python deps.** When `clap_text_onnx/`
+   isn't already present, the script torch-exports the ONNX model — which also
+   needs `onnx` and `onnxruntime` on top of torch/transformers. Neither is in
+   `vector/requirements.txt`, and the failure is late and cryptic
+   (`ModuleNotFoundError` *mid-export*, after the tokenizer is already written).
+   Fix: add both to `vector/requirements.txt` (or a `requirements-dev.txt`), or
+   have the script preflight-check them and print an install hint before doing
+   any work.
+
+2. **`vss` can't be published from a macOS maintainer machine.** The script
+   expects a Linux / duckdb-v1.2.2 `vss.duckdb_extension`; a Mac only has
+   `osx_*` builds, so the vss upload silently *skips* and whatever object is
+   already in the bucket is left untouched. This is the one manual step that
+   still bites: keeping vss in sync with a version bump requires a Linux box.
+   Fix: run publishing from Linux (CI / Cloud Build, or `Dockerfile.dev`) so all
+   four artifacts — vss included — are (re)built for the right arch/version and
+   uploaded together in one pass.
+
+3. **The whole flow is manual, multi-step, and easy to leave inconsistent.**
+   This session took several iterations (missing deps, a stale split-format
+   `clap_text.onnx.data` orphan left behind by an older export, a vss object
+   whose ACL had to be flipped by hand). Fold `publish-dev-artifacts.sh` into a
+   one-shot Cloud Build / CI job keyed off a version bump (`DUCKDB_VERSION` /
+   `ORT_VERSION`), so a maintainer bumps a pin and the job republishes
+   everything public from Linux — no laptop, no gcloud auth dance, no partial
+   runs.
+
+4. **Objects aren't all version-namespaced.** `onnxruntime-linux-x64-<ver>.tgz`
+   carries its version in the name; `libduckdb-linux-amd64.zip`,
+   `vss.duckdb_extension`, and the CLAP model don't — a bump overwrites in
+   place, so `setup-dev.sh` has no way to pin to a known-good version. Consider
+   versioned object paths + `setup-dev.sh` selecting the pinned one, so old and
+   new can coexist during a rollout.
