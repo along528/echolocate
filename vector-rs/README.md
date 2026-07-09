@@ -179,8 +179,24 @@ docker build -f vector-rs/Dockerfile.dev -t vector-rs-dev .
 docker run --rm -it -p 8000:8000 -v "$PWD":/workspace vector-rs-dev
 ```
 
-PR previews, the Managed Agents self-hosted worker, and the GKE scale-up are
-added in later parts of this series.
+### Substrate 3 — PR previews
+
+`.github/workflows/vector-rs-ci.yml` gates PRs on `cargo build` + `cargo test`.
+`vector-rs-pr-preview.yml` builds an image baking the **sample** index (via the
+`INDEX_SRC` build arg + `vector-rs/cloudbuild.yaml`) and deploys a
+`--no-traffic --tag pr<N>` revision of `cloud-crate-vector-rs` — a live backend
+you can curl — commenting the URL on the PR; `vector-rs-pr-cleanup.yml` tears it
+down on close. Auth reuses the existing WIF setup (`.github/setup-wif.sh`); the
+`gha-sonar-deployer` SA already has `run.developer` + `cloudbuild` +
+`storage.admin`, which cover the vector-rs service too. Confirm before relying on
+previews:
+
+```bash
+bash vector-rs/scripts/verify-deployer-sa.sh   # read-only IAM check; no changes
+```
+
+The Managed Agents self-hosted worker and the GKE scale-up are added in later
+parts of this series.
 
 ## Baked-Index Architecture
 
