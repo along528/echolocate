@@ -1,6 +1,11 @@
 #!/bin/bash
 set -e
 
+# Manual production deploy for vector-rs (the fallback). The primary path is the
+# vector-rs-deploy.yml GitHub Actions workflow, which auto-deploys on merge to
+# main by fetching the index from GCS. Use this script to deploy by hand from a
+# machine that has the local ~1.4GB data/index.duckdb.
+
 # Ensure we are in the script's directory
 cd "$(dirname "$0")"
 
