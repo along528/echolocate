@@ -10,20 +10,20 @@ Dev Sandbox](../README.md#dev-sandbox-remote--interactive-development) and
 
 | Script | Purpose | Who runs it | Trigger / when | Frequency | Prerequisites |
 |--------|---------|-------------|----------------|-----------|---------------|
-| [`setup-dev.sh`](setup-dev.sh) | Provision native deps + build toolchain (build/test/run/query) | The SessionStart hook (web), or a dev by hand | Automatically on **Claude Code on the web** session start; or manually on a laptop/container | Once per fresh environment (idempotent — cheap no-op after) | `apt` + egress to github.com, extensions.duckdb.org, and (optional) GCS |
+| [`setup-dev.sh`](setup-dev.sh) | Provision native deps + build toolchain (build/test/run/query) | The SessionStart hook (web), or a dev by hand | Automatically on **Claude Code on the web** session start; or manually on a laptop/container | Once per fresh environment (idempotent — cheap no-op after) | `apt` + egress to GCS (tried first for everything) and, as fallback, github.com / extensions.duckdb.org |
 | [`dev-env.sh`](dev-env.sh) | Export the build/run env vars (`DUCKDB_LIB_DIR`, `ORT_DYLIB_PATH`, `INDEX_DB_PATH`, …) | Interactive shells | **Sourced, not executed** — auto-sourced via `~/.bashrc` (wired by `setup-dev.sh`); or `source scripts/dev-env.sh` by hand before `cargo run` | Every shell | `setup-dev.sh` has run (or the libs are otherwise present) |
-| [`publish-dev-artifacts.sh`](publish-dev-artifacts.sh) | Seed GCS `dev-artifacts/` with the CLAP model + vss extension so `setup-dev.sh` can fetch them instead of torch-exporting / hitting the extension repo | A maintainer | **One-time / rare** — run once, and again only when the CLAP model or vss extension changes | Rare | `gcloud` authed with `roles/storage.objectAdmin` on `gs://cloud-crate-vector-db` |
+| [`publish-dev-artifacts.sh`](publish-dev-artifacts.sh) | Seed GCS `dev-artifacts/` with libduckdb, onnxruntime, the CLAP model, and the vss extension so `setup-dev.sh` can fetch them from GCS instead of `github.com/duckdb/duckdb`, `github.com/microsoft/onnxruntime`, torch-exporting, or hitting the extension repo — the first two matter beyond convenience since Claude Code on the web blocks those cross-owner `github.com` repos unconditionally (see [`../README.md`](../README.md#egress-requirements)) | A maintainer | **One-time / rare** — run once, and again only when a pinned version (libduckdb, onnxruntime) or the CLAP model / vss extension changes | Rare | `gcloud` authed with `roles/storage.objectAdmin` on `gs://cloud-crate-vector-db`; egress to github.com (to fetch libduckdb/onnxruntime for re-upload) |
 | [`../Dockerfile.dev`](../Dockerfile.dev) | Image-build-time alternative to `setup-dev.sh` — bakes every dep (+ CLAP + sample) into a reusable dev image | Whoever builds the devcontainer image | At **image build** (`docker build -f Dockerfile.dev`) | When the image needs rebuilding | Docker |
 | [`../../embeddings/generate_sample_index.py`](../../embeddings/generate_sample_index.py) | Produce the committed `testdata/sample_index.duckdb` (tiny synthetic stand-in with the baked-index schema + HNSW indexes) | A maintainer | **Rare** — only when the index schema changes or a realistic subset is wanted | Rare | duckdb **pinned to `~=1.2.0`** + numpy; vss reachable (for HNSW) |
 
 ## Lifecycle / dependency chain
 
 ```
-generate_sample_index.py ──(commit)──► testdata/sample_index.duckdb ─┐
-publish-dev-artifacts.sh ──(once)─────► GCS dev-artifacts/ (CLAP+vss) ┤
-                                                                       ▼
+generate_sample_index.py ──(commit)──► testdata/sample_index.duckdb ────────┐
+publish-dev-artifacts.sh ──(once)─────► GCS dev-artifacts/ (libduckdb+ort+  ┤
+                                          CLAP+vss)                         ▼
 web session start ─► .claude/hooks/session-start.sh ─► setup-dev.sh
-      ─► (fetch GCS + github) ─► dev-env.sh sourced ─► cargo build / run / test
+      ─► (fetch GCS, fall back to github/extensions.duckdb.org) ─► dev-env.sh sourced ─► cargo build / run / test
 ```
 
 ## Gotcha: the SessionStart hook only activates after merge to `main`
