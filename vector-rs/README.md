@@ -105,9 +105,21 @@ sandbox's network policy must allow them (see
 
 | Host | For |
 |------|-----|
-| `github.com` + `objects.githubusercontent.com` | libduckdb, onnxruntime, duckdb CLI, `ant` CLI release assets |
-| `extensions.duckdb.org` | the `vss` extension (also needed at service runtime for `LOAD vss`) |
-| `storage.googleapis.com` | CLAP ONNX model (and optionally `vss`) from `gs://cloud-crate-vector-db/dev-artifacts/` |
+| `storage.googleapis.com` | libduckdb, onnxruntime, `vss`, and the CLAP ONNX model from `gs://cloud-crate-vector-db/dev-artifacts/` (tried first for all four) |
+| `github.com` + `objects.githubusercontent.com` | fallback for the above when GCS has no mirror or ADC isn't set up: libduckdb, onnxruntime, duckdb CLI, `ant` CLI release assets |
+| `extensions.duckdb.org` | fallback for the `vss` extension (also needed at service runtime for `LOAD vss`) |
+
+**Claude Code on the web additionally scopes `github.com` per repo owner, not
+just per host.** A session tied to this project can only reach `github.com`
+paths under this repo's owner — `github.com/duckdb/duckdb` and
+`github.com/microsoft/onnxruntime` 403 there unconditionally, and the
+`add_repo` tool can't add a cross-owner repo to widen that (cross-tier adds
+are rejected). Allowlisting the host in the environment's network policy does
+not fix this. This is why `setup-dev.sh` tries GCS first for every fetch: as
+long as `storage.googleapis.com` is reachable and a maintainer has run
+`publish-dev-artifacts.sh`, provisioning never touches those two repos on that
+substrate. GitHub-fallback still works fine on substrates without the
+per-owner restriction (a laptop, `Dockerfile.dev`, generic CI).
 
 An actionable one-time checklist for the Claude Code on the web environment lives
 in [`.claude/README.md`](../.claude/README.md#one-time-environment-setup-network-policy).

@@ -18,10 +18,16 @@
 # only affect running the server WARN on failure instead of aborting, so a
 # constrained environment can still build and test.
 #
-# Network: steps 1-2 fetch from github.com release assets; step 3-4 prefer the
-# GCS dev-artifacts bucket (needs ADC) and fall back to the DuckDB extension
-# repository. If your sandbox's egress policy blocks a host, that step warns and
-# you deal with the runtime dep separately (see vector-rs/README.md).
+# Network: all four fetch steps try the GCS dev-artifacts bucket first (needs
+# ADC), falling back to GitHub release assets. GCS-first matters beyond ADC
+# convenience: Claude Code on the web scopes a session's GitHub access to a
+# single owner's repos, so github.com/duckdb/duckdb and
+# github.com/microsoft/onnxruntime 403 UNCONDITIONALLY there — not a network
+# policy checkbox, and `add_repo` can't add a cross-owner repo either
+# (cross-tier adds are rejected). GitHub remains a working fallback on
+# substrates without that restriction (laptop, Dockerfile.dev, generic CI). If
+# your sandbox's egress policy blocks a host outright, that step warns and you
+# deal with the runtime dep separately (see vector-rs/README.md).
 
 set -euo pipefail
 
@@ -87,10 +93,17 @@ if [[ -f /usr/local/lib/libduckdb.so && -f /usr/local/include/duckdb.h ]]; then
 else
   log "Installing libduckdb $DUCKDB_VERSION..."
   tmp="$(mktemp -d)"
-  if ! fetch "https://github.com/duckdb/duckdb/releases/download/v${DUCKDB_VERSION}/libduckdb-linux-amd64.zip" "$tmp/libduckdb.zip"; then
+  if command -v gcloud >/dev/null 2>&1 && \
+     gcloud storage cp "$GCS_ARTIFACTS/libduckdb-linux-amd64.zip" "$tmp/libduckdb.zip" 2>/dev/null; then
+    log "libduckdb fetched from GCS dev-artifacts."
+  elif fetch "https://github.com/duckdb/duckdb/releases/download/v${DUCKDB_VERSION}/libduckdb-linux-amd64.zip" "$tmp/libduckdb.zip"; then
+    log "libduckdb fetched from github.com."
+  else
     warn "Failed to download libduckdb — this is REQUIRED to compile vector-rs."
-    warn "Your sandbox's egress policy must allow github.com release assets"
-    warn "(github.com + objects.githubusercontent.com). See vector-rs/README.md."
+    warn "GCS dev-artifacts had no mirror and github.com/duckdb/duckdb is unreachable"
+    warn "(on Claude Code on the web, cross-owner GitHub repos are blocked outright —"
+    warn "see vector-rs/README.md § Dev Sandbox). Publish the mirror with"
+    warn "publish-dev-artifacts.sh, or use a substrate without the per-owner restriction."
     rm -rf "$tmp"
     exit 1
   fi
@@ -108,13 +121,23 @@ if ls /usr/local/lib/libonnxruntime.so* >/dev/null 2>&1; then
 else
   log "Installing onnxruntime $ORT_VERSION..."
   tmp="$(mktemp -d)"
-  if fetch "https://github.com/microsoft/onnxruntime/releases/download/v${ORT_VERSION}/onnxruntime-linux-x64-${ORT_VERSION}.tgz" "$tmp/ort.tgz"; then
+  if command -v gcloud >/dev/null 2>&1 && \
+     gcloud storage cp "$GCS_ARTIFACTS/onnxruntime-linux-x64-${ORT_VERSION}.tgz" "$tmp/ort.tgz" 2>/dev/null; then
+    log "onnxruntime fetched from GCS dev-artifacts."
+    tar xzf "$tmp/ort.tgz" -C "$tmp"
+    $SUDO cp "$tmp"/onnxruntime-linux-x64-${ORT_VERSION}/lib/libonnxruntime.so* /usr/local/lib/
+    $SUDO ldconfig
+    log "onnxruntime installed."
+  elif fetch "https://github.com/microsoft/onnxruntime/releases/download/v${ORT_VERSION}/onnxruntime-linux-x64-${ORT_VERSION}.tgz" "$tmp/ort.tgz"; then
     tar xzf "$tmp/ort.tgz" -C "$tmp"
     $SUDO cp "$tmp"/onnxruntime-linux-x64-${ORT_VERSION}/lib/libonnxruntime.so* /usr/local/lib/
     $SUDO ldconfig
     log "onnxruntime installed."
   else
-    warn "Could not fetch onnxruntime; the server won't run until it is present (build/test still work)."
+    warn "Could not fetch onnxruntime from GCS or github.com; the server won't run"
+    warn "until it is present (build/test still work). On Claude Code on the web,"
+    warn "microsoft/onnxruntime is unreachable outright (cross-owner GitHub restriction)"
+    warn "— publish the mirror with publish-dev-artifacts.sh."
   fi
   rm -rf "$tmp"
 fi
@@ -140,7 +163,9 @@ else
       cp -r "$HOME"/.duckdb/extensions/*/*/vss.duckdb_extension "$EXT_DIR/" 2>/dev/null || true
       log "vss extension installed via DuckDB CLI."
     else
-      warn "Could not install vss (egress to the extension repo may be blocked)."
+      warn "Could not install vss (egress to the extension repo, or to"
+      warn "github.com/duckdb/duckdb for the CLI, may be blocked — the latter is"
+      warn "unconditional on Claude Code on the web; see the GCS note above)."
       warn "The server needs it at runtime; allowlist extensions.duckdb.org or publish it to $GCS_ARTIFACTS."
     fi
     rm -rf "$tmp"

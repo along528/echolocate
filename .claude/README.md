@@ -20,23 +20,41 @@ or run vector-rs (the hook reports the blocked host and degrades gracefully).
 Pick/adjust the policy when creating the environment
 ([Claude Code on the web docs](https://code.claude.com/docs/en/claude-code-on-the-web)):
 
-- [ ] **`github.com` + `objects.githubusercontent.com`** — `libduckdb`,
-      `onnxruntime`, the `duckdb` CLI, and the `ant` CLI (release assets).
-      **Required to compile** — no workaround short of a prebuilt image.
-- [ ] **`extensions.duckdb.org`** — the DuckDB `vss` extension (runtime
-      `LOAD vss`). Avoidable by publishing `vss` to GCS (below).
-- [ ] **`storage.googleapis.com`** — CLAP model (+ optional `vss`) from
-      `gs://cloud-crate-vector-db/dev-artifacts/`. Needed to run the **server**
-      (semantic search); not needed for `cargo build`/`cargo test`.
+- [ ] **`storage.googleapis.com`** — libduckdb, onnxruntime, `vss`, and the
+      CLAP model from `gs://cloud-crate-vector-db/dev-artifacts/`.
+      `setup-dev.sh` tries this **first** for all four. **Required to
+      compile** once a maintainer has run `publish-dev-artifacts.sh` (below);
+      the server (semantic search) also needs it for the CLAP model.
+- [ ] **`github.com` + `objects.githubusercontent.com`** — fallback for
+      libduckdb, `onnxruntime`, and the `duckdb` CLI when GCS has no mirror or
+      ADC isn't configured, plus the `ant` CLI (release assets). **Cannot be
+      relied on alone**: see the cross-owner note below.
+- [ ] **`extensions.duckdb.org`** — fallback for the DuckDB `vss` extension
+      (runtime `LOAD vss`) when GCS has no mirror.
 - [x] **`pypi.org` + `files.pythonhosted.org`** — usually already allowed;
       `duckdb` Python for regenerating the sample index.
 
+### Why GCS, not just `github.com`
+
+Claude Code on the web scopes a session's `github.com` access to a single
+repo owner, not just to the host. A session tied to this project can reach
+`github.com/along528/*` but **not** `github.com/duckdb/duckdb` or
+`github.com/microsoft/onnxruntime` — those 403 unconditionally, and the
+`add_repo` tool can't widen this (cross-tier / cross-owner adds are
+rejected). Allowlisting `github.com` in the network policy does not fix it.
+`storage.googleapis.com` has no such per-owner scoping, so it's the reliable
+path once the artifacts are mirrored there.
+
 ### If the policy can't be widened
 
-- **Only `storage.googleapis.com` blocked** → publish the CLAP model + `vss` to
-  the GCS `dev-artifacts/` prefix with
-  [`vector-rs/scripts/publish-dev-artifacts.sh`](../vector-rs/scripts/publish-dev-artifacts.sh);
-  then the runtime deps come from GCS instead of `extensions.duckdb.org`.
-- **`github.com` blocked** → you can't provision natively in that session. Use
-  the prebuilt dev container (`vector-rs/Dockerfile.dev`) as the environment's
-  base image instead, since it bakes every dependency at image-build time.
+- **`storage.googleapis.com` reachable, but the bucket hasn't been seeded** →
+  a maintainer runs
+  [`vector-rs/scripts/publish-dev-artifacts.sh`](../vector-rs/scripts/publish-dev-artifacts.sh)
+  once (needs `roles/storage.objectAdmin` on the bucket) to mirror libduckdb,
+  onnxruntime, `vss`, and the CLAP model; after that, no other host is needed
+  to build/run.
+- **`storage.googleapis.com` blocked too** → you can't provision natively in
+  that session. Use the prebuilt dev container (`vector-rs/Dockerfile.dev`) as
+  the environment's base image instead, since it bakes every dependency at
+  image-build time (its own Docker build network isn't subject to the
+  cross-owner `github.com` restriction).
