@@ -20,16 +20,16 @@ or run vector-rs (the hook reports the blocked host and degrades gracefully).
 Pick/adjust the policy when creating the environment
 ([Claude Code on the web docs](https://code.claude.com/docs/en/claude-code-on-the-web)):
 
-- [ ] **`storage.googleapis.com`** — libduckdb + onnxruntime (public objects,
-      no credentials needed) and `vss` + the CLAP model (private, need ADC),
-      all from `gs://cloud-crate-vector-db/dev-artifacts/`. `setup-dev.sh`
-      tries this **first** for all four. **Required to compile** once a
-      maintainer has run `publish-dev-artifacts.sh` (below); the server
-      (semantic search) also needs it for the CLAP model.
+- [ ] **`storage.googleapis.com`** — libduckdb, onnxruntime, `vss`, and the
+      CLAP model — all public objects, no credentials needed — from
+      `gs://cloud-crate-vector-db/dev-artifacts/`. `setup-dev.sh` tries this
+      **first** for all four. **Required to compile** once a maintainer has
+      run `publish-dev-artifacts.sh` (below); the server (semantic search)
+      also needs it for the CLAP model.
 - [ ] **`github.com` + `objects.githubusercontent.com`** — fallback for
-      libduckdb, `onnxruntime`, and the `duckdb` CLI when GCS has no mirror or
-      (for vss/CLAP) ADC isn't configured, plus the `ant` CLI (release
-      assets). **Cannot be relied on alone**: see the cross-owner note below.
+      libduckdb, `onnxruntime`, and the `duckdb` CLI when GCS has no mirror,
+      plus the `ant` CLI (release assets). **Cannot be relied on alone**: see
+      the cross-owner note below.
 - [ ] **`extensions.duckdb.org`** — fallback for the DuckDB `vss` extension
       (runtime `LOAD vss`) when GCS has no mirror.
 - [x] **`pypi.org` + `files.pythonhosted.org`** — usually already allowed;
@@ -42,20 +42,23 @@ repo owner, not just to the host. A session tied to this project can reach
 `github.com/along528/*` but **not** `github.com/duckdb/duckdb` or
 `github.com/microsoft/onnxruntime` — those 403 unconditionally, and the
 `add_repo` tool can't widen this (cross-tier / cross-owner adds are
-rejected). Allowlisting `github.com` in the network policy does not fix it.
-`storage.googleapis.com` has no such per-owner scoping, so it's the reliable
-path once the artifacts are mirrored there.
+rejected); the same sessions frequently can't reach `extensions.duckdb.org`
+either. Allowlisting `github.com` in the network policy does not fix the
+GitHub case. `storage.googleapis.com` has no such per-owner scoping, so it's
+the reliable path once the artifacts are mirrored there.
 
-libduckdb and onnxruntime (the two packages this actually blocks — one
-REQUIRED to build, one to run) are published as **public** objects
-(`--predefined-acl=publicRead` on just those two, in
-`publish-dev-artifacts.sh`) and fetched with plain `curl` — no `gcloud`, no
-ADC, so it works even in a sandbox that doesn't have `gcloud` installed at
-all (as several already didn't). `vss` and the CLAP model stay on the
-ADC-gated `gcloud storage cp` path, since they only affect optional runtime
-features, not build/test. This bucket also serves the private audio corpus
-vector-rs streams in production — only those two objects are public, never
-the bucket itself.
+All four native deps (libduckdb, onnxruntime, `vss`, CLAP — one REQUIRED to
+build, the rest to run) are published as **public** objects
+(`--predefined-acl=publicRead` on each, in `publish-dev-artifacts.sh`) and
+fetched with plain `curl` — no `gcloud`, no ADC, so it works even in a
+sandbox that doesn't have `gcloud` installed at all (as several already
+didn't). This is safe because all four are unmodified re-exports/rebuilds of
+public open-source artifacts, not project data (libduckdb/onnxruntime are
+upstream release binaries, `vss` is the public DuckDB extension, and the CLAP
+model is a stock export of the public `laion/clap-htsat-unfused` HuggingFace
+checkpoint — see `vector/export_clap_text.py`). This bucket also serves the
+private audio corpus vector-rs streams in production — only these four
+dev-artifacts objects are public, never the bucket itself.
 
 ### If the policy can't be widened
 
@@ -63,8 +66,8 @@ the bucket itself.
   a maintainer runs
   [`vector-rs/scripts/publish-dev-artifacts.sh`](../vector-rs/scripts/publish-dev-artifacts.sh)
   once (needs `roles/storage.objectAdmin` on the bucket) to mirror libduckdb,
-  onnxruntime, `vss`, and the CLAP model; after that, no other host is needed
-  to build/run, and no ADC is needed for libduckdb/onnxruntime specifically.
+  onnxruntime, `vss`, and the CLAP model; after that, no other host — and no
+  ADC — is needed to build/run.
 - **`storage.googleapis.com` blocked too** → you can't provision natively in
   that session. Use the prebuilt dev container (`vector-rs/Dockerfile.dev`) as
   the environment's base image instead, since it bakes every dependency at

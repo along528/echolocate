@@ -105,27 +105,28 @@ sandbox's network policy must allow them (see
 
 | Host | For |
 |------|-----|
-| `storage.googleapis.com` | libduckdb + onnxruntime (public objects, no auth), and `vss` + the CLAP model (private, need ADC) — all from `gs://cloud-crate-vector-db/dev-artifacts/`, tried first for all four |
-| `github.com` + `objects.githubusercontent.com` | fallback for the above when GCS has no mirror or (for vss/CLAP) ADC isn't set up: libduckdb, onnxruntime, duckdb CLI, `ant` CLI release assets |
-| `extensions.duckdb.org` | fallback for the `vss` extension (also needed at service runtime for `LOAD vss`) |
+| `storage.googleapis.com` | libduckdb, onnxruntime, `vss`, and the CLAP model — all public objects, no auth needed — from `gs://cloud-crate-vector-db/dev-artifacts/`, tried first for all four |
+| `github.com` + `objects.githubusercontent.com` | fallback when GCS has no mirror: libduckdb, onnxruntime, duckdb CLI, `ant` CLI release assets |
+| `extensions.duckdb.org` | fallback for the `vss` extension when GCS has no mirror (also needed at service runtime for `LOAD vss`) |
 
 **Claude Code on the web additionally scopes `github.com` per repo owner, not
 just per host.** A session tied to this project can only reach `github.com`
 paths under this repo's owner — `github.com/duckdb/duckdb` and
 `github.com/microsoft/onnxruntime` 403 there unconditionally, and the
 `add_repo` tool can't add a cross-owner repo to widen that (cross-tier adds
-are rejected). Allowlisting the host in the environment's network policy does
-not fix this. libduckdb and onnxruntime are the two packages this actually
-blocks (both are REQUIRED — one to build, one to run), so `setup-dev.sh`
-fetches them from a **public, unauthenticated** GCS URL first: no `gcloud`, no
-ADC, works even in a sandbox where `gcloud` isn't installed at all. Only those
-two specific objects are public (`publish-dev-artifacts.sh` sets
-`--predefined-acl=publicRead` on just them) — this bucket also serves the
-private audio corpus vector-rs streams in production, so nothing else in it is
-public. `vss` and the CLAP model stay on the ADC-gated `gcloud storage cp` path
-since they only affect the server's optional runtime features, not the ability
-to build/test. GitHub fallback still works fine on substrates without the
-per-owner restriction (a laptop, `Dockerfile.dev`, generic CI).
+are rejected); the same sessions frequently can't reach
+`extensions.duckdb.org` either. Allowlisting a host in the environment's
+network policy does not fix the GitHub case. So `setup-dev.sh` fetches all
+four native deps from a **public, unauthenticated** GCS URL first: no
+`gcloud`, no ADC, works even in a sandbox where `gcloud` isn't installed at
+all (`publish-dev-artifacts.sh` sets `--predefined-acl=publicRead` on each of
+the four dev-artifacts objects). This is safe because all four are unmodified
+re-exports/rebuilds of public open-source artifacts, not project data — see
+the header comments in `setup-dev.sh` / `publish-dev-artifacts.sh` for the
+per-artifact provenance. Nothing else in this bucket is public — it also
+serves the private audio corpus vector-rs streams in production. GitHub /
+`extensions.duckdb.org` fallback still works fine on substrates without the
+cross-owner restriction (a laptop, `Dockerfile.dev`, generic CI).
 
 An actionable one-time checklist for the Claude Code on the web environment lives
 in [`.claude/README.md`](../.claude/README.md#one-time-environment-setup-network-policy).

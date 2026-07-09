@@ -18,35 +18,37 @@
 # only affect running the server WARN on failure instead of aborting, so a
 # constrained environment can still build and test.
 #
-# Network: libduckdb + onnxruntime (steps 2-3) fetch from a PUBLIC, unauthenticated
-# GCS URL first — no gcloud/ADC needed — falling back to GitHub release assets.
-# vss + CLAP (steps 4-5) stay on the ADC-gated `gcloud storage cp` path (they were
-# already GCS-first before this comment). Public objects matter beyond
-# convenience: Claude Code on the web scopes a session's GitHub access to a
-# single owner's repos, so github.com/duckdb/duckdb and
+# Network: all four native deps (steps 2-5) fetch from a PUBLIC, unauthenticated
+# GCS URL first — no gcloud/ADC needed anywhere in this script — falling back to
+# GitHub / the DuckDB extension repo / a local torch export. Public objects
+# matter beyond convenience: Claude Code on the web scopes a session's GitHub
+# access to a single owner's repos, so github.com/duckdb/duckdb and
 # github.com/microsoft/onnxruntime 403 UNCONDITIONALLY there — not a network
 # policy checkbox, and `add_repo` can't add a cross-owner repo either
-# (cross-tier adds are rejected) — and a sandbox may not even have `gcloud`
-# installed to use ADC in the first place. GitHub remains a working fallback on
-# substrates without the cross-owner restriction (laptop, Dockerfile.dev,
-# generic CI). If your sandbox's egress policy blocks a host outright, that step
-# warns and you deal with the runtime dep separately (see vector-rs/README.md).
+# (cross-tier adds are rejected) — the same sessions often can't reach
+# extensions.duckdb.org either, and may not even have `gcloud` installed to
+# fall back to ADC in the first place. GitHub / extensions.duckdb.org remain
+# working fallbacks on substrates without that restriction (laptop,
+# Dockerfile.dev, generic CI). If your sandbox's egress policy blocks a host
+# outright, that step warns and you deal with the runtime dep separately (see
+# vector-rs/README.md).
 #
-# Only the two specific libduckdb/onnxruntime objects under dev-artifacts/ are
-# public (see publish-dev-artifacts.sh) — the rest of this bucket, including the
-# audio corpus vector-rs streams in production, stays private. Never widen this
-# to bucket-level public access.
+# All four are unmodified re-exports/rebuilds of public open-source artifacts
+# (libduckdb, onnxruntime, the DuckDB vss extension, and a stock export of the
+# public `laion/clap-htsat-unfused` HuggingFace checkpoint — no project data),
+# so publish-dev-artifacts.sh uploads them all with --predefined-acl=publicRead.
+# That's scoped to just the dev-artifacts/ objects: the rest of this bucket,
+# including the private audio corpus vector-rs streams in production, stays
+# private. Never widen this to bucket-level public access.
 
 set -euo pipefail
 
 DUCKDB_VERSION="1.2.2"
 ORT_VERSION="1.23.0"
 DUCKDB_CLI_VERSION="$DUCKDB_VERSION"   # must match libduckdb: extension is written to v<CLI>/, engine looks under v<DUCKDB_VERSION>/
-GCS_ARTIFACTS="gs://cloud-crate-vector-db/dev-artifacts"
-# Plain HTTPS mirror of the same bucket/prefix — only libduckdb-linux-amd64.zip and
-# onnxruntime-linux-x64-*.tgz are public there (publish-dev-artifacts.sh sets
-# --predefined-acl=publicRead on just those two objects), so this needs no
-# gcloud/ADC at all.
+# Public, unauthenticated HTTPS mirror — publish-dev-artifacts.sh uploads every
+# object under this prefix with --predefined-acl=publicRead, so nothing in this
+# script needs gcloud/ADC.
 PUBLIC_ARTIFACTS_BASE="https://storage.googleapis.com/cloud-crate-vector-db/dev-artifacts"
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -156,17 +158,16 @@ fi
 
 # --- 4. DuckDB vss extension (required only to RUN) -------------------------
 # vector-rs runs `INSTALL vss; LOAD vss;` on every connection. Pre-placing the
-# extension lets LOAD succeed offline. Try GCS first, then the CLI (which hits
-# the DuckDB extension repository).
+# extension lets LOAD succeed offline. Try the public GCS mirror first, then
+# the CLI (which hits the DuckDB extension repository).
 EXT_DIR="$HOME/.duckdb/extensions/v${DUCKDB_VERSION}/linux_amd64_gcc4"
 if [[ -f "$EXT_DIR/vss.duckdb_extension" ]]; then
   log "vss extension already installed."
 else
   log "Installing DuckDB vss extension..."
   mkdir -p "$EXT_DIR"
-  if command -v gcloud >/dev/null 2>&1 && \
-     gcloud storage cp "$GCS_ARTIFACTS/vss.duckdb_extension" "$EXT_DIR/vss.duckdb_extension" 2>/dev/null; then
-    log "vss extension fetched from GCS dev-artifacts."
+  if fetch "$PUBLIC_ARTIFACTS_BASE/vss.duckdb_extension" "$EXT_DIR/vss.duckdb_extension"; then
+    log "vss extension fetched from GCS dev-artifacts (public, no auth needed)."
   else
     tmp="$(mktemp -d)"
     if fetch "https://github.com/duckdb/duckdb/releases/download/v${DUCKDB_CLI_VERSION}/duckdb_cli-linux-amd64.zip" "$tmp/duckdb.zip" && \
@@ -175,28 +176,32 @@ else
       cp -r "$HOME"/.duckdb/extensions/*/*/vss.duckdb_extension "$EXT_DIR/" 2>/dev/null || true
       log "vss extension installed via DuckDB CLI."
     else
-      warn "Could not install vss (egress to the extension repo, or to"
-      warn "github.com/duckdb/duckdb for the CLI, may be blocked — the latter is"
-      warn "unconditional on Claude Code on the web; see the GCS note above)."
-      warn "The server needs it at runtime; allowlist extensions.duckdb.org or publish it to $GCS_ARTIFACTS."
+      warn "Could not install vss — the public GCS mirror had no object, egress to"
+      warn "extensions.duckdb.org may be blocked, and github.com/duckdb/duckdb for the"
+      warn "CLI is unreachable outright on Claude Code on the web (cross-owner GitHub"
+      warn "restriction). The server needs it at runtime; publish the mirror with"
+      warn "publish-dev-artifacts.sh."
     fi
     rm -rf "$tmp"
   fi
 fi
 
 # --- 5. CLAP ONNX model (required only to RUN) ------------------------------
+# clap_text.onnx.data is an optional sidecar (external weights) some torch
+# export runs produce — fetched best-effort, absence isn't a failure.
 CLAP_DIR="$VECTOR_RS_DIR/clap_text_onnx"
 if [[ -f "$CLAP_DIR/clap_text.onnx" && -f "$CLAP_DIR/tokenizer.json" ]]; then
   log "CLAP ONNX model already present."
 else
   log "Fetching CLAP ONNX model..."
   mkdir -p "$CLAP_DIR"
-  if command -v gcloud >/dev/null 2>&1 && \
-     gcloud storage cp "$GCS_ARTIFACTS/clap_text_onnx/*" "$CLAP_DIR/" 2>/dev/null; then
-    log "CLAP model fetched from GCS dev-artifacts."
+  if fetch "$PUBLIC_ARTIFACTS_BASE/clap_text_onnx/clap_text.onnx" "$CLAP_DIR/clap_text.onnx" && \
+     fetch "$PUBLIC_ARTIFACTS_BASE/clap_text_onnx/tokenizer.json" "$CLAP_DIR/tokenizer.json"; then
+    fetch "$PUBLIC_ARTIFACTS_BASE/clap_text_onnx/clap_text.onnx.data" "$CLAP_DIR/clap_text.onnx.data" 2>/dev/null || true
+    log "CLAP model fetched from GCS dev-artifacts (public, no auth needed)."
   else
-    warn "Could not fetch the CLAP model. /semantic-search and server startup need it."
-    warn "Options: provide GCP ADC (has access to $GCS_ARTIFACTS/clap_text_onnx/),"
+    warn "Could not fetch the CLAP model from the public GCS mirror. /semantic-search"
+    warn "and server startup need it. Options: publish it with publish-dev-artifacts.sh,"
     warn "  or export it locally: python vector/export_clap_text.py --output-dir $CLAP_DIR"
   fi
 fi
