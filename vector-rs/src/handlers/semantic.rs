@@ -45,6 +45,11 @@ pub async fn semantic_search(
 
     let results = tokio::task::spawn_blocking(move || {
         let query_start = std::time::Instant::now();
+        let Some(onnx) = onnx.as_ref() else {
+            return Err(AppError::ServiceUnavailable(
+                "semantic search unavailable: CLAP model not loaded".into(),
+            ));
+        };
         let query_vector = onnx
             .encode_text(&search_text)
             .map_err(|e| AppError::Internal(format!("CLAP encoding failed: {e}")))?;

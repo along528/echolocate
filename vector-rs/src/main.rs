@@ -1,38 +1,12 @@
-mod clap_onnx;
-mod config;
-mod db;
-mod error;
-mod gcs;
-mod gemini;
-mod handlers;
-mod interpolation;
-mod models;
-
-use axum::extract::DefaultBodyLimit;
-use axum::routing::{get, post};
-use axum::Router;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
-use tower_http::cors::{AllowOrigin, CorsLayer};
-use tower_http::trace::{DefaultOnResponse, TraceLayer};
-use tracing::Level;
 
-use clap_onnx::ClapOnnxModel;
-use config::Config;
-use db::DbPool;
-use gcs::GcsClient;
-use gemini::GeminiClient;
-
-pub struct AppState {
-    pub config: Arc<Config>,
-    pub db_path: String,
-    pub db_pool: Arc<DbPool>,
-    pub onnx: Arc<ClapOnnxModel>,
-    pub gemini: Arc<Option<GeminiClient>>,
-    pub gcs: Arc<Option<GcsClient>>,
-    pub v_mid_warm: Arc<AtomicBool>,
-    pub v_clap_warm: Arc<AtomicBool>,
-}
+use cloud_crate_vector::clap_onnx::ClapOnnxModel;
+use cloud_crate_vector::config::Config;
+use cloud_crate_vector::db::DbPool;
+use cloud_crate_vector::gcs::GcsClient;
+use cloud_crate_vector::gemini::GeminiClient;
+use cloud_crate_vector::{build_router, db, handlers, AppState};
 
 #[tokio::main]
 async fn main() {
@@ -160,11 +134,10 @@ async fn main() {
     let onnx = match onnx_result.expect("ONNX init task panicked") {
         Ok(model) => {
             tracing::info!("CLAP ONNX model loaded at startup.");
-            model
+            Arc::new(Some(model))
         }
         Err(e) => panic!("Cannot start without CLAP model: {e}"),
     };
-    let onnx = Arc::new(onnx);
 
     let gcs = match gcs_result {
         Ok(client) => {
@@ -183,53 +156,14 @@ async fn main() {
         db_path: config.db_path.clone(),
         db_pool: db_pool.clone(),
         config: Arc::new(config.clone()),
-        onnx: onnx.clone(),
+        onnx,
         gemini: Arc::new(gemini),
         gcs: Arc::new(gcs),
         v_mid_warm: v_mid_warm.clone(),
         v_clap_warm: v_clap_warm.clone(),
     });
 
-    // CORS
-    let cors = build_cors_layer(&config);
-
-    let app = Router::new()
-        .route("/", get(handlers::health::health_check))
-        .route("/tracks", get(handlers::tracks::list_tracks))
-        .route("/tracks/by-ids", post(handlers::tracks::tracks_by_ids).layer(DefaultBodyLimit::max(32 * 1024)))
-        .route("/tracks/{track_id}/similar", get(handlers::tracks::find_similar))
-        .route("/tracks/{track_id}/dissimilar", get(handlers::tracks::find_dissimilar))
-        .route("/search", get(handlers::search::search_tracks_text))
-        .route("/vector-search", post(handlers::search::vector_search))
-        .route("/semantic-search", post(handlers::semantic::semantic_search))
-        .route("/interpolate", post(handlers::interpolate::interpolate_tracks))
-        .route("/interpolate/playlist", post(handlers::playlist::interpolate_playlist))
-        .route("/map/backdrop", get(handlers::map::backdrop))
-        .route("/map/nearest", get(handlers::map::nearest))
-        .route("/stream/{track_id}", get(handlers::stream::stream_audio))
-        .route("/version", get(handlers::version::get_version))
-        .route(
-            "/labels/search",
-            post(handlers::labels::log_search).layer(DefaultBodyLimit::max(64 * 1024)),
-        )
-        .route(
-            "/labels/result",
-            post(handlers::labels::log_label).layer(DefaultBodyLimit::max(16 * 1024)),
-        )
-        .route("/labels/events", get(handlers::labels_read::list_events))
-        .layer(cors)
-        .layer(
-            TraceLayer::new_for_http()
-                .make_span_with(|request: &axum::http::Request<_>| {
-                    tracing::info_span!(
-                        "request",
-                        method = %request.method(),
-                        uri = %request.uri(),
-                    )
-                })
-                .on_response(DefaultOnResponse::new().level(Level::INFO)),
-        )
-        .with_state(state);
+    let app = build_router(state);
 
     let listener = tokio::net::TcpListener::bind(format!("0.0.0.0:{port}"))
         .await
@@ -238,42 +172,4 @@ async fn main() {
     tracing::info!("Listening on 0.0.0.0:{port}");
 
     axum::serve(listener, app).await.expect("Server error");
-}
-
-fn build_cors_layer(config: &Config) -> CorsLayer {
-    match &config.cors_allow_origins {
-        Some(origins_str) => {
-            let origins: Vec<&str> = origins_str.split(',').collect();
-            if origins.contains(&"*") {
-                panic!("CORS_ALLOW_ORIGINS=* is not allowed in production; specify explicit origins");
-            } else {
-                let exact: Vec<String> =
-                    origins.iter().map(|o| o.trim().to_string()).collect();
-                tracing::info!("CORS Allowed Origins: {:?} (+ sonar PR previews)", exact);
-                CorsLayer::new()
-                    .allow_origin(AllowOrigin::predicate(move |origin, _parts| {
-                        let Ok(origin) = origin.to_str() else {
-                            return false;
-                        };
-                        // Exact match against the configured allowlist (prod domains).
-                        if exact.iter().any(|o| o == origin) {
-                            return true;
-                        }
-                        // Sonar PR-preview revisions get ephemeral Cloud Run tag URLs like
-                        // https://pr123---cloud-crate-sonar-<hash>.<region>.run.app that can't
-                        // be listed ahead of time. Scoped to the sonar service so this does
-                        // NOT open CORS to arbitrary *.run.app apps.
-                        origin.starts_with("https://")
-                            && origin.ends_with(".run.app")
-                            && origin.contains("---cloud-crate-sonar-")
-                    }))
-                    .allow_methods(tower_http::cors::Any)
-                    .allow_headers(tower_http::cors::Any)
-            }
-        }
-        None => {
-            tracing::info!("CORS middleware not enabled (CORS_ALLOW_ORIGINS not set)");
-            CorsLayer::new()
-        }
-    }
 }
