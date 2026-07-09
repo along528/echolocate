@@ -61,8 +61,10 @@ export function coordsOf(t) {
 // chip launches that vibe as a search layer.
 export function VibeChips({ vibes, onPick, className = '' }) {
   if (!vibes || !vibes.length) return null;
+  // A <span> (flex via .el-vibe-chips) so it can sit inside inline containers
+  // like the layer-info popover without invalid DOM nesting.
   return (
-    <div className={`el-vibe-chips ${className}`}>
+    <span className={`el-vibe-chips ${className}`}>
       {vibes.map((v) => (
         <button key={v.vibe} type="button" className="el-chip is-sm is-track-vibe"
           title={`vibe match ${v.score.toFixed(2)}${onPick ? ` — search “${v.vibe}”` : ''}`}
@@ -70,7 +72,7 @@ export function VibeChips({ vibes, onPick, className = '' }) {
           {v.vibe}
         </button>
       ))}
-    </div>
+    </span>
   );
 }
 

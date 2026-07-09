@@ -264,6 +264,9 @@ export default function SonarDesktop({ s }) {
                   {infoLayer.seedTrack.title} — {infoLayer.seedTrack.artist}
                 </button>
               )}
+              {infoLayer.seedTrack && (
+                <VibeChips vibes={vibesByTrackId.get(infoLayer.seedTrack.id)} onPick={addVibeLayer} />
+              )}
             </span>
           )}
         </div>

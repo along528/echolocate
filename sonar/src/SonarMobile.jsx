@@ -868,6 +868,7 @@ export default function SonarMobile({ s }) {
                     {t.album && <span className="ldm-peek-album">{t.album}</span>}
                     {playing && playing.id !== t.id && <span className="ldm-peek-dist">{distBetween(playing, t).toFixed(2)} away</span>}
                   </div>
+                  <VibeChips vibes={vibesByTrackId.get(t.id)} onPick={(v) => { addVibeLayer(v); setDetailMode('peek'); }} />
                 </div>
                 {playing && playing.id !== t.id && (
                   <button className="ldm-peek-add" title="Sonic interpolation from the playing track"
