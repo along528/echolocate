@@ -56,6 +56,24 @@ cargo build --release
 INDEX_DB_PATH=../data/index.duckdb CLAP_ONNX_DIR=./clap_text_onnx PORT=8000 cargo run
 ```
 
+### Tests
+
+Unit tests live next to the code (`src/interpolation/math.rs`).
+Integration tests (`tests/api/`) drive every HTTP endpoint through the real
+Axum router (`tower::ServiceExt::oneshot`) against the committed sample index
+(`testdata/sample_index.duckdb`) — no ports, no external services. The sample
+index has random vectors, so they assert structure and invariants (sort order,
+dedup, greedy-walk artist uniqueness), not semantic quality.
+
+```bash
+source scripts/dev-env.sh   # needs DUCKDB_LIB_DIR / LD_LIBRARY_PATH to build at all
+cargo test
+```
+
+Tests that need the real CLAP ONNX model (semantic search, anchor embedding)
+skip with a notice when `clap_text_onnx/` or the onnxruntime dylib is absent —
+run with `-- --nocapture` to see skips.
+
 ## Dev Sandbox (remote / interactive development)
 
 vector-rs is the hardest service to iterate on remotely: it needs a Rust
