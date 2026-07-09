@@ -18,7 +18,7 @@ import {
 
 const MVW = 390, MVH = 780, MPAD = 46;
 const ASSET = import.meta.env.BASE_URL;
-const PEEK_HEAD = 92; // px of the peek panel that stays visible when collapsed
+const PEEK_HEAD = 120; // px of the peek panel that stays visible when collapsed (incl. reserved vibe-chip row)
 
 function dotPosM(t) {
   const [cx, cy] = coordsOf(t);
@@ -85,16 +85,14 @@ function Sheet({ onClose, style, className = '', children }) {
 // underneath) and snaps between three states: hidden, a 76px "peek" header, and
 // a full sheet. Dragging the header moves between states; in the full state a
 // downward drag on the body (when scrolled to the top) collapses back to peek.
-function PeekSheet({ mode, onFull, onPeek, onHide, header, tall = false, children }) {
+function PeekSheet({ mode, onFull, onPeek, onHide, header, children }) {
   const ref = React.useRef(null);
   const [dragY, setDragY] = React.useState(null);
   const startRef = React.useRef(null);
   const movedRef = React.useRef(false);
   const baseY = () => {
     const h = ref.current?.offsetHeight || 0;
-    // Measure the real head — it's taller than PEEK_HEAD when vibe chips show.
-    const headH = ref.current?.querySelector('.ldm-peek-head')?.offsetHeight || PEEK_HEAD;
-    return mode === 'full' ? 0 : Math.max(0, h - headH);
+    return mode === 'full' ? 0 : Math.max(0, h - PEEK_HEAD);
   };
   const onStart = (e) => {
     const body = ref.current?.querySelector('.ldm-peek-body');
@@ -131,7 +129,7 @@ function PeekSheet({ mode, onFull, onPeek, onHide, header, tall = false, childre
     if (mode === 'peek') onFull(); else onPeek();
   };
   return (
-    <div ref={ref} className={'ldm-peek ' + (mode === 'full' ? 'is-full ' : '') + (tall ? 'has-vibes' : '')}
+    <div ref={ref} className={'ldm-peek ' + (mode === 'full' ? 'is-full' : '')}
       onTouchStart={onStart} onTouchMove={onMove} onTouchEnd={onEnd} onTouchCancel={onEnd}
       style={dragY != null ? { transform: `translateY(${dragY}px)`, transition: 'none' } : undefined}>
       <div className="ldm-peek-head" onClick={onHeadClick}>
@@ -611,9 +609,7 @@ export default function SonarMobile({ s }) {
   const pauseSvg = <svg viewBox="0 0 24 24" fill="white" width="16" height="16"><path d="M6 5h4v14H6zm8 0h4v14h-4z" /></svg>;
 
   return (
-    <div ref={appRef} className={'ldm-app'
-      + (detailMode === 'peek' ? ' is-peek' : '')
-      + (detailMode === 'peek' && selected && vibesByTrackId.get(selected.id)?.length ? ' has-peek-vibes' : '')}>
+    <div ref={appRef} className={'ldm-app' + (detailMode === 'peek' ? ' is-peek' : '')}>
       {/* iOS haptic shim — toggling a switch input produces a system tick. */}
       <input ref={hapticSwitchRef} type="checkbox" switch="" tabIndex={-1} aria-hidden="true"
         style={{ position: 'absolute', width: 1, height: 1, opacity: 0, pointerEvents: 'none' }}
@@ -858,7 +854,6 @@ export default function SonarMobile({ s }) {
       {detailMode !== 'hidden' && selected && (() => { const t = selected; const cand = isCandidate(t.id); const sources = entryByTrackId.get(t.id)?.sources || []; const inPl = playlistById.has(t.id); const slotOrigin = playlistById.get(t.id)?.origin; const playOrigin = (!sources.length && !slotOrigin && t.id === playingId) ? playingOrigin : null; const swatch = entryByTrackId.get(t.id)?.color || slotOrigin?.color || playOrigin?.color || (cand ? CANDIDATE_COLOR : FALLBACK_COLOR);
         return (
           <PeekSheet mode={detailMode} onFull={() => setDetailMode('full')} onPeek={() => setDetailMode('peek')} onHide={() => setDetailMode('hidden')}
-            tall={!!vibesByTrackId.get(t.id)?.length}
             header={(
               <div className="ldm-peek-row">
                 <span className="ldm-peek-swatch" style={{ background: swatch }} />
