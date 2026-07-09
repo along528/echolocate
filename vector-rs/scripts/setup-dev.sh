@@ -18,16 +18,24 @@
 # only affect running the server WARN on failure instead of aborting, so a
 # constrained environment can still build and test.
 #
-# Network: all four fetch steps try the GCS dev-artifacts bucket first (needs
-# ADC), falling back to GitHub release assets. GCS-first matters beyond ADC
+# Network: libduckdb + onnxruntime (steps 2-3) fetch from a PUBLIC, unauthenticated
+# GCS URL first — no gcloud/ADC needed — falling back to GitHub release assets.
+# vss + CLAP (steps 4-5) stay on the ADC-gated `gcloud storage cp` path (they were
+# already GCS-first before this comment). Public objects matter beyond
 # convenience: Claude Code on the web scopes a session's GitHub access to a
 # single owner's repos, so github.com/duckdb/duckdb and
 # github.com/microsoft/onnxruntime 403 UNCONDITIONALLY there — not a network
 # policy checkbox, and `add_repo` can't add a cross-owner repo either
-# (cross-tier adds are rejected). GitHub remains a working fallback on
-# substrates without that restriction (laptop, Dockerfile.dev, generic CI). If
-# your sandbox's egress policy blocks a host outright, that step warns and you
-# deal with the runtime dep separately (see vector-rs/README.md).
+# (cross-tier adds are rejected) — and a sandbox may not even have `gcloud`
+# installed to use ADC in the first place. GitHub remains a working fallback on
+# substrates without the cross-owner restriction (laptop, Dockerfile.dev,
+# generic CI). If your sandbox's egress policy blocks a host outright, that step
+# warns and you deal with the runtime dep separately (see vector-rs/README.md).
+#
+# Only the two specific libduckdb/onnxruntime objects under dev-artifacts/ are
+# public (see publish-dev-artifacts.sh) — the rest of this bucket, including the
+# audio corpus vector-rs streams in production, stays private. Never widen this
+# to bucket-level public access.
 
 set -euo pipefail
 
@@ -35,6 +43,11 @@ DUCKDB_VERSION="1.2.2"
 ORT_VERSION="1.23.0"
 DUCKDB_CLI_VERSION="$DUCKDB_VERSION"   # must match libduckdb: extension is written to v<CLI>/, engine looks under v<DUCKDB_VERSION>/
 GCS_ARTIFACTS="gs://cloud-crate-vector-db/dev-artifacts"
+# Plain HTTPS mirror of the same bucket/prefix — only libduckdb-linux-amd64.zip and
+# onnxruntime-linux-x64-*.tgz are public there (publish-dev-artifacts.sh sets
+# --predefined-acl=publicRead on just those two objects), so this needs no
+# gcloud/ADC at all.
+PUBLIC_ARTIFACTS_BASE="https://storage.googleapis.com/cloud-crate-vector-db/dev-artifacts"
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 VECTOR_RS_DIR="$(cd "$SCRIPT_DIR/.." && pwd)"
@@ -93,17 +106,17 @@ if [[ -f /usr/local/lib/libduckdb.so && -f /usr/local/include/duckdb.h ]]; then
 else
   log "Installing libduckdb $DUCKDB_VERSION..."
   tmp="$(mktemp -d)"
-  if command -v gcloud >/dev/null 2>&1 && \
-     gcloud storage cp "$GCS_ARTIFACTS/libduckdb-linux-amd64.zip" "$tmp/libduckdb.zip" 2>/dev/null; then
-    log "libduckdb fetched from GCS dev-artifacts."
+  if fetch "$PUBLIC_ARTIFACTS_BASE/libduckdb-linux-amd64.zip" "$tmp/libduckdb.zip"; then
+    log "libduckdb fetched from GCS dev-artifacts (public, no auth needed)."
   elif fetch "https://github.com/duckdb/duckdb/releases/download/v${DUCKDB_VERSION}/libduckdb-linux-amd64.zip" "$tmp/libduckdb.zip"; then
     log "libduckdb fetched from github.com."
   else
     warn "Failed to download libduckdb — this is REQUIRED to compile vector-rs."
-    warn "GCS dev-artifacts had no mirror and github.com/duckdb/duckdb is unreachable"
-    warn "(on Claude Code on the web, cross-owner GitHub repos are blocked outright —"
-    warn "see vector-rs/README.md § Dev Sandbox). Publish the mirror with"
-    warn "publish-dev-artifacts.sh, or use a substrate without the per-owner restriction."
+    warn "The public GCS mirror had no object and github.com/duckdb/duckdb is"
+    warn "unreachable (on Claude Code on the web, cross-owner GitHub repos are"
+    warn "blocked outright — see vector-rs/README.md § Dev Sandbox). Publish the"
+    warn "mirror with publish-dev-artifacts.sh, or use a substrate without the"
+    warn "per-owner restriction."
     rm -rf "$tmp"
     exit 1
   fi
@@ -121,9 +134,8 @@ if ls /usr/local/lib/libonnxruntime.so* >/dev/null 2>&1; then
 else
   log "Installing onnxruntime $ORT_VERSION..."
   tmp="$(mktemp -d)"
-  if command -v gcloud >/dev/null 2>&1 && \
-     gcloud storage cp "$GCS_ARTIFACTS/onnxruntime-linux-x64-${ORT_VERSION}.tgz" "$tmp/ort.tgz" 2>/dev/null; then
-    log "onnxruntime fetched from GCS dev-artifacts."
+  if fetch "$PUBLIC_ARTIFACTS_BASE/onnxruntime-linux-x64-${ORT_VERSION}.tgz" "$tmp/ort.tgz"; then
+    log "onnxruntime fetched from GCS dev-artifacts (public, no auth needed)."
     tar xzf "$tmp/ort.tgz" -C "$tmp"
     $SUDO cp "$tmp"/onnxruntime-linux-x64-${ORT_VERSION}/lib/libonnxruntime.so* /usr/local/lib/
     $SUDO ldconfig
@@ -134,10 +146,10 @@ else
     $SUDO ldconfig
     log "onnxruntime installed."
   else
-    warn "Could not fetch onnxruntime from GCS or github.com; the server won't run"
-    warn "until it is present (build/test still work). On Claude Code on the web,"
-    warn "microsoft/onnxruntime is unreachable outright (cross-owner GitHub restriction)"
-    warn "— publish the mirror with publish-dev-artifacts.sh."
+    warn "Could not fetch onnxruntime from the public GCS mirror or github.com; the"
+    warn "server won't run until it is present (build/test still work). On Claude"
+    warn "Code on the web, microsoft/onnxruntime is unreachable outright (cross-owner"
+    warn "GitHub restriction) — publish the mirror with publish-dev-artifacts.sh."
   fi
   rm -rf "$tmp"
 fi

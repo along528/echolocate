@@ -105,8 +105,8 @@ sandbox's network policy must allow them (see
 
 | Host | For |
 |------|-----|
-| `storage.googleapis.com` | libduckdb, onnxruntime, `vss`, and the CLAP ONNX model from `gs://cloud-crate-vector-db/dev-artifacts/` (tried first for all four) |
-| `github.com` + `objects.githubusercontent.com` | fallback for the above when GCS has no mirror or ADC isn't set up: libduckdb, onnxruntime, duckdb CLI, `ant` CLI release assets |
+| `storage.googleapis.com` | libduckdb + onnxruntime (public objects, no auth), and `vss` + the CLAP model (private, need ADC) — all from `gs://cloud-crate-vector-db/dev-artifacts/`, tried first for all four |
+| `github.com` + `objects.githubusercontent.com` | fallback for the above when GCS has no mirror or (for vss/CLAP) ADC isn't set up: libduckdb, onnxruntime, duckdb CLI, `ant` CLI release assets |
 | `extensions.duckdb.org` | fallback for the `vss` extension (also needed at service runtime for `LOAD vss`) |
 
 **Claude Code on the web additionally scopes `github.com` per repo owner, not
@@ -115,10 +115,16 @@ paths under this repo's owner — `github.com/duckdb/duckdb` and
 `github.com/microsoft/onnxruntime` 403 there unconditionally, and the
 `add_repo` tool can't add a cross-owner repo to widen that (cross-tier adds
 are rejected). Allowlisting the host in the environment's network policy does
-not fix this. This is why `setup-dev.sh` tries GCS first for every fetch: as
-long as `storage.googleapis.com` is reachable and a maintainer has run
-`publish-dev-artifacts.sh`, provisioning never touches those two repos on that
-substrate. GitHub-fallback still works fine on substrates without the
+not fix this. libduckdb and onnxruntime are the two packages this actually
+blocks (both are REQUIRED — one to build, one to run), so `setup-dev.sh`
+fetches them from a **public, unauthenticated** GCS URL first: no `gcloud`, no
+ADC, works even in a sandbox where `gcloud` isn't installed at all. Only those
+two specific objects are public (`publish-dev-artifacts.sh` sets
+`--predefined-acl=publicRead` on just them) — this bucket also serves the
+private audio corpus vector-rs streams in production, so nothing else in it is
+public. `vss` and the CLAP model stay on the ADC-gated `gcloud storage cp` path
+since they only affect the server's optional runtime features, not the ability
+to build/test. GitHub fallback still works fine on substrates without the
 per-owner restriction (a laptop, `Dockerfile.dev`, generic CI).
 
 An actionable one-time checklist for the Claude Code on the web environment lives
