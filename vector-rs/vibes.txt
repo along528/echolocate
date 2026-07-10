@@ -1,0 +1,56 @@
+# Vibe vocabulary for live per-track vibe chips.
+# One term per line; lines starting with '#' and blank lines are ignored.
+# Each term is embedded as-is with the CLAP text encoder at startup — the same
+# way it would behave as a /semantic-search query.
+
+# The 24 sonar suggested chips (keep in sync with sonar/src/suggested_chips.json)
+dreamy lo-fi
+smooth jazz
+late night sax
+glitchy IDM
+ambient drone
+funky bass
+ethereal vocals
+raw punk
+melancholic piano
+cosmic synth
+minimal techno
+orchestral swells
+boom bap
+shoegaze wall
+krautrock motorik
+bossa nova
+afrobeat horns
+breakbeats
+dub reggae
+surf rock reverb
+cinematic cello
+acid house
+whispery folk
+chiptune
+
+# Single-concept mood / texture terms
+dreamy
+aggressive
+hypnotic
+melancholic
+uplifting
+gritty
+spacious
+driving
+playful
+nocturnal
+euphoric
+haunting
+warm
+icy
+psychedelic
+groovy
+minimal
+lush
+distorted
+acoustic
+cinematic
+danceable
+meditative
+triumphant

@@ -9,3 +9,4 @@ pub mod semantic;
 pub mod stream;
 pub mod tracks;
 pub mod version;
+pub mod vibes;

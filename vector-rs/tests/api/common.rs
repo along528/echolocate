@@ -21,6 +21,7 @@ use tower::ServiceExt;
 use cloud_crate_vector::clap_onnx::ClapOnnxModel;
 use cloud_crate_vector::config::Config;
 use cloud_crate_vector::db::DbPool;
+use cloud_crate_vector::vibes::VibeAnchors;
 use cloud_crate_vector::{build_router, AppState};
 
 pub fn sample_db_path() -> String {
@@ -50,7 +51,7 @@ pub fn test_config() -> Config {
     }
 }
 
-fn base_state(onnx: Arc<Option<ClapOnnxModel>>) -> Arc<AppState> {
+fn base_state(onnx: Arc<Option<ClapOnnxModel>>, vibes: Arc<OnceLock<VibeAnchors>>) -> Arc<AppState> {
     let shared_pool = app_state_pool();
     Arc::new(AppState {
         config: Arc::new(test_config()),
@@ -63,6 +64,7 @@ fn base_state(onnx: Arc<Option<ClapOnnxModel>>) -> Arc<AppState> {
         // the production dist_expr path.
         v_mid_warm: Arc::new(AtomicBool::new(true)),
         v_clap_warm: Arc::new(AtomicBool::new(true)),
+        vibes,
     })
 }
 
@@ -81,14 +83,43 @@ fn app_state_pool() -> Arc<DbPool> {
     .clone()
 }
 
-/// The default test state: no CLAP model, no GCS/Gemini.
+/// The default test state: no CLAP model, no vibe anchors, no GCS/Gemini.
 pub fn app_state() -> Arc<AppState> {
     static STATE: OnceLock<Arc<AppState>> = OnceLock::new();
-    STATE.get_or_init(|| base_state(Arc::new(None))).clone()
+    STATE
+        .get_or_init(|| base_state(Arc::new(None), Arc::new(OnceLock::new())))
+        .clone()
 }
 
 pub fn app() -> Router {
     build_router(app_state())
+}
+
+/// A state whose vibe anchors are pre-set to 3 fake unit-basis vectors —
+/// deterministic coverage of the vibes SQL/cosine/top-k path without ORT.
+pub const FAKE_VIBES: [&str; 3] = ["calm", "fierce", "weird"];
+
+pub fn fake_vibes_app() -> Router {
+    static STATE: OnceLock<Arc<AppState>> = OnceLock::new();
+    let state = STATE
+        .get_or_init(|| {
+            let lock = OnceLock::new();
+            let matrix: Vec<Vec<f32>> = (0..FAKE_VIBES.len())
+                .map(|i| {
+                    let mut v = vec![0.0f32; 512];
+                    v[i] = 1.0;
+                    v
+                })
+                .collect();
+            lock.set(VibeAnchors {
+                vocab: FAKE_VIBES.iter().map(|s| s.to_string()).collect(),
+                matrix,
+            })
+            .ok();
+            base_state(Arc::new(None), Arc::new(lock))
+        })
+        .clone();
+    build_router(state)
 }
 
 /// State with the real CLAP ONNX model, or None (test should print a skip
@@ -114,7 +145,7 @@ pub fn onnx_state() -> Option<Arc<AppState>> {
                 }
             }
             match ClapOnnxModel::load(&dir) {
-                Ok(m) => Some(base_state(Arc::new(Some(m)))),
+                Ok(m) => Some(base_state(Arc::new(Some(m)), Arc::new(OnceLock::new()))),
                 Err(e) => {
                     eprintln!("SKIPPED: CLAP ONNX model failed to load: {e}");
                     None

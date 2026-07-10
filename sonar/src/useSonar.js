@@ -374,6 +374,33 @@ export function useSonar({ initialView = 'map' } = {}) {
     return m;
   }, [layers, candidates, playlist, probes, playingTrack]);
 
+  // ---- per-track vibe chips (live CLAP tags from the vector service) ----
+  // Batch-hydrated via /tracks/by-ids include_vibes for every track the UI
+  // knows about, cached per id. Rows the backend returns WITHOUT a vibes array
+  // (anchor embeddings still warming on a cold start) stay uncached, so the
+  // next track-set change retries; empty arrays are real "no chips" answers.
+  const vibesCacheRef = React.useRef(new Map()); // id -> [{vibe, score}]
+  const [vibesByTrackId, setVibesByTrackId] = React.useState(() => new Map());
+  React.useEffect(() => {
+    const needed = [...tracksById.keys()].filter((id) => !vibesCacheRef.current.has(id));
+    if (!needed.length) return undefined;
+    let alive = true;
+    (async () => {
+      try {
+        let got = false;
+        for (let i = 0; i < needed.length; i += 500) {
+          const rows = await API.getTracksVibes(needed.slice(i, i + 500));
+          if (!alive) return;
+          rows.forEach((t) => {
+            if (Array.isArray(t.vibes)) { vibesCacheRef.current.set(t.id, t.vibes); got = true; }
+          });
+        }
+        if (alive && got) setVibesByTrackId(new Map(vibesCacheRef.current));
+      } catch { /* chips are decoration — retry on the next track-set change */ }
+    })();
+    return () => { alive = false; };
+  }, [tracksById]);
+
   const playing = playingId ? (tracksById.get(playingId) || (playingTrack?.id === playingId ? playingTrack : null)) : null;
   const hover = hoverId ? tracksById.get(hoverId) : null;
   // Fall back to the retained playing track so the now-playing track stays
@@ -684,7 +711,7 @@ export function useSonar({ initialView = 'map' } = {}) {
     // derived
     isLayerShown, visibleLayers, displayLayers, displayVisibleLayers,
     anyLoading, allVisible, visibleTracks,
-    entryByTrackId, playlistById, tracksById, playing, playingOrigin, hover, selected,
+    entryByTrackId, playlistById, tracksById, vibesByTrackId, playing, playingOrigin, hover, selected,
     flatResults, vibeSuggestions, playlistTracks, navList, navSource,
     detail, detailPinned, isCandidate, playingTotal, sourceTagFor,
     // playlist ops

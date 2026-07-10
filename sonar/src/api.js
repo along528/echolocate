@@ -7,6 +7,12 @@ import { Cache } from './cache.js';
 
 const BASE_URL = import.meta.env.VITE_VECTOR_API_URL || '';
 
+// Optional override for the vibe-chip score threshold (backend default 0.25).
+// PR previews back onto the synthetic sample index, whose random vectors score
+// ~0 against every vibe anchor — the preview build bakes -1 here so chips are
+// visible. Unset in production builds.
+const VIBES_MIN_SCORE = parseFloat(import.meta.env.VITE_VIBES_MIN_SCORE ?? '');
+
 async function request(method, path, body = null, params = null) {
   let url = `${BASE_URL}${path}`;
   if (params) url += `?${new URLSearchParams(params)}`;
@@ -79,6 +85,15 @@ export const API = {
   // currently loaded in the UI. Returns a TrackResponse.
   mapNearest(x, y, source = 'fma') {
     return request('GET', '/map/nearest', null, { x, y, source });
+  },
+
+  // Batch-hydrate live vibe chips for up to 500 tracks. Each returned row is a
+  // TrackResponse plus vibes: [{vibe, score}] (absent while the backend's
+  // anchor embeddings are still warming — treat as "no chips yet, no retry").
+  getTracksVibes(ids) {
+    const body = { ids, include_vibes: true };
+    if (Number.isFinite(VIBES_MIN_SCORE)) body.vibes_min_score = VIBES_MIN_SCORE;
+    return request('POST', '/tracks/by-ids', body);
   },
 
   getStreamUrl(trackId) {

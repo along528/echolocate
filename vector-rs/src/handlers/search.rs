@@ -82,6 +82,7 @@ pub async fn search_tracks_text(
                 x: row.get(9)?,
                 y: row.get(10)?,
                 duration: row.get(11)?,
+                vibes: None,
             });
         }
 

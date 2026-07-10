@@ -3,14 +3,21 @@
 Things intentionally left out of the sonar map + list v1, with notes on
 how to bring them in later.
 
-## Per-track vibe chips
-The prototype showed 2–3 "vibe" tag chips per track (tooltip, list rows, now-playing).
-There is **no backend source** for discrete tags today — "vibes" are only query terms.
-v1 omits per-track chips; the vibe tagger still drives search by joining vibes into the
-semantic query.
-- **In progress:** classify each track against a fixed vibe vocabulary via CLAP similarity
-  (text-anchor each vibe, take top-k per track), store as a column, return in responses.
-  Tracked on its own branch/PR (`generate_vibes.py` + `vibes` column + `VibeChips`).
+## Per-track vibe chips — **DONE** (live, no DB column)
+- **Backend:** vector-rs embeds a fixed vibe vocabulary (`vector-rs/vibes.txt` — the 24
+  suggested chips + mood terms) with its in-process CLAP text encoder at startup and
+  serves top-k cosine against each track's stored `v_clap`:
+  `GET /tracks/{id}/vibes?k=&min_score=` and `POST /tracks/by-ids` with
+  `include_vibes:true` (+ optional `vibes_k` / `vibes_min_score`). Vibes are absent until
+  the anchors warm (~2s after boot) — chips are optional decoration, no retry loop.
+  The offline `generate_vibes.py` + `vibes` column path is superseded.
+- **Frontend:** `VibeChips` (sonar-utils) renders `.el-chip.is-sm` pills on desktop list
+  rows / detail bar / now-playing and mobile detail + now sheets; `useSonar` batch-hydrates
+  vibes for every known track via `API.getTracksVibes` (cached per id). Clicking a chip
+  launches that vibe as a search layer. PR previews backed by the synthetic sample index
+  bake `VITE_VIBES_MIN_SCORE=-1` (random vectors score ~0) so chips stay visible; prod
+  uses the backend default threshold. Tune `DEFAULT_MIN_SCORE` in `vector-rs/src/vibes.rs`
+  against the real index.
 
 ## Track duration (M:SS) in the list — **DONE** (needs DB rebuild to populate)
 `generate_db.py` now carries `duration` through to a `duration` column (it was already in

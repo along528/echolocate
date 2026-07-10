@@ -168,6 +168,12 @@ input { font-family: inherit; }
   font-size: 0.7rem;
   font-weight: var(--el-fw-regular);
 }
+/* Per-track vibe chips (live CLAP tags on list rows / detail / now-playing).
+   Rendered by the shared VibeChips component; clicking one launches that
+   vibe as a search layer. */
+.el-vibe-chips { display: flex; flex-wrap: wrap; gap: 4px; margin-top: 4px; }
+.el-chip.is-track-vibe { opacity: 0.85; }
+.el-chip.is-track-vibe:hover { opacity: 1; }
 .el-chip-remove {
   background: none; border: none; color: inherit; opacity: 0.5;
   font-size: 0.85rem; line-height: 1; padding: 0;

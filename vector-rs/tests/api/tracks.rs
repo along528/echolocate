@@ -65,6 +65,7 @@ async fn by_ids_roundtrip() {
     assert_eq!(returned, ids.into_iter().collect::<HashSet<_>>());
     for row in rows {
         assert!(row["source"].is_string());
+        assert!(row.get("vibes").is_none(), "no vibes field without include_vibes");
     }
 }
 

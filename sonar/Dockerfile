@@ -8,6 +8,10 @@ COPY . .
 #   docker build --build-arg VITE_VECTOR_API_URL=https://... .
 ARG VITE_VECTOR_API_URL
 ENV VITE_VECTOR_API_URL=$VITE_VECTOR_API_URL
+# Optional vibe-chip threshold override (empty = backend default 0.25);
+# previews backed by the synthetic sample index pass -1 to keep chips visible.
+ARG VITE_VIBES_MIN_SCORE
+ENV VITE_VIBES_MIN_SCORE=$VITE_VIBES_MIN_SCORE
 RUN npm run build
 
 # Stage 2: nginx static serve

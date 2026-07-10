@@ -259,6 +259,14 @@ async fn find_by_similarity(
 pub struct TracksByIdsRequest {
     pub ids: Vec<String>,
     pub source: Option<String>,
+    /// Attach live vibe chips to each track (no-op while anchors are warming).
+    #[serde(default)]
+    pub include_vibes: bool,
+    /// Optional overrides for the attached vibes (defaults: k=3, min_score=0.25).
+    /// A permissive min_score (e.g. -1) is how previews show chips against the
+    /// synthetic sample index, whose random vectors score near 0.
+    pub vibes_k: Option<usize>,
+    pub vibes_min_score: Option<f32>,
 }
 
 const MAX_IDS_PER_CALL: usize = 500;
@@ -276,8 +284,12 @@ pub async fn tracks_by_ids(
         )));
     }
     let pool = state.db_pool.clone();
+    let vibes_lock = state.vibes.clone();
     let ids = body.ids;
     let source = body.source;
+    let include_vibes = body.include_vibes;
+    let vibes_k = body.vibes_k.unwrap_or(crate::vibes::DEFAULT_TOP_K);
+    let vibes_min_score = body.vibes_min_score.unwrap_or(crate::vibes::DEFAULT_MIN_SCORE);
 
     tokio::task::spawn_blocking(move || {
         let conn = pool.get()?;
@@ -304,7 +316,36 @@ pub async fn tracks_by_ids(
         for id in &ids {
             params.push(id as &dyn duckdb::ToSql);
         }
-        let results = query_track_rows(&conn, &query, &params)?;
+        let mut results = query_track_rows(&conn, &query, &params)?;
+
+        // Vibes are decoration: silently absent while anchors are still warming.
+        if include_vibes {
+            if let Some(anchors) = vibes_lock.get() {
+                let vibe_query = format!("SELECT id, v_clap FROM tracks WHERE id IN ({placeholders})");
+                let id_params: Vec<&dyn duckdb::ToSql> =
+                    ids.iter().map(|id| id as &dyn duckdb::ToSql).collect();
+                let mut stmt = conn.prepare(&vibe_query)?;
+                let mut rows = stmt.query(id_params.as_slice())?;
+                let mut clap_by_id: std::collections::HashMap<String, Vec<f32>> =
+                    std::collections::HashMap::new();
+                while let Some(row) = rows.next()? {
+                    let id: String = row.get(0)?;
+                    let raw: duckdb::types::Value = row.get(1)?;
+                    clap_by_id.insert(id, crate::db::value_to_vec_f32(&raw));
+                }
+                for track in results.iter_mut() {
+                    if let Some(v_clap) = clap_by_id.get(&track.id) {
+                        track.vibes = Some(crate::vibes::top_vibes(
+                            anchors,
+                            v_clap,
+                            vibes_k,
+                            vibes_min_score,
+                        ));
+                    }
+                }
+            }
+        }
+
         pool.put(conn);
         Ok(Json(results))
     })
@@ -341,6 +382,7 @@ pub(crate) fn query_track_rows(
             x: row.get(9)?,
             y: row.get(10)?,
             duration: row.get(11)?,
+            vibes: None,
         });
     }
 
