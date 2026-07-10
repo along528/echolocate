@@ -7,8 +7,8 @@
 <h1 align="center">EchoLocate</h1>
 
 <p align="center">
-  Audio-embedding search over a music library — a 2D sonar map you can click,
-  a Rust vector-search engine, and an MCP server so AI agents can dig through the crate too.
+  Audio-embedding search over a music library — a 2D sonar map UI,
+  a Rust vector-search engine, and an MCP server that exposes the same search to AI agents.
 </p>
 
 <p align="center">
@@ -19,11 +19,11 @@
 
 ---
 
-Every track is embedded twice: [MERT](https://arxiv.org/abs/2306.00107) (768-dim) captures how it *sounds*, [CLAP](https://arxiv.org/abs/2206.04769) (512-dim) captures how it matches *language*. A PCA projection of the MERT vectors gives every track an `x,y` coordinate. From there, three ways in:
+Every track is embedded twice: [MERT](https://arxiv.org/abs/2306.00107) (768-dim) captures how it *sounds*, [CLAP](https://arxiv.org/abs/2206.04769) (512-dim) captures how it matches *language*. A PCA projection of the MERT vectors gives every track an `x,y` coordinate. There are three ways to explore it:
 
-- **Look** — [sonar.echolocate.app](https://sonar.echolocate.app/): the whole corpus as a 2D map. Click anywhere, even empty space, and the nearest track answers.
-- **Describe** — type "warm analog synths" or "aggressive drums with distorted guitar" and CLAP finds tracks that sound like the words.
-- **Delegate** — connect Claude (or any MCP client) to the remote MCP server and let an agent search, compare, and build playlists with the same primitives.
+- **In the browser** — [sonar.echolocate.app](https://sonar.echolocate.app/) renders the corpus as a 2D map; clicking any coordinate — including empty space — returns the nearest track in the corpus.
+- **By description** — a query like "warm analog synths" or "aggressive drums with distorted guitar" is embedded with CLAP and matched against the audio embeddings.
+- **Via agents** — Claude (or any MCP client) connects to the remote MCP server and gets the same search, similarity, and playlist primitives.
 
 <!-- TODO: screenshot of the sonar map at https://sonar.echolocate.app (desktop map view with results + a trail) — save to docs/assets/sonar-map.png and uncomment: -->
 <!-- <p align="center"><img src="docs/assets/sonar-map.png" alt="Sonar map showing search results and an interpolation trail" width="800"/></p> -->
@@ -33,10 +33,10 @@ Every track is embedded twice: [MERT](https://arxiv.org/abs/2306.00107) (768-dim
 React + Vite frontend, deployed as its own Cloud Run service at [sonar.echolocate.app](https://sonar.echolocate.app/).
 
 - **Map ⇄ List** views of the same results. The map is a 2D PCA of each track's MERT `v_mid` embedding, drawn over a dimmed backdrop sample of the full corpus (`GET /map/backdrop`) so results have spatial context.
-- **Click-to-probe**: clicking empty map space asks the backend for the globally nearest track to that coordinate (`GET /map/nearest`) — the whole corpus is clickable, not just what's loaded.
-- **Vibe chips**: per-track mood tags computed live by the vector service (`GET /tracks/{id}/vibes`) as CLAP cosine similarity against a fixed vocabulary — there is no genre column anywhere. Clicking a chip launches it as a new search layer.
+- **Click-to-probe**: clicking empty map space asks the backend for the globally nearest track to that coordinate (`GET /map/nearest`), so probing covers the full corpus, not just loaded results.
+- **Vibe chips**: per-track mood tags computed live by the vector service (`GET /tracks/{id}/vibes`) as CLAP cosine similarity against a fixed vocabulary — no genre metadata is stored. Clicking a chip launches it as a new search layer.
 - **Playlist builder**: layer searches, solo/hide them, then chain tracks into a reorderable playlist backed by sonic interpolation.
-- **Now-playing card** with a real seekable waveform — audio is streamed from GCS, decoded with the Web Audio API, and downsampled to peaks client-side.
+- **Now-playing card** with a seekable waveform computed from the actual audio — streamed from GCS, decoded with the Web Audio API, and downsampled to peaks client-side.
 - Separate desktop and mobile layouts driven by one shared state hook.
 
 Details: [`sonar/README.md`](sonar/README.md)
@@ -45,7 +45,7 @@ Details: [`sonar/README.md`](sonar/README.md)
 
 Rust/Axum vector-search service on Cloud Run. DuckDB with the VSS extension provides HNSW cosine indexes over both embedding spaces; the CLAP text encoder runs in-process via ONNX Runtime; Gemini 2.5 Flash optionally rewrites terse queries into descriptive acoustic captions before embedding.
 
-**The baked-index architecture** is the core trick. The full database is ~23 GB, and serving it over a GCS FUSE mount meant HNSW's random I/O pattern produced **~250 s cold starts**. Instead, a stripped ~1.4 GB index (metadata + `v_mid` + `v_clap` + map coordinates + HNSW indexes) is `COPY`'d into the container image as its own layer. Cloud Run gen2 streams image blocks lazily, and startup runs everything in parallel — page-cache preload, HNSW warmup on both indexes, ONNX model load, GCS and Gemini client init:
+The defining design decision is the **baked-index architecture**. The full database is ~23 GB, and serving it over a GCS FUSE mount meant HNSW's random I/O pattern produced **~250 s cold starts**. Instead, a stripped ~1.4 GB index (metadata + `v_mid` + `v_clap` + map coordinates + HNSW indexes) is `COPY`'d into the container image as its own layer. Cloud Run gen2 streams image blocks lazily, and startup runs everything in parallel — page-cache preload, HNSW warmup on both indexes, ONNX model load, GCS and Gemini client init:
 
 | Metric | Value |
 |--------|-------|
@@ -55,13 +55,13 @@ Rust/Axum vector-search service on Cloud Run. DuckDB with the VSS extension prov
 | Compute cost | ~$0–$0.10/user/day (scale-to-zero) |
 | Audio storage | ~$0.30/day (~1 TB FMA audio, GCS nearline) |
 
-**Interpolation** — the playlist math, several ways to get from track A to track B through real tracks:
+**Interpolation** — methods for constructing a path from one track to another through real tracks:
 
 - `greedy_walk` (default): walk the neighbor graph, each hop picking the track closest to the destination.
 - Recursive bisection: snap the vector midpoint of each segment to its nearest real track, then recurse into both halves.
 - `slerp`: spherical interpolation along the embedding hypersphere.
 - `linear`: straight vector averaging.
-- Bézier steering: bend the path through one or more "steer" tracks to change the vibe mid-journey.
+- Bézier steering: bend the path through one or more "steer" tracks to shape the character of the path.
 
 Details, endpoints, and the dev-sandbox docs: [`vector-rs/README.md`](vector-rs/README.md)
 
@@ -78,9 +78,9 @@ A remote MCP server (Starlette, OAuth2 + JWT) exposes the engine to any MCP clie
 | `echolocate_interpolate` | Tracks that sonically bridge two tracks (greedy walk / slerp / linear, optional steering) |
 | `echolocate_generate_playlist` | A complete playlist path between two tracks |
 
-So "make me a 20-track playlist that starts ambient and ends in breakbeat" becomes: two `semantic_search` calls to pick endpoints, one `generate_playlist` call to walk the space between them.
+A request like "a 20-track playlist that starts ambient and ends in breakbeat" decomposes into two `echolocate_semantic_search` calls to pick the endpoints and one `echolocate_generate_playlist` call to interpolate between them.
 
-**The repo itself is agent-ready.** A [SessionStart hook](.claude/hooks/session-start.sh) provisions a full Rust dev sandbox on every Claude Code on the web session — libduckdb, ONNX Runtime, the VSS extension, the CLAP model, and a committed 600-track sample index — so an agent lands in a container where `cargo test` exercises every API route end-to-end. See [`.claude/README.md`](.claude/README.md).
+The repository is also set up for agent development. A [SessionStart hook](.claude/hooks/session-start.sh) provisions a full Rust dev sandbox on every Claude Code on the web session — libduckdb, ONNX Runtime, the VSS extension, the CLAP model, and a committed 600-track sample index — so a session starts in a container where `cargo test` runs integration tests against every API route. See [`.claude/README.md`](.claude/README.md).
 
 ## 🚀 CI/CD
 
@@ -94,10 +94,10 @@ GitHub Actions, keyless via Workload Identity Federation (no long-lived service-
 | [`*-pr-preview`](.github/workflows/) | PR opened / updated | Deploys a tagged, no-traffic Cloud Run revision and comments the live URL on the PR |
 | [`*-pr-cleanup`](.github/workflows/) | PR closed | Tears the preview down |
 
-Two details worth stealing:
+Two notable details:
 
-- **Cross-service previews**: if a PR touches both `sonar/` and `vector-rs/`, the sonar preview automatically points at that same PR's vector-rs preview — a full-stack preview environment per PR, no config.
-- **Idempotent deploys**: `vector-rs-deploy` compares the commit SHA and the GCS index generation against the serving revision's env vars and skips the build entirely when nothing changed. PR previews bake the small committed sample index; only `main` pulls the real one.
+- **Cross-service previews**: if a PR touches both `sonar/` and `vector-rs/`, the sonar preview automatically points at that same PR's vector-rs preview — a full-stack preview environment per PR, with no additional configuration.
+- **Idempotent deploys**: `vector-rs-deploy` compares the commit SHA and the GCS index generation against the serving revision's env vars and skips the build entirely when nothing changed. PR previews bake the small committed sample index; only deploys from `main` fetch the production index.
 
 ## How it fits together
 
