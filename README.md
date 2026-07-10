@@ -1,137 +1,166 @@
 <p align="center">
-  <a href="https://echolocate.app/">
-    <img src="frontend/artwork.svg" alt="EchoLocate" width="140"/>
+  <a href="https://sonar.echolocate.app/">
+    <img src="sonar/public/assets/artwork.svg" alt="EchoLocate" width="140"/>
   </a>
 </p>
 
-# EchoLocate
+<h1 align="center">EchoLocate</h1>
 
-**[echolocate.app](https://echolocate.app/)** — EchoLocate is a music discovery system powered by MCP (Model Context Protocol), Google Cloud Run, DuckDB, and audio vector search. It exposes sonic similarity search and playlist generation via an MCP server, backed by a high-performance vector search service.
+<p align="center">
+  Audio-embedding search over a music library — a 2D sonar map you can click,
+  a Rust vector-search engine, and an MCP server so AI agents can dig through the crate too.
+</p>
 
-## Architecture
+<p align="center">
+  <a href="https://github.com/along528/echolocate/actions/workflows/vector-rs-ci.yml"><img src="https://github.com/along528/echolocate/actions/workflows/vector-rs-ci.yml/badge.svg?branch=main" alt="vector-rs CI"/></a>
+  <a href="https://github.com/along528/echolocate/actions/workflows/vector-rs-deploy.yml"><img src="https://github.com/along528/echolocate/actions/workflows/vector-rs-deploy.yml/badge.svg?branch=main" alt="vector-rs deploy"/></a>
+  <a href="https://github.com/along528/echolocate/actions/workflows/sonar-deploy.yml"><img src="https://github.com/along528/echolocate/actions/workflows/sonar-deploy.yml/badge.svg?branch=main" alt="sonar deploy"/></a>
+</p>
 
-- **`mcp/`**: Remote MCP server exposing 6 EchoLocate tools (`echolocate_*`). Handles OAuth2/JWT authentication and proxies requests to the vector service using Google Cloud ID tokens.
-- **`vector/`**: Python vector search service using DuckDB. Serves audio embeddings and supports sonic interpolation. Used as a build dependency for the Rust service.
-- **`vector-rs/`**: Rust/Axum vector search service (primary deployment). Baked-index architecture — DuckDB index is embedded in the container image, eliminating cold-start latency.
-- **`frontend/`**: Browser UI for exploring tracks with semantic search and interpolation. Publicly accessible at [echolocate.app](https://echolocate.app/).
-- **`embeddings/`**: Scripts for processing audio files, generating MERT and CLAP embeddings, and building the DuckDB database.
-- **`fma-ingest/`**: Cloud Run job for ingesting [Free Music Archive](https://github.com/mdeff/fma) data from GCS.
-- **`firestore/`**: Firestore security rules and deployment config (used by the semantic search cache).
+---
 
-## Features
+Every track is embedded twice: [MERT](https://arxiv.org/abs/2306.00107) (768-dim) captures how it *sounds*, [CLAP](https://arxiv.org/abs/2206.04769) (512-dim) captures how it matches *language*. A PCA projection of the MERT vectors gives every track an `x,y` coordinate. From there, three ways in:
 
-- **Sonic Search**: Find similar tracks based on audio embeddings ([MERT](https://arxiv.org/abs/2604.20270) model, 768-dim).
-- **Semantic Search**: Text-to-audio search using [CLAP](https://arxiv.org/abs/2206.04769) embeddings (512-dim). Queries are expanded by Vertex AI before embedding to improve recall on short or terse descriptions.
-- **Sonic Interpolation**: Generate smooth playlists between two tracks using recursive bisection — each step finds the nearest real track to the vector midpoint of the current segment, producing a gradual sonic path between two very different starting points. Supports an optional steering track to bend the path via Bézier interpolation.
-- **Frontend Explorer**: Browser UI with text search, semantic search, and interpolation playlist builder.
+- **Look** — [sonar.echolocate.app](https://sonar.echolocate.app/): the whole corpus as a 2D map. Click anywhere, even empty space, and the nearest track answers.
+- **Describe** — type "warm analog synths" or "aggressive drums with distorted guitar" and CLAP finds tracks that sound like the words.
+- **Delegate** — connect Claude (or any MCP client) to the remote MCP server and let an agent search, compare, and build playlists with the same primitives.
 
-## Performance
+<!-- TODO: screenshot of the sonar map at https://sonar.echolocate.app (desktop map view with results + a trail) — save to docs/assets/sonar-map.png and uncomment: -->
+<!-- <p align="center"><img src="docs/assets/sonar-map.png" alt="Sonar map showing search results and an interpolation trail" width="800"/></p> -->
 
-Cold start was reduced from ~45–60s to ~10–15s through: baked-index architecture (DuckDB index embedded in the container image), parallelised HNSW index warming with ONNX model loading, and migration to Rust for the vector service.
+## 🗺️ The sonar map — `sonar/`
+
+React + Vite frontend, deployed as its own Cloud Run service at [sonar.echolocate.app](https://sonar.echolocate.app/).
+
+- **Map ⇄ List** views of the same results. The map is a 2D PCA of each track's MERT `v_mid` embedding, drawn over a dimmed backdrop sample of the full corpus (`GET /map/backdrop`) so results have spatial context.
+- **Click-to-probe**: clicking empty map space asks the backend for the globally nearest track to that coordinate (`GET /map/nearest`) — the whole corpus is clickable, not just what's loaded.
+- **Vibe chips**: per-track mood tags computed live by the vector service (`GET /tracks/{id}/vibes`) as CLAP cosine similarity against a fixed vocabulary — there is no genre column anywhere. Clicking a chip launches it as a new search layer.
+- **Playlist builder**: layer searches, solo/hide them, then chain tracks into a reorderable playlist backed by sonic interpolation.
+- **Now-playing card** with a real seekable waveform — audio is streamed from GCS, decoded with the Web Audio API, and downsampled to peaks client-side.
+- Separate desktop and mobile layouts driven by one shared state hook.
+
+Details: [`sonar/README.md`](sonar/README.md)
+
+## ⚡ The engine — `vector-rs/`
+
+Rust/Axum vector-search service on Cloud Run. DuckDB with the VSS extension provides HNSW cosine indexes over both embedding spaces; the CLAP text encoder runs in-process via ONNX Runtime; Gemini 2.5 Flash optionally rewrites terse queries into descriptive acoustic captions before embedding.
+
+**The baked-index architecture** is the core trick. The full database is ~23 GB, and serving it over a GCS FUSE mount meant HNSW's random I/O pattern produced **~250 s cold starts**. Instead, a stripped ~1.4 GB index (metadata + `v_mid` + `v_clap` + map coordinates + HNSW indexes) is `COPY`'d into the container image as its own layer. Cloud Run gen2 streams image blocks lazily, and startup runs everything in parallel — page-cache preload, HNSW warmup on both indexes, ONNX model load, GCS and Gemini client init:
 
 | Metric | Value |
 |--------|-------|
-| Cold start | ~10–15s |
-| Semantic search p50 | ~250ms |
-| Semantic search p99 | ~600ms |
-| Compute cost | ~$0–$0.10/user/day (Cloud Run, min 0 instances) |
-| Audio storage | ~$0.30/day (~1TB FMA audio, GCS nearline) |
+| Cold start | ~250 s (FUSE) → **~10–15 s** (baked index, Rust) |
+| Semantic search p50 | ~250 ms |
+| Semantic search p99 | ~600 ms |
+| Compute cost | ~$0–$0.10/user/day (scale-to-zero) |
+| Audio storage | ~$0.30/day (~1 TB FMA audio, GCS nearline) |
 
-## Security Model
+**Interpolation** — the playlist math, several ways to get from track A to track B through real tracks:
 
-No load balancer — each service is accessed directly via its Cloud Run URL:
+- `greedy_walk` (default): walk the neighbor graph, each hop picking the track closest to the destination.
+- Recursive bisection: snap the vector midpoint of each segment to its nearest real track, then recurse into both halves.
+- `slerp`: spherical interpolation along the embedding hypersphere.
+- `linear`: straight vector averaging.
+- Bézier steering: bend the path through one or more "steer" tracks to change the vibe mid-journey.
 
-- **Frontend**: Public (`--allow-unauthenticated`, `--no-iap`). Custom domain `echolocate.app` via Cloud Run domain mapping.
-- **Vector service**: Public (`--allow-unauthenticated`) — read-only search. CORS restricted to `https://echolocate.app`. The MCP server has `roles/run.invoker` for service-to-service calls.
-- **MCP server**: Publicly reachable for the OAuth2 handshake (`/authorize`, `/token`). All sensitive routes protected by `AuthMiddleware`.
+Details, endpoints, and the dev-sandbox docs: [`vector-rs/README.md`](vector-rs/README.md)
 
-## Deployment
+## 🤖 Agents — `mcp/`
 
-The entire stack deploys to Google Cloud Run.
+A remote MCP server (Starlette, OAuth2 + JWT) exposes the engine to any MCP client:
 
-### Prerequisites
-- Google Cloud SDK (`gcloud`) with beta component, authenticated.
-- A Google Cloud Project with Cloud Run and Secret Manager enabled.
-- A GCS bucket containing your DuckDB file (for the vector service), or a baked `data/index.duckdb` for the Rust service.
+| Tool | What it does |
+|------|--------------|
+| `echolocate_sample` | Sample or page through tracks in the index |
+| `echolocate_similar` | Nearest neighbors to a track's MERT embedding |
+| `echolocate_text_search` | Metadata search by artist / album / title |
+| `echolocate_semantic_search` | Text-to-audio "vibe" search via CLAP, with optional AI query expansion |
+| `echolocate_interpolate` | Tracks that sonically bridge two tracks (greedy walk / slerp / linear, optional steering) |
+| `echolocate_generate_playlist` | A complete playlist path between two tracks |
 
-### Deploy all services
+So "make me a 20-track playlist that starts ambient and ends in breakbeat" becomes: two `semantic_search` calls to pick endpoints, one `generate_playlist` call to walk the space between them.
 
-```bash
-./deploy.sh
+**The repo itself is agent-ready.** A [SessionStart hook](.claude/hooks/session-start.sh) provisions a full Rust dev sandbox on every Claude Code on the web session — libduckdb, ONNX Runtime, the VSS extension, the CLAP model, and a committed 600-track sample index — so an agent lands in a container where `cargo test` exercises every API route end-to-end. See [`.claude/README.md`](.claude/README.md).
+
+## 🚀 CI/CD
+
+GitHub Actions, keyless via Workload Identity Federation (no long-lived service-account keys), path-filtered per service:
+
+| Workflow | Trigger | What it does |
+|----------|---------|--------------|
+| [`vector-rs-ci`](.github/workflows/vector-rs-ci.yml) | PR / push touching `vector-rs/**` | Provisions native deps, `cargo build --release` + `cargo test` |
+| [`vector-rs-deploy`](.github/workflows/vector-rs-deploy.yml) | Push to `main` | Bakes the ~1.4 GB production index from GCS, deploys, pins traffic |
+| [`sonar-deploy`](.github/workflows/sonar-deploy.yml) | Push to `main` | Builds with the live vector-rs URL baked in, deploys the serving revision |
+| [`*-pr-preview`](.github/workflows/) | PR opened / updated | Deploys a tagged, no-traffic Cloud Run revision and comments the live URL on the PR |
+| [`*-pr-cleanup`](.github/workflows/) | PR closed | Tears the preview down |
+
+Two details worth stealing:
+
+- **Cross-service previews**: if a PR touches both `sonar/` and `vector-rs/`, the sonar preview automatically points at that same PR's vector-rs preview — a full-stack preview environment per PR, no config.
+- **Idempotent deploys**: `vector-rs-deploy` compares the commit SHA and the GCS index generation against the serving revision's env vars and skips the build entirely when nothing changed. PR previews bake the small committed sample index; only `main` pulls the real one.
+
+## How it fits together
+
+```mermaid
+flowchart LR
+    subgraph offline ["Offline pipeline — embeddings/"]
+        audio["Audio files"] --> mert["MERT-v1-95M<br/>768-dim"]
+        audio --> clap["CLAP<br/>512-dim"]
+        mert --> full[("Full DuckDB<br/>~23 GB")]
+        clap --> full
+        full --> proj["PCA projection<br/>x,y per track"]
+        proj --> index[("Stripped index<br/>~1.4 GB + HNSW")]
+    end
+
+    index -- "baked into image" --> engine["vector-rs<br/>Rust · Axum · Cloud Run"]
+    gcs[("GCS<br/>~1 TB audio")] -- "streaming" --> engine
+    gemini["Gemini 2.5 Flash<br/>query expansion"] --- engine
+
+    engine --> sonar["sonar<br/>sonar.echolocate.app"]
+    engine --> mcp["MCP server<br/>OAuth2"]
+    mcp --> agents["Claude / MCP clients"]
+    firestore[("Firestore<br/>search cache")] --- sonar
 ```
 
-This deploys in order: vector service → MCP server → frontend.
+## Repo map
 
-### Set up Custom Domain
+| Directory | What it is |
+|-----------|------------|
+| [`sonar/`](sonar/) | Sonar map frontend (React + Vite) → [sonar.echolocate.app](https://sonar.echolocate.app/) |
+| [`vector-rs/`](vector-rs/) | Vector-search engine (Rust/Axum) — primary deployment |
+| [`mcp/`](mcp/) | Remote MCP server (OAuth2) exposing the `echolocate_*` tools |
+| [`embeddings/`](embeddings/) | MERT + CLAP pipeline, DB / projection / index builders |
+| [`echoes/`](echoes/) | Internal eval UI for search/label events → echoes.echolocate.app |
+| [`fma-ingest/`](fma-ingest/) | Cloud Run job ingesting [Free Music Archive](https://github.com/mdeff/fma) audio |
+| [`firestore/`](firestore/) | Security rules for the semantic-search cache |
+| [`vector/`](vector/) | Legacy Python vector service (kept for parity checks) |
+| [`frontend/`](frontend/) | Legacy browser UI → [echolocate.app](https://echolocate.app/) |
 
-After deploying, map the custom domain:
-
-```bash
-gcloud beta run domain-mappings create \
-    --service=cloud-crate-frontend \
-    --domain=echolocate.app \
-    --region=us-central1 \
-    --project=<YOUR_PROJECT>
-```
-
-Add the A/AAAA records shown by `gcloud beta run domain-mappings describe --domain=echolocate.app --region=us-central1` at your domain registrar. Cloud Run provisions a managed TLS certificate automatically.
-
-### Tear down old load balancer (one-time)
+## Quick start
 
 ```bash
-./teardown_lb.sh
-```
-
-### Local Development
-
-```bash
-# EchoLocate MCP Server (port 8080)
-cd mcp && python main.py
-
-# Vector Service — Rust (port 8080)
+# Vector engine (Rust) — port 8080
 cd vector-rs && INDEX_DB_PATH=../data/index.duckdb cargo run
 
-# Vector Service — Python legacy (port 8000)
-cd vector && uvicorn main:app --reload
+# Sonar frontend — port 5180
+cd sonar && npm install && VITE_VECTOR_API_URL=<vector-url> npm run dev
+
+# MCP server — port 8080
+cd mcp && python main.py
 ```
 
-The frontend automatically uses `http://localhost:8001` as the vector API base when served from localhost.
-
-## Verification
-
-```bash
-python vector/verify_service.py <VECTOR_URL>
-python mcp/verify_auth.py <MCP_URL>
-
-# Frontend (expect 200)
-curl -s -o /dev/null -w '%{http_code}' https://echolocate.app/
-```
-
-## Troubleshooting
-
-### Vector API calls fail with CORS errors
-
-**Cause**: `CORS_ALLOW_ORIGINS` on the vector service doesn't include the frontend origin.
-
-**Fix**: Verify the vector service has `CORS_ALLOW_ORIGINS=https://echolocate.app`. Redeploy with `cd vector && ./deploy.sh` if needed.
+Pushes to `main` deploy automatically via the workflows above; `./deploy.sh` does a full manual deploy (vector-rs → MCP → frontend → firestore). Per-service deploy scripts, domain mapping, environment variables, and verification live in [`vector-rs/README.md`](vector-rs/README.md), [`sonar/README.md`](sonar/README.md), and [`mcp/`](mcp/).
 
 ## Roadmap
 
-### Interpolation
-- **Asymmetric phase matching** — Score transitions using the delta between outro and intro segment vectors, treating similarity as directional rather than symmetric.
-- **k-NN shortest path** — Build a nearest-neighbor graph and find actual shortest paths rather than recursive bisection.
-- **Maximum marginal relevance** — Balance similarity to the target path with diversity to avoid repetitive track selections.
-
-### Explainability
-- **Audio-to-text generation** — Generate natural language descriptions from audio embeddings to explain why tracks are considered similar.
-
-### Embeddings
-- **Wider audio sampling** — Average embeddings across multiple windows per track rather than a single 5-second segment.
-- **CLAP for interpolation** — Explore using CLAP embeddings alongside MERT for the interpolation path.
+- **Asymmetric phase matching** — score transitions on the delta between one track's *outro* and the next track's *intro* embeddings, treating similarity as directional.
+- **k-NN shortest path** — build a nearest-neighbor graph and find true shortest paths instead of recursive bisection.
+- **Audio-to-text explanations** — generate natural-language descriptions from embeddings to explain *why* two tracks are neighbors.
+- **Wider audio sampling** — average embeddings across multiple windows per track rather than a single 5-second segment.
 
 ## Acknowledgements
 
 - [Free Music Archive (FMA)](https://github.com/mdeff/fma) — audio dataset used for indexing.
-- [MERT: Acoustic Music Understanding Model with Large-Scale Self-Supervised Training](https://arxiv.org/abs/2604.20270) — audio embedding model for sonic similarity.
-- [CLAP: Learning Audio Concepts from Natural Language Supervision](https://arxiv.org/abs/2206.04769) — text-to-audio embedding model for semantic search.
-- [HNSW: Efficient and Robust Approximate Nearest Neighbor Search](https://arxiv.org/abs/1603.09320) — algorithm powering the DuckDB vector indexes.
+- [MERT: Acoustic Music Understanding Model with Large-Scale Self-Supervised Training](https://arxiv.org/abs/2306.00107) — audio embeddings for sonic similarity.
+- [CLAP: Learning Audio Concepts from Natural Language Supervision](https://arxiv.org/abs/2206.04769) — text-to-audio embeddings for semantic search.
+- [HNSW: Efficient and Robust Approximate Nearest Neighbor Search](https://arxiv.org/abs/1603.09320) — the algorithm behind the DuckDB vector indexes.
