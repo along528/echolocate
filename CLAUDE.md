@@ -110,6 +110,11 @@ The `tracks` table has columns:
 - `GET /map/nearest?x=&y=&source=` — the single globally-nearest track to a clicked
   coordinate (Euclidean distance in the normalized [0,1] projection space); powers the
   sonar frontend's "click empty space to probe the whole corpus" interaction
+- `GET /map/regions?source=&k=&n=` — "constellations": k-means clusters of a projected
+  corpus sample, each named by scoring its mean `v_clap` against the vibe anchors
+  (`vector-rs/src/regions.rs`). Cached per (source,k,n) for the process lifetime;
+  `ready:false` while anchors warm (same contract as `/tracks/{id}/vibes`). The sonar
+  map renders these as faint clickable place names
 
 ### Interpolation Methods
 - **greedy_walk**: Graph traversal finding neighbors closest to target (default)

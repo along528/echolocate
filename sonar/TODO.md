@@ -19,6 +19,21 @@ how to bring them in later.
   uses the backend default threshold. Tune `DEFAULT_MIN_SCORE` in `vector-rs/src/vibes.rs`
   against the real index.
 
+## Constellations: auto-named map neighborhoods — **DONE**
+- **Backend:** `GET /map/regions?source=&k=&n=` (vector-rs) k-means-clusters a sample of
+  the projected corpus and names each cluster by scoring its unit-mean `v_clap` against
+  the same vibe anchors that power the chips (`src/regions.rs`; labels unique while the
+  vocabulary lasts, strongest-affinity cluster picks first). Cached per (source,k,n) per
+  process so every client sees the same names; `ready:false` while anchors warm.
+- **Frontend:** both views render the regions as faint uppercase place names over the
+  starfield (font size scales with cluster population; dark halo for legibility). On
+  desktop a name is clickable — it launches that vibe as a search layer — and a map
+  button toggles the layer (persisted). Mobile renders them as decoration only,
+  counter-rotated so they stay horizontal under the two-finger rotate gesture.
+- **Tuning knobs:** `k` (clusters, default 6) and `n` (sample size, default 1500) via
+  query params; vocabulary is `vector-rs/vibes.txt`. On the synthetic sample index the
+  names are arbitrary (random vectors) but the plumbing is fully exercised.
+
 ## Track duration (M:SS) in the list — **DONE** (needs DB rebuild to populate)
 `generate_db.py` now carries `duration` through to a `duration` column (it was already in
 the embedding JSONL), `generate_index_db.py` copies it into the baked index, and the

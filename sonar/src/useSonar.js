@@ -131,6 +131,30 @@ export function useSonar({ initialView = 'map' } = {}) {
   const [backdrop] = React.useState(makeGalaxy);
   const [probes, setProbes] = React.useState([]);
 
+  // ---- constellations: auto-named neighborhoods of the map ----
+  // Fetched once from /map/regions (k-means clusters of the projection, named
+  // by the backend's CLAP vibe anchors). The anchors warm up in the background
+  // on a cold start (ready:false), so retry a few times on a slow cadence —
+  // labels are decoration, never worth hammering the service for.
+  const [regions, setRegions] = React.useState([]);
+  const [showRegions, setShowRegions] = React.useState(boot?.showRegions ?? true);
+  React.useEffect(() => {
+    let alive = true;
+    let attempts = 0;
+    let timer = null;
+    const load = async () => {
+      attempts += 1;
+      try {
+        const r = await API.mapRegions('fma');
+        if (!alive) return;
+        if (r.ready) { setRegions(r.regions || []); return; }
+      } catch { /* fall through to retry */ }
+      if (alive && attempts < 8) timer = setTimeout(load, 5000);
+    };
+    load();
+    return () => { alive = false; if (timer) clearTimeout(timer); };
+  }, []);
+
   const [playlist, setPlaylist] = React.useState(boot?.playlist || []);
   const [candidates, setCandidates] = React.useState(null); // { aId, bId, tracks }
   const [labelsByTrackId, setLabelsByTrackId] = React.useState({});
@@ -200,10 +224,10 @@ export function useSonar({ initialView = 'map' } = {}) {
     try {
       const slim = layers.map(({ loading, ...l }) => ({ ...l, fetched: true }));
       localStorage.setItem(STORE_KEY, JSON.stringify({
-        view, layers: slim, playlist, colorIdx: colorIdxRef.current,
+        view, layers: slim, playlist, colorIdx: colorIdxRef.current, showRegions,
       }));
     } catch { /* quota / serialization — ignore */ }
-  }, [view, layers, playlist]);
+  }, [view, layers, playlist, showRegions]);
 
   // Run the actual API call for one layer.
   const runLayerSearch = React.useCallback(async (layer) => {
@@ -702,6 +726,8 @@ export function useSonar({ initialView = 'map' } = {}) {
     soloLayerId, zoom, setZoom,
     // whole-corpus probing
     backdrop, probes, probeAt, clearProbes,
+    // constellations
+    regions, showRegions, setShowRegions,
     // refs / audio
     audioRef,
     onAudioTimeUpdate, onAudioLoadedMetadata, onAudioEnded, onAudioPause, onAudioPlay,

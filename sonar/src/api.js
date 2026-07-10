@@ -80,6 +80,13 @@ export const API = {
     return request('GET', '/map/backdrop', null, { source, n });
   },
 
+  // Constellations: auto-named neighborhoods of the projection. Returns
+  // { ready, source, k, regions: [{label, x, y, count, spread, score}] } —
+  // ready:false while the backend's vibe anchors are still warming up.
+  mapRegions(source = 'fma', k = 6) {
+    return request('GET', '/map/regions', null, { source, k });
+  },
+
   // The single globally-nearest track to a clicked map coordinate (x,y in
   // [0,1]). Used for click-to-probe across the whole corpus — finds tracks not
   // currently loaded in the UI. Returns a TrackResponse.

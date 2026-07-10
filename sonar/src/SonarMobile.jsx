@@ -146,6 +146,7 @@ export default function SonarMobile({ s }) {
     view, setView, vibeQuery, setVibeQuery, aboutOpen, setAboutOpen,
     layers, playingId, isPlaying, progress, peaks, selectedId, setSelectedId,
     backdrop, probes, probeAt, clearProbes,
+    regions, showRegions,
     candidates, labelsByTrackId, soloLayerId, zoom, setZoom,
     addVibeLayer, addSeedLayer, removeLayer, toggleLayerVisible, toggleSolo,
     showAllLayers, hideAllLayers,
@@ -645,6 +646,27 @@ export default function SonarMobile({ s }) {
                   })}
                 </g>
               )}
+              {/* Constellation labels — auto-named neighborhoods (see the
+                  desktop view). Decoration only on mobile (the gesture model
+                  is reticle-tuning, not tap), counter-rotated so the names
+                  stay horizontal when the map is rotated. */}
+              {showRegions && regions.length > 0 && (() => {
+                const maxCount = Math.max(...regions.map((r) => r.count));
+                const deg = ((zoom.r || 0) * 180) / Math.PI;
+                return (
+                  <g style={{ pointerEvents: 'none' }}>
+                    {regions.map((r) => {
+                      const x = MPAD + r.x * (MVW - 2 * MPAD);
+                      const y = MPAD + (1 - r.y) * (MVH - 2 * MPAD);
+                      return (
+                        <text key={'rg' + r.label} className="ld-region-label" x={x} y={y}
+                          fontSize={(9.5 + 6.5 * (r.count / maxCount)) * iz}
+                          transform={`rotate(${-deg} ${x} ${y})`}>{r.label}</text>
+                      );
+                    })}
+                  </g>
+                );
+              })()}
               {playing && [44, 90, 150, 220].map((r, i) => { const p = dotPosM(playing); return <circle key={i} cx={p.x} cy={p.y} r={r * iz} fill="none" stroke="var(--el-yellow-500)" strokeOpacity={[0.55, 0.35, 0.22, 0.12][i]} strokeWidth={iz} style={{ pointerEvents: 'none' }} />; })}
               {/* The now-playing rings must always sit on a dot. If the playing
                   track isn't otherwise drawn (its layer was hidden/deleted and

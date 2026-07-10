@@ -34,6 +34,7 @@ export default function SonarDesktop({ s }) {
     isPlaying, progress, peaks, playlist, candidates, labelsByTrackId, soloLayerId,
     zoom, setZoom,
     backdrop, probes, probeAt, clearProbes,
+    regions, showRegions, setShowRegions,
     addVibeLayer, addSeedLayer, restoreLayer, removeLayer, clearLayers,
     toggleLayerVisible, toggleSolo, showAllLayers,
     visibleLayers, displayLayers, displayVisibleLayers,
@@ -456,6 +457,29 @@ export default function SonarDesktop({ s }) {
                     </g>
                   )}
 
+                  {/* constellation labels — auto-named neighborhoods of the
+                      projection (k-means + CLAP anchors, via /map/regions).
+                      Clicking a name searches that vibe. */}
+                  {showRegions && regions.length > 0 && (() => {
+                    const maxCount = Math.max(...regions.map((r) => r.count));
+                    return (
+                      <g className="ld-regions">
+                        {regions.map((r) => {
+                          const x = PAD + r.x * (VW - 2 * PAD);
+                          const y = PAD + (1 - r.y) * (VH - 2 * PAD);
+                          return (
+                            <text key={'rg_' + r.label} className="ld-region-label"
+                              x={x} y={y} fontSize={(9.5 + 6.5 * (r.count / maxCount)) * iz}
+                              onClick={(e) => { e.stopPropagation(); addVibeLayer(r.label); }}>
+                              <title>{`Search “${r.label}”`}</title>
+                              {r.label}
+                            </text>
+                          );
+                        })}
+                      </g>
+                    );
+                  })()}
+
                   {/* sonar rings on playing dot */}
                   {playing && [50, 100, 160, 230].map((r, i) => {
                     const pos = dotPos(playing);
@@ -585,13 +609,27 @@ export default function SonarDesktop({ s }) {
                   <IconInfo size={12} />
                   <span className="ld-info-pop">
                     A 2D map of the tracks' MERT audio embeddings (PCA projection). Dots that sit close together
-                    sound similar — the axes themselves aren't meaningful.
+                    sound similar — the axes themselves aren't meaningful. The faint place names are constellations:
+                    neighborhoods auto-named from their tracks' CLAP embeddings. Click one to search that vibe.
                   </span>
                 </span>
               </div>
 
               {/* zoom controls */}
               <div className="ld-zoom">
+                {regions.length > 0 && (
+                  <button className={'lo-btn-icon ' + (showRegions ? 'is-active' : '')}
+                    title={showRegions ? 'Hide constellation names' : 'Show constellation names'}
+                    onClick={() => setShowRegions((v) => !v)}>
+                    <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round">
+                      <circle cx="5" cy="18" r="1.6" fill="currentColor" stroke="none" />
+                      <circle cx="10" cy="9" r="1.6" fill="currentColor" stroke="none" />
+                      <circle cx="18" cy="13" r="1.6" fill="currentColor" stroke="none" />
+                      <circle cx="19" cy="5" r="1.2" fill="currentColor" stroke="none" />
+                      <path d="M5 18L10 9l8 4M18 13l1-8" opacity="0.55" />
+                    </svg>
+                  </button>
+                )}
                 <button className="lo-btn-icon" title="Zoom in" onClick={() => zoomBy(1.25)}><IconZoomIn size={16} /></button>
                 <button className="lo-btn-icon" title="Zoom out" onClick={() => zoomBy(1 / 1.25)}><IconZoomOut size={16} /></button>
                 <button className="lo-btn-icon" title="Reset view" onClick={resetZoom} disabled={zoom.k === 1 && zoom.x === 0 && zoom.y === 0}><IconRecenter size={16} /></button>

@@ -792,6 +792,27 @@
   display: flex; flex-direction: column; gap: 6px;
 }
 .ld-zoom .lo-btn-icon:disabled { opacity: 0.4; cursor: default; }
+.ld-zoom .lo-btn-icon.is-active { color: var(--el-fg-primary); border-color: var(--el-border-strong); }
+
+/* Constellation labels — faint sea-chart place names over the starfield.
+   A dark halo (paint-order stroke) keeps them legible over backdrop dots. */
+.ld-region-label {
+  fill: var(--el-fg-secondary);
+  opacity: 0.6;
+  text-anchor: middle;
+  text-transform: uppercase;
+  letter-spacing: 0.16em;
+  font-weight: 600;
+  paint-order: stroke;
+  stroke: rgba(10, 10, 18, 0.8);
+  stroke-width: 3px;
+  cursor: pointer;
+  transition: opacity 0.15s ease;
+  user-select: none;
+  -webkit-user-select: none;
+}
+.ld-region-label:hover { opacity: 1; fill: var(--el-fg-primary); }
+
 /* clickable playlist-edge midpoint marker brightens on hover */
 .ld-edge .ld-edge-mid { transition: opacity .15s ease; }
 .ld-edge:hover .ld-edge-mid { opacity: 1; }
