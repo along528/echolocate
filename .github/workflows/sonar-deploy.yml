@@ -74,11 +74,32 @@ jobs:
 
       - name: Deploy serving revision (100% traffic)
         run: |
-          gcloud run deploy "$SERVICE" \
+          set -euo pipefail
+          NEWREV="$(gcloud run deploy "$SERVICE" \
             --image "${{ steps.vars.outputs.image }}" \
             --region "$REGION" --project "$PROJECT_ID" \
             --platform managed \
             --allow-unauthenticated \
             --ingress all \
             --port 8080 \
+            --quiet \
+            --format='value(status.latestCreatedRevisionName)')"
+          echo "Deployed revision: $NEWREV"
+
+          # Explicitly route 100% traffic to the revision we just created. A plain
+          # `gcloud run deploy` does NOT move traffic when the service is pinned to
+          # a specific revision — and the PR preview deploys (--no-traffic --tag)
+          # leave it pinned, so without this the new revision would sit at 0%.
+          # Pinning to the exact revision (not --to-latest, which a later preview
+          # deploy would re-pin away from) makes every deploy deterministic.
+          # Mirrors the same fix in vector-rs-deploy.yml.
+          gcloud run services update-traffic "$SERVICE" \
+            --region "$REGION" --project "$PROJECT_ID" \
+            --to-revisions "$NEWREV=100" \
             --quiet
+
+      - name: Report serving traffic
+        run: |
+          gcloud run services describe "$SERVICE" \
+            --region "$REGION" --project "$PROJECT_ID" \
+            --format='value(status.traffic)'
