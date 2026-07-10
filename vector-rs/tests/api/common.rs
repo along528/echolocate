@@ -65,6 +65,7 @@ fn base_state(onnx: Arc<Option<ClapOnnxModel>>, vibes: Arc<OnceLock<VibeAnchors>
         v_mid_warm: Arc::new(AtomicBool::new(true)),
         v_clap_warm: Arc::new(AtomicBool::new(true)),
         vibes,
+        regions_cache: Arc::new(std::sync::Mutex::new(std::collections::HashMap::new())),
     })
 }
 

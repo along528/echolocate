@@ -182,6 +182,7 @@ async fn main() {
         v_mid_warm: v_mid_warm.clone(),
         v_clap_warm: v_clap_warm.clone(),
         vibes: vibe_anchors,
+        regions_cache: Arc::new(std::sync::Mutex::new(std::collections::HashMap::new())),
     });
 
     let app = build_router(state);

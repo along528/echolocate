@@ -147,6 +147,41 @@ pub struct MapPoint {
     pub y: f64,
 }
 
+/// Query parameters for GET /map/regions
+#[derive(Debug, Deserialize)]
+pub struct MapRegionsQuery {
+    pub k: Option<usize>,
+    pub n: Option<i64>,
+    pub source: Option<String>,
+}
+
+/// One named neighborhood of the sonar map: a k-means cluster of the 2D
+/// projection labeled with its best-matching vibe-anchor term.
+#[derive(Debug, Serialize, Clone)]
+pub struct MapRegion {
+    pub label: String,
+    /// Cluster centroid in the normalized [0,1] projection space.
+    pub x: f64,
+    pub y: f64,
+    /// Number of sampled tracks in the cluster.
+    pub count: usize,
+    /// RMS member distance to the centroid (projection units) — a size hint.
+    pub spread: f64,
+    /// Cosine between the cluster's mean v_clap and the label's anchor.
+    pub score: f32,
+}
+
+/// Response for GET /map/regions. `ready` is false while the vibe anchors are
+/// still warming up (or the CLAP model is unavailable) — same contract as
+/// /tracks/{id}/vibes: regions are optional decoration, never retry-loop hard.
+#[derive(Debug, Serialize, Clone)]
+pub struct MapRegionsResponse {
+    pub ready: bool,
+    pub source: String,
+    pub k: usize,
+    pub regions: Vec<MapRegion>,
+}
+
 /// One vibe chip: vocabulary term + cosine score against the track's v_clap.
 #[derive(Debug, Serialize, Clone)]
 pub struct VibeScore {

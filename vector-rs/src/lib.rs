@@ -7,13 +7,15 @@ pub mod gemini;
 pub mod handlers;
 pub mod interpolation;
 pub mod models;
+pub mod regions;
 pub mod vibes;
 
 use axum::extract::DefaultBodyLimit;
 use axum::routing::{get, post};
 use axum::Router;
+use std::collections::HashMap;
 use std::sync::atomic::AtomicBool;
-use std::sync::{Arc, OnceLock};
+use std::sync::{Arc, Mutex, OnceLock};
 use tower_http::cors::{AllowOrigin, CorsLayer};
 use tower_http::trace::{DefaultOnResponse, TraceLayer};
 use tracing::Level;
@@ -38,6 +40,9 @@ pub struct AppState {
     /// Vibe anchor embeddings, set once by the background warmup task.
     /// Empty until warm (or forever, without the CLAP model).
     pub vibes: Arc<OnceLock<vibes::VibeAnchors>>,
+    /// Computed map constellations, cached per (source, k, n) for the process
+    /// lifetime so every client sees the same place names.
+    pub regions_cache: Arc<Mutex<HashMap<(String, usize, i64), models::MapRegionsResponse>>>,
 }
 
 pub fn build_router(state: Arc<AppState>) -> Router {
@@ -57,6 +62,7 @@ pub fn build_router(state: Arc<AppState>) -> Router {
         .route("/interpolate/playlist", post(handlers::playlist::interpolate_playlist))
         .route("/map/backdrop", get(handlers::map::backdrop))
         .route("/map/nearest", get(handlers::map::nearest))
+        .route("/map/regions", get(handlers::map::map_regions))
         .route("/stream/{track_id}", get(handlers::stream::stream_audio))
         .route("/version", get(handlers::version::get_version))
         .route(

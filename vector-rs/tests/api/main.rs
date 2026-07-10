@@ -14,6 +14,7 @@ mod common;
 mod interpolate;
 mod map;
 mod misc;
+mod regions;
 mod search;
 mod tracks;
 mod vibes;
