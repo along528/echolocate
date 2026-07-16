@@ -1,0 +1,26 @@
+[project]
+name = "echolocate-finetune"
+version = "0.1.0"
+description = "CLAP fine-tuning for EchoLocate: baseline eval + local inference parity"
+requires-python = "==3.12.*"
+dependencies = [
+    # Pinned to the production embedding pipeline (embeddings/requirements.txt)
+    "transformers==4.46.0",
+    "torch==2.2.2",
+    "torchaudio==2.2.2",
+    "librosa==0.10.1",
+    "setuptools>=68,<80",  # librosa 0.10.1 imports pkg_resources; removed from setuptools>=81
+    "numpy<2.0.0",
+    # Eval / snapshot tooling
+    "duckdb>=1.1,<2",
+    "soundfile>=0.12",
+    "pyarrow>=15",
+    "google-cloud-storage>=2.14",
+]
+
+[tool.uv]
+# Reproducibility: keep the lockfile authoritative.
+package = false
+
+[dependency-groups]
+dev = []

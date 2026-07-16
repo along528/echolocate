@@ -37,6 +37,13 @@ setup_iap_log_2.txt
 # Rust
 vector-rs/target/
 
+# Fine-tuning workspace (finetune/)
+finetune/.venv/
+finetune/data/
+finetune/results/
+finetune/checkpoints/
+finetune/**/__pycache__/
+
 # Echoes
 echoes/dist/
 echoes/node_modules/
