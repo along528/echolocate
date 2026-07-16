@@ -19,8 +19,14 @@ RUN apt-get update && apt-get install -y pkg-config libssl-dev cmake g++ curl un
 WORKDIR /app
 
 # Download pre-built libduckdb (avoids compiling DuckDB C++ from source)
+ARG TARGETARCH
 ENV DUCKDB_VERSION=1.2.2
-RUN curl -L "https://github.com/duckdb/duckdb/releases/download/v${DUCKDB_VERSION}/libduckdb-linux-amd64.zip" -o /tmp/libduckdb.zip && \
+RUN case "$TARGETARCH" in \
+      amd64) DUCKDB_ARCH=amd64 ;; \
+      arm64) DUCKDB_ARCH=aarch64 ;; \
+      *) echo "unsupported TARGETARCH: $TARGETARCH" >&2; exit 1 ;; \
+    esac && \
+    curl -L "https://github.com/duckdb/duckdb/releases/download/v${DUCKDB_VERSION}/libduckdb-linux-${DUCKDB_ARCH}.zip" -o /tmp/libduckdb.zip && \
     unzip /tmp/libduckdb.zip -d /tmp/libduckdb && \
     cp /tmp/libduckdb/libduckdb.so /usr/local/lib/ && \
     cp /tmp/libduckdb/duckdb.h /usr/local/include/ && \
@@ -47,15 +53,25 @@ RUN cargo build --release
 
 # Download ONNX Runtime shared library for the runtime stage
 RUN ORT_VERSION="1.23.0" && \
+    case "$TARGETARCH" in \
+      amd64) ORT_ARCH=x64 ;; \
+      arm64) ORT_ARCH=aarch64 ;; \
+      *) echo "unsupported TARGETARCH: $TARGETARCH" >&2; exit 1 ;; \
+    esac && \
     apt-get update && apt-get install -y curl && \
-    curl -L "https://github.com/microsoft/onnxruntime/releases/download/v${ORT_VERSION}/onnxruntime-linux-x64-${ORT_VERSION}.tgz" \
+    curl -L "https://github.com/microsoft/onnxruntime/releases/download/v${ORT_VERSION}/onnxruntime-linux-${ORT_ARCH}-${ORT_VERSION}.tgz" \
     | tar xz -C /tmp && \
     mkdir -p /app/ort_lib && \
-    cp /tmp/onnxruntime-linux-x64-${ORT_VERSION}/lib/libonnxruntime.so* /app/ort_lib/
+    cp /tmp/onnxruntime-linux-${ORT_ARCH}-${ORT_VERSION}/lib/libonnxruntime.so* /app/ort_lib/
 
 # Pre-install DuckDB VSS extension
-RUN apt-get install -y unzip wget && \
-    wget -q "https://github.com/duckdb/duckdb/releases/download/v1.2.0/duckdb_cli-linux-amd64.zip" -O /tmp/duckdb.zip && \
+RUN case "$TARGETARCH" in \
+      amd64) CLI_ARCH=amd64 ;; \
+      arm64) CLI_ARCH=aarch64 ;; \
+      *) echo "unsupported TARGETARCH: $TARGETARCH" >&2; exit 1 ;; \
+    esac && \
+    apt-get install -y unzip wget && \
+    wget -q "https://github.com/duckdb/duckdb/releases/download/v1.2.0/duckdb_cli-linux-${CLI_ARCH}.zip" -O /tmp/duckdb.zip && \
     unzip /tmp/duckdb.zip -d /tmp && \
     /tmp/duckdb -c "INSTALL vss;" && \
     mkdir -p /app/duckdb_extensions && \
