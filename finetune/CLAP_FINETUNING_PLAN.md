@@ -48,27 +48,50 @@ Tasks:
 
 ---
 
-## Phase 2 — Dataset construction
+## Phase 2 — Dataset construction  ✅ (FMA only)
 
-**Objective:** Build contrastive (audio, text) pairs from data the owner already has, with leakage-safe splits.
+**Objective:** Build contrastive (audio, text) pairs from the **FMA corpus** with leakage-safe splits.
 
-Text sources, in priority order:
-1. **Discogs metadata** (via Record Crate export or Discogs data dump for owned releases): genre, style tags, artist, year, label. Template into natural-language captions ("free jazz with fire-music tenor saxophone, ESP-Disk, 1966").
-2. **Wire review language**: the owner maintains a markdown tracking doc of Wire-reviewed albums. Where a library album matches a tracked review, use the descriptive vocabulary (map review adjectives to caption templates — do **not** reproduce review sentences verbatim; generate paraphrased captions, both for copyright hygiene and to avoid overfitting to editorial prose style).
-3. **Synthetic captions**: use a local LLM (Ollama/LM Studio, OpenAI-compatible endpoint on localhost) to generate 3–5 caption variants per track from the structured metadata. Log all generations.
+**Scope decision (2026-07-16):** This fine-tune targets FMA data *only* — no personal library,
+Discogs, or Wire vocabulary. The Phase 0 eval set is 100% `source=fma`, so training and
+evaluation domains now match. Everything below is FMA-metadata-driven. Implemented in
+`src/data/` (see `README.md` Phase 2 for commands); outputs land in `data/dataset/` (gitignored).
 
-Audio processing:
-- Chunk tracks into the model's native window (typically 10s for CLAP). Sample N chunks per track (skip first/last 5% to avoid silence/fade). Each chunk inherits the track's captions.
-- Hard negatives: within-genre negatives matter most for this library (distinguishing free jazz from spiritual jazz is the whole point). Build a negative-sampling map keyed on Discogs style tags.
+Text sources (FMA metadata dump at `/Volumes/Samsung/Projects/echolocate/data/fma/fma_metadata/`):
+1. **Template captions** (`captions.py`) — deterministic, seeded per track from `tracks.csv` +
+   `genres.csv` + `echonest.csv`: genre names (leaf + top-level via the genre hierarchy), cleaned
+   user tags, decade, artist location, and Echonest audio-feature words ("high-energy",
+   "acoustic", "instrumental", …). **No artist/album/track names** (captions describe sound, not
+   identity). Genre-or-tags required; vacuous tracks (~1.3%) are dropped.
+2. **LLM paraphrases** (`captions_llm.py`) — a local Ollama `qwen3:30b-a3b` rewrites the
+   structured metadata into 3 evocative sonic descriptions per track. Resumable (append-only
+   JSONL cache keyed by track_id), training-split-first, every generation logged. Multi-day for
+   the full corpus, so it runs in the background; the manifest folds captions in wherever they
+   exist and training can start on templates alone.
 
-Splits:
-- **Split by album, never by chunk or track.** Target 80/10/10 train/val/test. Verify no artist appears in both train and test where the library allows (best-effort for prolific artists; document exceptions).
-- Ensure the Phase 0 eval query set's judged tracks land in the test split, or exclude them from training entirely.
+Audio processing (`build_manifest.py`):
+- Each 30 s FMA clip → three native 10 s CLAP windows at offsets 0/10/20 s (offset recorded;
+  the Phase 3 dataloader crops on the fly). Each chunk inherits the track's caption list.
+- Hard negatives: `hard_negatives.parquet` maps each leaf genre → its training track_ids, for
+  packing within-genre negatives into contrastive batches.
 
-Deliverables: `finetune/data/` builder scripts, a `dataset_stats.md` (pair counts, genre distribution, caption length stats), and a manifest Parquet.
+Splits (`splits.py`):
+- Start from FMA's official `set.split`. Harden it with a **connected-components leakage check**:
+  group tracks by the artist↔album graph (linked if they share an artist_id or album_id) and give
+  each whole component one split (majority; stricter split wins ties). This catches compilation
+  albums that chain artists across splits — on the full corpus this moved ~8.1k tracks.
+- The 238 Phase 0 qrels-judged tracks are reassigned to a `holdout` split and excluded from the
+  manifest entirely, so they never train but stay available for the Phase 4 retrieval eval.
 
-**Exit criteria:** ≥ 5k audio-caption pairs (more is fine), stats reviewed, leakage check script passes.
-⛔ **Checkpoint: human spot-checks ~30 random caption/audio pairs for quality.**
+Deliverables: `src/data/` builder scripts, `manifest.parquet`, `hard_negatives.parquet`, and
+`dataset_stats.md` (pair counts, genre distribution, caption length/source stats, leakage result).
+
+**Result (templates-only):** 103,810 tracks · 311,430 chunks · **1.26M (chunk, caption) pairs**
+(far above the ≥5k floor). Leakage check passes (0 after repair); rebuild is byte-identical.
+
+**Exit criteria:** ≥ 5k audio-caption pairs ✅, stats reviewed, leakage check passes ✅.
+⛔ **Checkpoint: human spot-checks ~30 random caption/audio pairs** via
+`uv run python -m src.data.spot_check --n 30`.
 
 ---
 
@@ -145,9 +168,12 @@ echolocate/
     checkpoints/        # LoRA adapters (gitignored)
 ```
 
-## Open questions for the human (answer before Phase 2)
+## Open questions — resolved
 
-1. Which exact CLAP checkpoint is production using (HF repo + revision)?
-2. Where does the eval query set's ground truth come from, and is it safe to hold out those tracks from training?
-3. Should MERT embeddings stay untouched for now (recommended: yes — one variable at a time)?
-4. Preferred local LLM endpoint for synthetic captions (Ollama model name / port)?
+1. **CLAP checkpoint:** `laion/clap-htsat-unfused` @ `8fa0f1c6…` (see `MODEL_CARD.md`).
+2. **Eval ground truth / holdout:** Echoes relevance labels → `qrels_2026-07-14.parquet`; the 238
+   judged FMA tracks are held out of training (Phase 2 `holdout` split).
+3. **MERT untouched:** yes — CLAP only, one variable at a time.
+4. **Local LLM:** Ollama `qwen3:30b-a3b` at `localhost:11434` (`captions_llm.py`).
+5. **Training domain:** FMA only (no library/Discogs/Wire), decided 2026-07-16.
+6. **Splits:** FMA official `set.split`, hardened with the connected-components leakage repair.
