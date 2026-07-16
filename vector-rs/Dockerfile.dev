@@ -30,8 +30,14 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 RUN cargo install cargo-watch --locked
 
 # libduckdb (links the `duckdb` crate)
+ARG TARGETARCH
 ENV DUCKDB_VERSION=1.2.2
-RUN curl -fL "https://github.com/duckdb/duckdb/releases/download/v${DUCKDB_VERSION}/libduckdb-linux-amd64.zip" -o /tmp/libduckdb.zip && \
+RUN case "$TARGETARCH" in \
+      amd64) DUCKDB_ARCH=amd64 ;; \
+      arm64) DUCKDB_ARCH=aarch64 ;; \
+      *) echo "unsupported TARGETARCH: $TARGETARCH" >&2; exit 1 ;; \
+    esac && \
+    curl -fL "https://github.com/duckdb/duckdb/releases/download/v${DUCKDB_VERSION}/libduckdb-linux-${DUCKDB_ARCH}.zip" -o /tmp/libduckdb.zip && \
     unzip /tmp/libduckdb.zip -d /tmp/libduckdb && \
     cp /tmp/libduckdb/libduckdb.so /usr/local/lib/ && \
     cp /tmp/libduckdb/duckdb.h /tmp/libduckdb/duckdb.hpp /usr/local/include/ && \
@@ -41,9 +47,14 @@ ENV DUCKDB_INCLUDE_DIR=/usr/local/include
 
 # onnxruntime (dlopen'd at runtime via the ort load-dynamic feature)
 RUN ORT_VERSION="1.23.0" && \
-    curl -fL "https://github.com/microsoft/onnxruntime/releases/download/v${ORT_VERSION}/onnxruntime-linux-x64-${ORT_VERSION}.tgz" \
+    case "$TARGETARCH" in \
+      amd64) ORT_ARCH=x64 ;; \
+      arm64) ORT_ARCH=aarch64 ;; \
+      *) echo "unsupported TARGETARCH: $TARGETARCH" >&2; exit 1 ;; \
+    esac && \
+    curl -fL "https://github.com/microsoft/onnxruntime/releases/download/v${ORT_VERSION}/onnxruntime-linux-${ORT_ARCH}-${ORT_VERSION}.tgz" \
       | tar xz -C /tmp && \
-    cp /tmp/onnxruntime-linux-x64-${ORT_VERSION}/lib/libonnxruntime.so* /usr/local/lib/ && \
+    cp /tmp/onnxruntime-linux-${ORT_ARCH}-${ORT_VERSION}/lib/libonnxruntime.so* /usr/local/lib/ && \
     ldconfig
 ENV ORT_DYLIB_PATH=/usr/local/lib/libonnxruntime.so
 
@@ -51,7 +62,12 @@ ENV ORT_DYLIB_PATH=/usr/local/lib/libonnxruntime.so
 # The CLI version MUST match libduckdb above (1.2.2): the extension is written to
 # ~/.duckdb/extensions/v<CLI_VERSION>/..., and the runtime engine only looks under
 # its own version dir. A mismatched CLI (e.g. 1.2.0) lands it where LOAD can't find it.
-RUN wget -q "https://github.com/duckdb/duckdb/releases/download/v${DUCKDB_VERSION}/duckdb_cli-linux-amd64.zip" -O /tmp/duckdb.zip && \
+RUN case "$TARGETARCH" in \
+      amd64) CLI_ARCH=amd64 ;; \
+      arm64) CLI_ARCH=aarch64 ;; \
+      *) echo "unsupported TARGETARCH: $TARGETARCH" >&2; exit 1 ;; \
+    esac && \
+    wget -q "https://github.com/duckdb/duckdb/releases/download/v${DUCKDB_VERSION}/duckdb_cli-linux-${CLI_ARCH}.zip" -O /tmp/duckdb.zip && \
     unzip /tmp/duckdb.zip -d /tmp && \
     /tmp/duckdb -c "INSTALL vss;" && \
     rm -rf /tmp/duckdb.zip /tmp/duckdb
