@@ -19,12 +19,16 @@ RUN apt-get update && apt-get install -y pkg-config libssl-dev cmake g++ curl un
 WORKDIR /app
 
 # Download pre-built libduckdb (avoids compiling DuckDB C++ from source)
+# TARGETARCH is only auto-populated by BuildKit; Cloud Build uses the legacy
+# docker builder, where it expands to empty — fall back to the image's own
+# Debian arch, which uses the same amd64/arm64 names.
 ARG TARGETARCH
 ENV DUCKDB_VERSION=1.2.2
-RUN case "$TARGETARCH" in \
+RUN ARCH="${TARGETARCH:-$(dpkg --print-architecture)}" && \
+    case "$ARCH" in \
       amd64) DUCKDB_ARCH=amd64 ;; \
       arm64) DUCKDB_ARCH=aarch64 ;; \
-      *) echo "unsupported TARGETARCH: $TARGETARCH" >&2; exit 1 ;; \
+      *) echo "unsupported arch: $ARCH" >&2; exit 1 ;; \
     esac && \
     curl -L "https://github.com/duckdb/duckdb/releases/download/v${DUCKDB_VERSION}/libduckdb-linux-${DUCKDB_ARCH}.zip" -o /tmp/libduckdb.zip && \
     unzip /tmp/libduckdb.zip -d /tmp/libduckdb && \
@@ -53,10 +57,11 @@ RUN cargo build --release
 
 # Download ONNX Runtime shared library for the runtime stage
 RUN ORT_VERSION="1.23.0" && \
-    case "$TARGETARCH" in \
+    ARCH="${TARGETARCH:-$(dpkg --print-architecture)}" && \
+    case "$ARCH" in \
       amd64) ORT_ARCH=x64 ;; \
       arm64) ORT_ARCH=aarch64 ;; \
-      *) echo "unsupported TARGETARCH: $TARGETARCH" >&2; exit 1 ;; \
+      *) echo "unsupported arch: $ARCH" >&2; exit 1 ;; \
     esac && \
     apt-get update && apt-get install -y curl && \
     curl -L "https://github.com/microsoft/onnxruntime/releases/download/v${ORT_VERSION}/onnxruntime-linux-${ORT_ARCH}-${ORT_VERSION}.tgz" \
@@ -65,10 +70,11 @@ RUN ORT_VERSION="1.23.0" && \
     cp /tmp/onnxruntime-linux-${ORT_ARCH}-${ORT_VERSION}/lib/libonnxruntime.so* /app/ort_lib/
 
 # Pre-install DuckDB VSS extension
-RUN case "$TARGETARCH" in \
+RUN ARCH="${TARGETARCH:-$(dpkg --print-architecture)}" && \
+    case "$ARCH" in \
       amd64) CLI_ARCH=amd64 ;; \
       arm64) CLI_ARCH=aarch64 ;; \
-      *) echo "unsupported TARGETARCH: $TARGETARCH" >&2; exit 1 ;; \
+      *) echo "unsupported arch: $ARCH" >&2; exit 1 ;; \
     esac && \
     apt-get install -y unzip wget && \
     wget -q "https://github.com/duckdb/duckdb/releases/download/v1.2.0/duckdb_cli-linux-${CLI_ARCH}.zip" -O /tmp/duckdb.zip && \

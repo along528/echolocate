@@ -76,9 +76,12 @@ MODEL_VERSION="mert-v1-95m+clap-htsat"
 # Build from repo root so Docker context includes both vector/ and vector-rs/
 cd ..
 
-# Build and push the image
+# Build and push the image. Cloud Run only runs linux/amd64, so pin the platform
+# rather than inherit the host's — an arm64 workstation would otherwise build and
+# push an image Cloud Run cannot execute. On amd64 hosts this is a no-op; on arm64
+# it builds under emulation (slow but correct).
 echo "Building image..."
-docker build -f vector-rs/Dockerfile -t "${IMAGE}" .
+docker build --platform linux/amd64 -f vector-rs/Dockerfile -t "${IMAGE}" .
 echo "Pushing image..."
 docker push "${IMAGE}"
 
