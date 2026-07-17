@@ -8,6 +8,8 @@ name: ci
 # passing) avoids that. Supersedes the old vector-rs-ci.yml.
 
 on:
+  push:
+    branches: [main]
   pull_request:
     branches: [main]
 
