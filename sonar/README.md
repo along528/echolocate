@@ -2,8 +2,8 @@
 
 Standalone React + Vite implementation of the "sonar map + list" redesign,
 deployed as its own Cloud Run service (`cloud-crate-sonar`) at **sonar.echolocate.app**
-(Cloud Run domain mapping, mirroring the `echoes/` service), separate from the legacy
-`frontend/`.
+(Cloud Run domain mapping, mirroring the `echoes/` service). It replaced the
+first-generation browser UI, which is archived on the `legacy` branch.
 
 ## Local development
 ```bash

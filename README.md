@@ -25,6 +25,8 @@ Every track is embedded twice: [MERT](https://arxiv.org/abs/2306.00107) (768-dim
 - **By description** — a query like "warm analog synths" or "aggressive drums with distorted guitar" is embedded with CLAP and matched against the audio embeddings.
 - **Via agents** — Claude (or any MCP client) connects to the remote MCP server and gets the same search, similarity, and playlist primitives.
 
+The reasoning behind the architecture — why DuckDB+VSS over a vector database, why the index is baked into the container image, why two embedding models, what the 2D projection trades away — is written up in [**DESIGN.md**](DESIGN.md).
+
 <!-- TODO: screenshot of the sonar map at https://sonar.echolocate.app (desktop map view with results + a trail) — save to docs/assets/sonar-map.png and uncomment: -->
 <!-- <p align="center"><img src="docs/assets/sonar-map.png" alt="Sonar map showing search results and an interpolation trail" width="800"/></p> -->
 
@@ -45,6 +47,8 @@ Details: [`sonar/README.md`](sonar/README.md)
 
 Rust/Axum vector-search service on Cloud Run. DuckDB with the VSS extension provides HNSW cosine indexes over both embedding spaces; the CLAP text encoder runs in-process via ONNX Runtime; Gemini 2.5 Flash optionally rewrites terse queries into descriptive acoustic captions before embedding.
 
+The service is a ground-up rewrite of the original Python implementation. The Python service stayed deployed as a **differential-testing oracle** during the migration — one script ([`verify_service.py`](vector-rs/scripts/verify_service.py)) ran identical requests against both and compared endpoint-by-endpoint before cutover. It now lives on the [`legacy`](https://github.com/along528/echolocate/tree/legacy) branch; the rewrite story is in [DESIGN.md](DESIGN.md).
+
 The defining design decision is the **baked-index architecture**. The full database is ~23 GB, and serving it over a GCS FUSE mount meant HNSW's random I/O pattern produced **~250 s cold starts**. Instead, a stripped ~1.4 GB index (metadata + `v_mid` + `v_clap` + map coordinates + HNSW indexes) is `COPY`'d into the container image as its own layer. Cloud Run gen2 streams image blocks lazily, and startup runs everything in parallel — page-cache preload, HNSW warmup on both indexes, ONNX model load, GCS and Gemini client init:
 
 | Metric | Value |
@@ -55,6 +59,8 @@ The defining design decision is the **baked-index architecture**. The full datab
 | Compute cost | ~$0–$0.10/user/day (scale-to-zero) |
 | Audio storage | ~$0.30/day (~1 TB FMA audio, GCS nearline) |
 
+The cold-start comparison bundles two changes: the storage strategy (FUSE mount → baked index) and the runtime (Python → Rust). The mount was the dominant cost — HNSW random reads over a network filesystem — while the rewrite removed the interpreter/framework startup tax and enabled the fully parallel warmup. The two effects weren't measured separately; [DESIGN.md](DESIGN.md) breaks down the reasoning.
+
 **Interpolation** — methods for constructing a path from one track to another through real tracks:
 
 - `greedy_walk` (default): walk the neighbor graph, each hop picking the track closest to the destination.
@@ -64,6 +70,25 @@ The defining design decision is the **baked-index architecture**. The full datab
 - Bézier steering: bend the path through one or more "steer" tracks to shape the character of the path.
 
 Details, endpoints, and the dev-sandbox docs: [`vector-rs/README.md`](vector-rs/README.md)
+
+## 📏 Retrieval quality — `finetune/` + `echoes/`
+
+Semantic search quality is measured, not eyeballed. The loop:
+
+1. **Label in the app** — every search is logged as a `SearchEvent`; relevance labels (`relevant` / `borderline` / `wrong`) applied to results become `LabelEvent`s. Both land in GCS via the engine's `/labels/*` endpoints.
+2. **Review** — [echoes.echolocate.app](https://echoes.echolocate.app/) is an internal inspector UI over the raw event stream.
+3. **Freeze** — [`finetune/src/eval/build_qrels.py`](finetune/src/eval/build_qrels.py) dedupes the labels into a versioned qrels file: currently **252 graded judgments over 38 queries** (from 724 search events).
+4. **Score** — [`run_baseline.py`](finetune/src/eval/run_baseline.py) replays each query deterministically against a corpus snapshot and reports **NDCG@10** (graded, exponential gain), **recall@10**, and **judged@10 coverage** — the trust signal for how much of each top-10 is actually judged:
+
+| Query subset | n | NDCG@10 | Recall@10 | judged@10 |
+|---|---|---|---|---|
+| All scored | 34 | **0.439** | 0.510 | 0.38 |
+| Well-judged (≥5 judgments) | 17 | **0.581** | 0.658 | 0.72 |
+| Best-judged (≥10 judgments) | 11 | **0.642** | 0.710 | 0.87 |
+
+The harness has already earned its keep: replaying **raw** queries instead of their Gemini-expanded captions collapses NDCG@10 from ~0.44 to **~0.09** — the query expansion isn't cosmetic, it carries the retrieval path for short queries. Full methodology, per-query results, and the honest caveats (FMA-only labels, sparse judgments) are in [`finetune/BASELINE.md`](finetune/BASELINE.md).
+
+This baseline is frozen as the yardstick for the next step: **LoRA fine-tuning CLAP** on the personal library ([plan](finetune/CLAP_FINETUNING_PLAN.md)). Groundwork done so far: local-inference parity with production proven (min cosine 0.9997 over 50 tracks, [`MODEL_CARD.md`](finetune/MODEL_CARD.md)) and a 1.26M-pair contrastive dataset built with album-leakage-safe splits and all eval-judged tracks held out. Training is next — see Roadmap.
 
 ## 🤖 Agents — `mcp/`
 
@@ -130,11 +155,12 @@ flowchart LR
 | [`vector-rs/`](vector-rs/) | Vector-search engine (Rust/Axum) — primary deployment |
 | [`mcp/`](mcp/) | Remote MCP server (OAuth2) exposing the `echolocate_*` tools |
 | [`embeddings/`](embeddings/) | MERT + CLAP pipeline, DB / projection / index builders |
-| [`echoes/`](echoes/) | Internal eval UI for search/label events → echoes.echolocate.app |
+| [`echoes/`](echoes/) | Eval-label inspector over search/label events → echoes.echolocate.app |
+| [`finetune/`](finetune/) | CLAP fine-tuning workspace — NDCG@10 eval harness, frozen baseline, contrastive dataset |
 | [`fma-ingest/`](fma-ingest/) | Cloud Run job ingesting [Free Music Archive](https://github.com/mdeff/fma) audio |
 | [`firestore/`](firestore/) | Security rules for the semantic-search cache |
-| [`vector/`](vector/) | Legacy Python vector service (kept for parity checks) |
-| [`frontend/`](frontend/) | Legacy browser UI → [echolocate.app](https://echolocate.app/) |
+
+The original Python vector service and first-generation browser UI are archived on the [`legacy`](https://github.com/along528/echolocate/tree/legacy) branch — see the rewrite story in [DESIGN.md](DESIGN.md).
 
 ## Quick start
 
@@ -149,10 +175,12 @@ cd sonar && npm install && VITE_VECTOR_API_URL=<vector-url> npm run dev
 cd mcp && python main.py
 ```
 
-Pushes to `main` deploy automatically via the workflows above; `./deploy.sh` does a full manual deploy (vector-rs → MCP → frontend → firestore). Per-service deploy scripts, domain mapping, environment variables, and verification live in [`vector-rs/README.md`](vector-rs/README.md), [`sonar/README.md`](sonar/README.md), and [`mcp/`](mcp/).
+Pushes to `main` deploy automatically via the workflows above; `./deploy.sh` does a full manual deploy (vector-rs → MCP → firestore). Per-service deploy scripts, domain mapping, environment variables, and verification live in [`vector-rs/README.md`](vector-rs/README.md), [`sonar/README.md`](sonar/README.md), and [`mcp/`](mcp/).
 
 ## Roadmap
 
+- **CLAP LoRA fine-tuning** — fine-tune the CLAP audio encoder on the personal library (`finetune/`). Baseline frozen (NDCG@10 0.44 scored / 0.64 best-judged), inference parity proven, training dataset built; LoRA training and post-tune eval are next.
+- **Retire the legacy apex domain** — repoint [echolocate.app](https://echolocate.app/) from the archived first-generation UI to the sonar map.
 - **Asymmetric phase matching** — score transitions on the delta between one track's *outro* and the next track's *intro* embeddings, treating similarity as directional.
 - **k-NN shortest path** — build a nearest-neighbor graph and find true shortest paths instead of recursive bisection.
 - **Audio-to-text explanations** — generate natural-language descriptions from embeddings to explain *why* two tracks are neighbors.

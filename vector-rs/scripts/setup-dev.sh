@@ -202,7 +202,7 @@ else
   else
     warn "Could not fetch the CLAP model from the public GCS mirror. /semantic-search"
     warn "and server startup need it. Options: publish it with publish-dev-artifacts.sh,"
-    warn "  or export it locally: python vector/export_clap_text.py --output-dir $CLAP_DIR"
+    warn "  or export it locally: python vector-rs/scripts/export_clap_text.py --output-dir $CLAP_DIR"
   fi
 fi
 

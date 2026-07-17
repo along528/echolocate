@@ -1,6 +1,6 @@
 # vector-rs
 
-Rust rewrite of the Cloud Crate vector search service. Drop-in replacement for `vector/` — same HTTP API, same DuckDB database, same ONNX model.
+Rust rewrite of the Cloud Crate vector search service. Drop-in replacement for the original Python service (now archived on the [`legacy`](https://github.com/along528/echolocate/tree/legacy) branch) — same HTTP API, same DuckDB database, same ONNX model. During the migration the Python service was kept running as a differential-testing oracle: `scripts/verify_service.py` was run against both services to confirm identical behavior before cutover (see [DESIGN.md](../DESIGN.md)).
 
 ## Why Rust?
 
@@ -50,7 +50,7 @@ Defaults: `PORT=8000`. Requires `data/index.duckdb` to exist (see [Baked-Index A
 
 ### Native
 
-Requires `libduckdb` v1.2.2 and `libonnxruntime` v1.23.0 on your library path, plus a CLAP ONNX model directory (generate with `python vector/export_clap_text.py`).
+Requires `libduckdb` v1.2.2 and `libonnxruntime` v1.23.0 on your library path, plus a CLAP ONNX model directory (generate with `python vector-rs/scripts/export_clap_text.py`).
 
 ```bash
 cargo build --release
@@ -259,7 +259,7 @@ cd embeddings && python generate_index_db.py
 
 ## Docker Build
 
-The Dockerfile is a 3-stage build that must be run from the **repo root** (needs access to `vector/` for the ONNX export and `data/` for the baked index):
+The Dockerfile is a 3-stage build that must be run from the **repo root** (needs access to `vector-rs/scripts/` for the ONNX export and `data/` for the baked index):
 
 ```bash
 docker build -f vector-rs/Dockerfile -t cloud-crate-vector-rs .
@@ -288,11 +288,10 @@ Deploys as `cloud-crate-vector-rs` on Cloud Run with the baked index. No GCS FUS
 
 ```bash
 # Run the verification script against the Rust service
-python vector/verify_service.py https://cloud-crate-vector-rs-ie7zxu4hbq-uc.a.run.app
-
-# Compare against the Python service
-python vector/verify_service.py https://cloud-crate-vector-ie7zxu4hbq-uc.a.run.app
+python vector-rs/scripts/verify_service.py https://cloud-crate-vector-rs-ie7zxu4hbq-uc.a.run.app
 ```
+
+During the Python→Rust migration this script doubled as a differential-testing oracle — run against both the Rust and Python services to compare behavior endpoint-by-endpoint before cutover. The Python service now lives on the [`legacy`](https://github.com/along528/echolocate/tree/legacy) branch.
 
 ## Environment Variables
 

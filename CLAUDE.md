@@ -16,30 +16,29 @@ The project consists of these services:
    - 6 tools: `echolocate_*` (sample, similar, interpolate, generate_playlist, text_search, semantic_search)
    - Entry point: `mcp/main.py`
 
-2. **`vector/`** - Vector search service (FastAPI) — legacy Python implementation
-   - DuckDB with VSS extension for vector similarity search
-   - CLAP model for semantic text-to-audio search (lazy-loaded)
-   - Interpolation algorithms: greedy walk, SLERP, linear, Bezier curves
-   - Mounted GCS bucket for database file in Cloud Run
-   - Entry point: `vector/main.py`
-
-3b. **`vector-rs/`** - Vector search service (Rust/Axum) — primary deployment
-   - Same DuckDB/VSS stack, rewritten in Rust with Axum
+2. **`vector-rs/`** - Vector search service (Rust/Axum) — primary deployment
+   - DuckDB with VSS extension for vector similarity search; interpolation algorithms: greedy walk, SLERP, linear, Bezier curves
    - **Baked-index architecture**: A stripped index DB (`data/index.duckdb`, ~1.4GB) containing only `v_mid` + `v_clap` + metadata is baked into the Docker image. Cloud Run streams container image blocks on demand, eliminating GCS FUSE cold-start latency.
    - `INDEX_DB_PATH` env var points to the baked index; falls back to `DB_PATH` (GCS mount) when unset
    - No GCS FUSE mount needed — audio streaming uses the GCS client API directly
    - Entry point: `vector-rs/src/main.rs`
+   - The original Python implementation (`vector/`) and first-gen UI (`frontend/`) are archived on the `legacy` branch
 
-4. **`sonar/`** - Sonar-map frontend (React + Vite) — map/list redesign
+3. **`sonar/`** - Sonar-map frontend (React + Vite)
    - "Sonar map + list" UI: 2D embedding-space scatter (from track `x,y`) with Map⇄List toggle, vibe tagger, trail/playlist builder, now-playing card
-   - Talks to the vector service via `VITE_VECTOR_API_URL`; deployed as its own Cloud Run service (`cloud-crate-sonar`) at `sonar.echolocate.app` (domain mapping, like `echoes/`), separate from `frontend/`
+   - Talks to the vector service via `VITE_VECTOR_API_URL`; deployed as its own Cloud Run service (`cloud-crate-sonar`) at `sonar.echolocate.app` (domain mapping, like `echoes/`)
    - Map dot positions come from the `/map/backdrop` sample + per-result `x,y`; see `sonar/TODO.md` for deferred items
 
-5. **`embeddings/`** - Audio embedding pipeline (local processing)
+4. **`embeddings/`** - Audio embedding pipeline (local processing)
    - MERT model (`m-a-p/MERT-v1-95M`) for 768-dim audio embeddings
    - CLAP model for 512-dim text-matchable embeddings
    - Segments audio into intro/mid/outro (5s each)
    - Outputs JSONL which is then loaded into DuckDB
+
+5. **`finetune/`** - CLAP fine-tuning workspace (local, MacBook MPS)
+   - NDCG@10 / recall@10 eval harness (`src/eval/`) over human relevance labels; frozen baseline in `BASELINE.md`
+   - Labels flow: in-app labeling → vector-rs `/labels/*` → GCS → `echoes/` inspector UI → qrels
+   - Phased plan in `CLAP_FINETUNING_PLAN.md`; design rationale for the whole system in root `DESIGN.md`
 
 ## Common Commands
 
@@ -52,9 +51,7 @@ source .venv/bin/activate
 ```bash
 ./deploy.sh                        # Deploy all services to Cloud Run
 cd mcp && ./deploy.sh              # Deploy EchoLocate MCP server only
-cd vector && ./deploy.sh           # Deploy vector service (Python) only
 cd vector-rs && ./deploy.sh        # Deploy vector service (Rust) only — requires data/index.duckdb
-cd frontend && ./deploy.sh         # Deploy legacy frontend only
 cd sonar && ./deploy.sh            # Deploy sonar frontend (React) only — separate Cloud Run service
 ```
 
@@ -81,16 +78,13 @@ cd mcp && python main.py
 # Vector Service — Rust (port 8080)
 cd vector-rs && INDEX_DB_PATH=../data/index.duckdb cargo run
 
-# Vector Service — Python legacy (port 8000)
-cd vector && uvicorn main:app --reload
-
 # Sonar frontend — React + Vite (port 5180)
 cd sonar && VITE_VECTOR_API_URL=<vector-url> npm run dev
 ```
 
 ### Verification
 ```bash
-python vector/verify_service.py <VECTOR_URL>
+python vector-rs/scripts/verify_service.py <VECTOR_URL>
 python mcp/verify_auth.py <MCP_URL>
 ```
 
@@ -123,7 +117,6 @@ All tools are namespaced: `echolocate_*`
 ### Environment Variables
 - MCP (EchoLocate): `MCP_AUTH_SECRET`, `MCP_JWT_SECRET`, `MCP_CLIENT_ID`, `MCP_CLIENT_SECRET`, `VECTOR_SERVICE_URL`
 - Vector (Rust): `DB_PATH`, `INDEX_DB_PATH` (baked index, takes precedence over DB_PATH), `GCP_PROJECT_ID`, `CLAP_ONNX_DIR`, `CORS_ALLOW_ORIGINS`
-- Vector (Python): `LIBRARY_VECTOR_URL`, `FMA_VECTOR_URL`, or legacy `VECTOR_SERVICE_URL`
 - Secrets can be fetched from Google Secret Manager if `GOOGLE_CLOUD_PROJECT` is set
 
 ### Audio File Structure

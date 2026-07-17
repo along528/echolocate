@@ -3,12 +3,12 @@ FROM python:3.11-slim AS exporter
 
 WORKDIR /app
 
-# Copy Python export dependencies from the vector service
-COPY vector/requirements.txt .
+# Copy Python export dependencies
+COPY vector-rs/scripts/export_requirements.txt requirements.txt
 RUN pip install --no-cache-dir -r requirements.txt
 
 # Export text encoder to ONNX
-COPY vector/export_clap_text.py .
+COPY vector-rs/scripts/export_clap_text.py .
 RUN python export_clap_text.py --output-dir /app/clap_text_onnx
 
 # === Stage 2: Build Rust binary ===

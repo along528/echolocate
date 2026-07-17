@@ -19,6 +19,4 @@ Uses `npx firebase-tools` (no global install required). Requires Firebase auth �
 
 ## Related
 
-- **`../frontend/populate_cache.py`** — populates `semantic_search_cache` by querying the deployed vector-rs service
-- **`../frontend/cache.js`** — frontend module that reads from `semantic_search_cache`
-- **`../frontend/seed_queries.json`** — shared list of seed queries cached by the populate script
+- **`../sonar/populate_cache.py`** — populates `semantic_search_cache` by querying the deployed vector-rs service (the legacy frontend's equivalents live on the `legacy` branch)

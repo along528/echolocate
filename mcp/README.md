@@ -20,10 +20,12 @@ The server exposes the following tools to the LLM, all strictly namespaced:
 - `discogs_add_to_wantlist(release_id, notes, rating)`: Add a release to your wantlist. **Requires a Release ID (not Master ID).**
 
 ### 🦇 Echo Locate (`echolocate_*`)
+- `echolocate_sample(limit, random)`: Get a random sample of tracks from the vector DB.
 - `echolocate_similar(track_id)`: Find tracks sonically similar to a given track.
+- `echolocate_text_search(query)`: Metadata search by artist / album / title.
+- `echolocate_semantic_search(query)`: Text-to-audio "vibe" search via CLAP, with optional AI query expansion.
 - `echolocate_interpolate(track_id_1, track_id_2, method)`: Generate a path of songs connecting two tracks.
 - `echolocate_generate_playlist(track_id_1, track_id_2)`: Same as interpolate but formatted for playlist creation.
-- `echolocate_sample(limit, random)`: Get a random sample of tracks from the vector DB.
 
 ## Configuration
 
@@ -40,7 +42,7 @@ The server requires several secrets, managed via **Google Secret Manager**. Ensu
 | `DISCOGS_TOKEN` | Personal Access Token for Discogs API. |
 
 ### Environment Variables
-- `VECTOR_SERVICE_URL`: URL of the deployed `cloud-crate-vector` service.
+- `VECTOR_SERVICE_URL`: URL of the deployed `cloud-crate-vector-rs` service.
 - `GOOGLE_CLOUD_PROJECT`: GCP Project ID (for Secret Manager).
 
 ## Deployment

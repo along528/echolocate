@@ -6,7 +6,8 @@ Two things, both optional and idempotent:
 
   1. semantic_search_cache — pre-compute /semantic-search results for every
      suggested chip so clicking a chip is instant. Uses the SAME cache-key
-     hashing and document shape as frontend/populate_cache.py and cache.js, but
+     hashing and document shape as the legacy frontend's populate_cache.py and
+     cache.js (archived on the `legacy` branch), but
      with sonar's request params (limit=24, enhance=True by default) and sonar's
      short chip labels — otherwise the keys won't match what the frontend looks
      up.

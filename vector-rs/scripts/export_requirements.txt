@@ -1,15 +1,8 @@
 --index-url https://download.pytorch.org/whl/cpu
 --extra-index-url https://pypi.org/simple/
-duckdb>=1.0.0
-fastapi
-uvicorn
-pydantic
-python-multipart
-google-cloud-storage
-numpy
 torch
 transformers==4.46.0
+numpy
 onnx
 onnxscript
 onnxruntime
-google-cloud-aiplatform>=1.38.0

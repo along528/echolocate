@@ -67,7 +67,7 @@ def encode_texts(texts: list[str], device: torch.device | None = None) -> np.nda
     Encode query strings to L2-normalized 512-d CLAP text embeddings.
 
     `get_text_features` does not normalize internally (matching the production ONNX text
-    encoder in vector/export_clap_text.py, which adds the norm explicitly), so we normalize
+    encoder in vector-rs/scripts/export_clap_text.py, which adds the norm explicitly), so we normalize
     here to make cosine == dot against the normalized stored `v_clap`.
     """
     device = device or pick_device("cpu")  # cheap; CPU keeps the baseline deterministic
