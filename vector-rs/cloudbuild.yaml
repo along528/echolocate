@@ -1,5 +1,5 @@
 # Cloud Build config for vector-rs. Runs from the repo root (the Dockerfile needs
-# vector/ for the CLAP export and an index file to bake). Previews pass the small
+# vector-rs/scripts/ for the CLAP export and an index file to bake). Previews pass the small
 # committed sample via _INDEX_SRC so the image stays tiny; production keeps using
 # vector-rs/deploy.sh (local docker build with the full ~1.4GB data/index.duckdb).
 steps:

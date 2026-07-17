@@ -73,7 +73,7 @@ fi
 INDEX_VERSION=$(stat -f %Sm -t %Y%m%d "$INDEX_DB" 2>/dev/null || stat -c %Y "$INDEX_DB" 2>/dev/null || echo "unknown")
 MODEL_VERSION="mert-v1-95m+clap-htsat"
 
-# Build from repo root so Docker context includes both vector/ and vector-rs/
+# Build from repo root so Docker context includes vector-rs/scripts/ (CLAP export) and data/
 cd ..
 
 # Build and push the image. Cloud Run only runs linux/amd64, so pin the platform

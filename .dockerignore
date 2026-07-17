@@ -1,10 +1,9 @@
 *
 !data/index.duckdb
 !vector-rs/testdata/sample_index.duckdb
-!vector/requirements.txt
-!vector/export_clap_text.py
+!vector-rs/scripts/export_requirements.txt
+!vector-rs/scripts/export_clap_text.py
 !vector-rs/Cargo.toml
 !vector-rs/Cargo.lock
 !vector-rs/src/
 !vector-rs/vibes.txt
-!vector-rs/testdata/sample_index.duckdb
