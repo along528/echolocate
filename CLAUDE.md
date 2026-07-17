@@ -6,6 +6,18 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 EchoLocate is a music discovery system that exposes MCP (Model Context Protocol) tools for audio-based vector search. The system uses audio embeddings for "sonic" similarity search and playlist generation.
 
+## Commit Conventions & Releases
+
+**All commits MUST follow [Conventional Commits](https://www.conventionalcommits.org): `type(scope): subject`.** This is enforced on every PR by the `commitlint` check (a required status check — a non-conforming subject blocks the merge), and it drives automated versioning, so it is not optional.
+
+- **Types**: `feat`, `fix`, `docs`, `chore`, `refactor`, `test`, `ci`, `build`, `perf`, `style`, `revert`.
+- **Scopes** (optional): `vector-rs`, `sonar`, `mcp`, `embeddings`, `finetune`, `echoes`, `ci`, `deps`, `release`.
+- **Version bumps** (single repo-level semver): `feat:` → minor, `fix:` → patch, a `BREAKING CHANGE:` footer (or `type!:`) → major. Other types (`docs`, `chore`, `ci`, …) don't trigger a release.
+- **Releasing is automatic**: merging to `main` runs semantic-release (`.github/workflows/release.yml`), which tags the next version and cuts a GitHub Release with generated notes. The baseline is `v1.0.0`. Nothing is pushed back to `main` — only a tag + Release.
+- **Footers are fine**: the `Co-Authored-By` / session trailer lines appended to commits in this environment are compatible — only the **subject** line must match the format (e.g. `fix(vector-rs): guard against empty index`).
+
+See [CONTRIBUTING.md](CONTRIBUTING.md) for the full contributor flow.
+
 ## Architecture
 
 The project consists of these services:

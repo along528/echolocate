@@ -1,0 +1,99 @@
+name: ci
+
+# Consolidated build+test gate for PRs into main. Runs on EVERY PR (no path filter)
+# so the aggregate `ci-success` job always reports — that job is the single required
+# status check for branch protection. A path-filtered check would leave "Expected —
+# waiting for status" on PRs that don't touch the filtered area and block the merge
+# forever; routing everything through `ci-success` (which treats skipped area jobs as
+# passing) avoids that. Supersedes the old vector-rs-ci.yml.
+
+on:
+  pull_request:
+    branches: [main]
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  changes:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      pull-requests: read
+    outputs:
+      vector_rs: ${{ steps.filter.outputs.vector_rs }}
+      sonar: ${{ steps.filter.outputs.sonar }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dorny/paths-filter@v3
+        id: filter
+        with:
+          filters: |
+            vector_rs:
+              - 'vector-rs/**'
+              - '.github/workflows/ci.yml'
+            sonar:
+              - 'sonar/**'
+              - '.github/workflows/ci.yml'
+
+  vector-rs:
+    needs: changes
+    if: needs.changes.outputs.vector_rs == 'true'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: vector-rs
+
+      - name: Provision native deps (libduckdb, onnxruntime, vss)
+        run: bash vector-rs/scripts/setup-dev.sh
+
+      - name: Build + test
+        working-directory: vector-rs
+        run: |
+          # shellcheck disable=SC1091
+          source scripts/dev-env.sh
+          cargo build --release
+          cargo test
+
+  sonar:
+    needs: changes
+    if: needs.changes.outputs.sonar == 'true'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+          cache-dependency-path: sonar/package-lock.json
+
+      - name: Install + build
+        working-directory: sonar
+        run: |
+          npm ci
+          npm run build
+
+  # Single required status check. Passes when every job that actually ran succeeded;
+  # jobs skipped because their area was untouched do not fail the gate.
+  ci-success:
+    needs: [vector-rs, sonar]
+    if: always()
+    runs-on: ubuntu-latest
+    steps:
+      - name: Verify no required job failed
+        run: |
+          results='${{ needs.vector-rs.result }} ${{ needs.sonar.result }}'
+          echo "job results: $results"
+          for r in $results; do
+            if [ "$r" = "failure" ] || [ "$r" = "cancelled" ]; then
+              echo "A required CI job did not pass ($r)."
+              exit 1
+            fi
+          done
+          echo "All required CI jobs passed (or were skipped)."
