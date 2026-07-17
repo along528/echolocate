@@ -16,8 +16,9 @@ __pycache__/
 # Virtual Env
 .venv/
 
-# Data Artifacts
-data/
+# Data Artifacts (anchored so the finetune/src/data source package stays tracked)
+/data/
+/finetune/data/
 
 # Embeddings Tmp
 embeddings/tmp/

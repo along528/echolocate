@@ -16,6 +16,9 @@ dependencies = [
     "soundfile>=0.12",
     "pyarrow>=15",
     "google-cloud-storage>=2.14",
+    # Phase 2 dataset construction
+    "pandas>=2.0,<3",   # tracks.csv/echonest.csv have a 3-row multi-header; duckdb can't parse it cleanly
+    "requests>=2.31",   # Ollama HTTP client for synthetic caption paraphrases
 ]
 
 [tool.uv]
