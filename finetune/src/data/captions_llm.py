@@ -223,7 +223,7 @@ def main() -> None:
     ap.add_argument("--out", type=Path, default=DEFAULT_OUT)
     ap.add_argument("--split", default="training", choices=["training", "validation", "test", "all"])
     ap.add_argument("--limit", type=int, default=None)
-    ap.add_argument("--concurrency", type=int, default=2)
+    ap.add_argument("--concurrency", type=int, default=8)
     ap.add_argument("--timeout", type=float, default=120.0)
     args = ap.parse_args()
     run(args.meta, args.splits, args.out, args.split, args.limit, args.concurrency, args.timeout)
