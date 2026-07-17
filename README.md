@@ -15,6 +15,9 @@
   <a href="https://github.com/along528/echolocate/actions/workflows/ci.yml"><img src="https://github.com/along528/echolocate/actions/workflows/ci.yml/badge.svg?branch=main" alt="CI"/></a>
   <a href="https://github.com/along528/echolocate/actions/workflows/vector-rs-deploy.yml"><img src="https://github.com/along528/echolocate/actions/workflows/vector-rs-deploy.yml/badge.svg?branch=main" alt="vector-rs deploy"/></a>
   <a href="https://github.com/along528/echolocate/actions/workflows/sonar-deploy.yml"><img src="https://github.com/along528/echolocate/actions/workflows/sonar-deploy.yml/badge.svg?branch=main" alt="sonar deploy"/></a>
+  <a href="https://github.com/along528/echolocate/releases/latest"><img src="https://img.shields.io/github/v/release/along528/echolocate?sort=semver" alt="latest release"/></a>
+  <a href="https://www.conventionalcommits.org"><img src="https://img.shields.io/badge/Conventional%20Commits-1.0.0-yellow.svg" alt="Conventional Commits"/></a>
+  <a href="LICENSE"><img src="https://img.shields.io/github/license/along528/echolocate" alt="License: MIT"/></a>
 </p>
 
 ---
