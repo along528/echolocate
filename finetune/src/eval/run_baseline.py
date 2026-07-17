@@ -2,14 +2,18 @@
 Phase 0.3/0.4 — Run the baseline retrieval eval against the frozen snapshot + qrels.
 
 For each (query, source) in the qrel set:
-  1. Encode the raw query text (enhance=off, deterministic CPU) to a CLAP text vector.
+  1. Encode the query's *stored enhanced text* (the canonical most-frequent Gemini-expanded
+     variant from the labeled search events; raw text fallback when none exists) to a CLAP
+     text vector, on deterministic CPU.
   2. Cosine-rank it against all `v_clap` in that source from the Parquet snapshot.
      Stable tie-break: score DESC, then track_id ASC.
   3. Score NDCG@10 / recall@10 / judged@10 coverage against the query's qrels.
 
-Mirrors the production semantic-search default (`enhance=false`, no Gemini expansion) so the
-baseline is deterministic. Writes results/baseline_<date>.json with per-query + aggregate
-scores plus full provenance (git SHA, snapshot + qrel hashes, model_version, HF revision).
+Replaying the stored enhanced text reproduces the retrieval path the labels were collected on
+(441/442 labeled text searches ran with enhance=on) with no live Gemini call, so the run stays
+deterministic — see BASELINE.md "What this eval actually measures". Writes
+results/baseline_<date>.json with per-query + aggregate scores plus full provenance
+(git SHA, snapshot + qrel hashes, model_version, HF revision).
 
 Usage:
     uv run python -m src.eval.run_baseline

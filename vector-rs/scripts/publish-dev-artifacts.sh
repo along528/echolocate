@@ -17,7 +17,7 @@
 # project data: libduckdb and onnxruntime are upstream release binaries: the
 # vss extension is the public DuckDB extension; and the CLAP model is a stock
 # ONNX export of the public `laion/clap-htsat-unfused` HuggingFace checkpoint
-# (see vector/export_clap_text.py — no fine-tuning on this project's catalog).
+# (see vector-rs/scripts/export_clap_text.py — no fine-tuning on this project's catalog).
 #
 # This bucket ALSO serves the private audio corpus vector-rs streams in
 # production (GCS_AUDIO_PREFIX) — never make the bucket itself public; keep
@@ -68,14 +68,14 @@ gcloud storage cp --predefined-acl=publicRead \
 
 # --- CLAP ONNX model (PUBLIC) ------------------------------------------------
 # Reuse an existing export dir, or produce one with the same script the
-# Dockerfile stage-1 uses (needs torch/transformers from vector/requirements.txt).
+# Dockerfile stage-1 uses (deps in vector-rs/scripts/export_requirements.txt).
 # This is a stock export of the public laion/clap-htsat-unfused checkpoint (see
 # export_clap_text.py) — no project data — so it's fine to publish publicly.
 CLAP_DIR="${CLAP_DIR:-$REPO_ROOT/vector-rs/clap_text_onnx}"
 if [[ ! -f "$CLAP_DIR/clap_text.onnx" || ! -f "$CLAP_DIR/tokenizer.json" ]]; then
   echo "CLAP model not found at $CLAP_DIR — exporting (needs torch)..."
   PYTHON="$(command -v python3 || command -v python)"
-  "$PYTHON" "$REPO_ROOT/vector/export_clap_text.py" --output-dir "$CLAP_DIR"
+  "$PYTHON" "$REPO_ROOT/vector-rs/scripts/export_clap_text.py" --output-dir "$CLAP_DIR"
 fi
 echo "Uploading CLAP model → $BUCKET/clap_text_onnx/ (public)"
 # clap_text.onnx* deliberately globs both the graph (clap_text.onnx) and its

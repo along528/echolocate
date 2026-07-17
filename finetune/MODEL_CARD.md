@@ -13,7 +13,7 @@ The exact model + preprocessing that produced the production `v_clap` embeddings
 | Library | `transformers==4.46.0` (`ClapModel`, `AutoProcessor`) |
 | Embedding dim | 512 |
 
-**Revision caveat.** The production pipeline (`embeddings/generate_clap.py`, `vector/export_clap_text.py`)
+**Revision caveat.** The production pipeline (`embeddings/generate_clap.py`, `vector-rs/scripts/export_clap_text.py`)
 calls `from_pretrained` with **no `revision=`**, so it floated on whatever `main` served at
 download time. We pin the revision above for reproducibility. Its safety rests on the fact that
 the checkpoint's `main` has not changed since 2023-04-24 — well before this project generated
@@ -65,7 +65,7 @@ that op falls back to CPU (set automatically in `src/clap_common.py`). The tiny 
 
 Same checkpoint/revision. `ClapModel.get_text_features(**inputs)` followed by explicit L2
 normalization — numerically equivalent to the production ONNX text encoder
-(`vector/export_clap_text.py`, which self-verifies torch↔ONNX max-abs-diff < 1e-4). Neither
+(`vector-rs/scripts/export_clap_text.py`, which self-verifies torch↔ONNX max-abs-diff < 1e-4). Neither
 `get_text_features` nor `get_audio_features` normalizes internally; we add it on both sides so
 cosine == dot.
 

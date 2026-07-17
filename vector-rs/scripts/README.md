@@ -53,14 +53,11 @@ on `CLAUDE_CODE_REMOTE=true`.
 published public, but the *maintainer* flow is rougher than it should be. Rough
 edges hit in practice, roughly in priority order:
 
-1. **The CLAP export has undocumented Python deps.** When `clap_text_onnx/`
-   isn't already present, the script torch-exports the ONNX model — which also
-   needs `onnx` and `onnxruntime` on top of torch/transformers. Neither is in
-   `vector/requirements.txt`, and the failure is late and cryptic
-   (`ModuleNotFoundError` *mid-export*, after the tokenizer is already written).
-   Fix: add both to `vector/requirements.txt` (or a `requirements-dev.txt`), or
-   have the script preflight-check them and print an install hint before doing
-   any work.
+1. ~~**The CLAP export has undocumented Python deps.**~~ Fixed: the export deps
+   (torch/transformers plus `onnx` and `onnxruntime`) now live in
+   [`export_requirements.txt`](export_requirements.txt), which both the
+   Dockerfile stage-1 and a maintainer running `export_clap_text.py` by hand
+   install from.
 
 2. **`vss` can't be published from a macOS maintainer machine.** The script
    expects a Linux / duckdb-v1.2.2 `vss.duckdb_extension`; a Mac only has

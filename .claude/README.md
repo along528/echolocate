@@ -56,7 +56,7 @@ didn't). This is safe because all four are unmodified re-exports/rebuilds of
 public open-source artifacts, not project data (libduckdb/onnxruntime are
 upstream release binaries, `vss` is the public DuckDB extension, and the CLAP
 model is a stock export of the public `laion/clap-htsat-unfused` HuggingFace
-checkpoint — see `vector/export_clap_text.py`). This bucket also serves the
+checkpoint — see `vector-rs/scripts/export_clap_text.py`). This bucket also serves the
 private audio corpus vector-rs streams in production — only these four
 dev-artifacts objects are public, never the bucket itself.
 

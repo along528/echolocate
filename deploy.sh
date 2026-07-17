@@ -23,13 +23,7 @@ export VECTOR_SERVICE_URL=$VECTOR_URL
 ./deploy.sh
 cd ..
 
-# 3. Deploy Frontend
-echo "📦 Deploying Frontend..."
-cd frontend
-./deploy.sh
-cd ..
-
-# 4. Deploy Firestore Rules
+# 3. Deploy Firestore Rules
 echo "📦 Deploying Firestore Rules..."
 cd firestore
 ./deploy.sh
