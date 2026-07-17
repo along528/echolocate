@@ -12,7 +12,7 @@
 </p>
 
 <p align="center">
-  <a href="https://github.com/along528/echolocate/actions/workflows/vector-rs-ci.yml"><img src="https://github.com/along528/echolocate/actions/workflows/vector-rs-ci.yml/badge.svg?branch=main" alt="vector-rs CI"/></a>
+  <a href="https://github.com/along528/echolocate/actions/workflows/ci.yml"><img src="https://github.com/along528/echolocate/actions/workflows/ci.yml/badge.svg?branch=main" alt="CI"/></a>
   <a href="https://github.com/along528/echolocate/actions/workflows/vector-rs-deploy.yml"><img src="https://github.com/along528/echolocate/actions/workflows/vector-rs-deploy.yml/badge.svg?branch=main" alt="vector-rs deploy"/></a>
   <a href="https://github.com/along528/echolocate/actions/workflows/sonar-deploy.yml"><img src="https://github.com/along528/echolocate/actions/workflows/sonar-deploy.yml/badge.svg?branch=main" alt="sonar deploy"/></a>
 </p>
@@ -176,6 +176,10 @@ cd mcp && python main.py
 ```
 
 Pushes to `main` deploy automatically via the workflows above; `./deploy.sh` does a full manual deploy (vector-rs → MCP → firestore). Per-service deploy scripts, domain mapping, environment variables, and verification live in [`vector-rs/README.md`](vector-rs/README.md), [`sonar/README.md`](sonar/README.md), and [`mcp/`](mcp/).
+
+## Contributing
+
+Commits follow [Conventional Commits](https://www.conventionalcommits.org) (enforced on PRs) and merges to `main` are versioned and released automatically via semantic-release. See [**CONTRIBUTING.md**](CONTRIBUTING.md) for the full flow.
 
 ## Roadmap
 

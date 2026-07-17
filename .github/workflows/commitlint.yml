@@ -1,0 +1,29 @@
+name: commitlint
+
+# Enforce Conventional Commits on every commit in a PR. semantic-release (release.yml)
+# infers version bumps from these subjects, so a non-conforming subject would silently
+# break releasing — this check blocks the merge instead. Make it a required status
+# check in branch protection for main. Runs on every PR (no path filter) so it always
+# reports and never leaves a required check hanging.
+
+on:
+  pull_request:
+    types: [opened, synchronize, reopened, edited]
+
+concurrency:
+  group: commitlint-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  commitlint:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0   # need the full PR commit range to lint each commit
+
+      - uses: wagoid/commitlint-github-action@v6
+        with:
+          configFile: commitlint.config.mjs

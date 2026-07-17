@@ -1,0 +1,33 @@
+name: release
+
+# Semantic-release: on every merge to main, analyze Conventional Commits since the
+# last tag and — if there are releasable changes (feat/fix/BREAKING) — cut the next
+# semver git tag and a GitHub Release with generated notes. Ordinary merges without
+# a releasable commit are a no-op. Only a tag + Release are created; nothing is
+# pushed back to the protected main branch, so this is branch-protection friendly.
+# Baseline tag v1.0.0 was seeded manually; bumps compute from there.
+
+on:
+  push:
+    branches: [main]
+
+concurrency:
+  group: release
+  cancel-in-progress: false
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write        # create the tag + GitHub Release
+      issues: write          # semantic-release comments on released issues
+      pull-requests: write   # semantic-release comments on released PRs
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0      # full history + tags so version bumps compute correctly
+          persist-credentials: false
+
+      - uses: cycjimmy/semantic-release-action@v4
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
